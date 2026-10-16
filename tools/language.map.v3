@@ -1,0 +1,570 @@
+# ==========================================================================
+# language.map - The Formal Self-Bootstrapping Core Logic Specification (v3)
+# ==========================================================================
+#
+# This file defines the complete syntax of the language in the language
+# itself. The whole file, comments included, is a File (end of Step 7).
+# Each rule is explained directly above the declaration that defines it.
+#
+# How to read the declarations:
+# - There is no separate lexer. Every separator is a literal in some
+#   declaration, so the declarations are also the whitespace rules.
+# - A text inhabits a type when some way of matching it succeeds.
+# - A source file must match File in exactly one way. An ambiguous file
+#   is rejected like an unparseable one.
+# ==========================================================================
+
+
+# ---------- Step 1: Characters ----------
+
+# A union line, 'Name {A | B | C}', lists the alternatives of a type.
+# A quoted item is a literal: exactly that text, never an operator.
+Digit {"0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"}
+
+Lowercase_A_M {"a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i" | "j" | "k" | "l" | "m"}
+Lowercase_N_Z {"n" | "o" | "p" | "q" | "r" | "s" | "t" | "u" | "v" | "w" | "x" | "y" | "z"}
+
+# An unquoted item names a type. A type name resolves only to a type
+# declared strictly above it, so no type can refer to itself, directly
+# or through others. The one exception is a recursive field (Step 3).
+Lowercase {Lowercase_A_M | Lowercase_N_Z}
+
+Uppercase_A_M {"A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I" | "J" | "K" | "L" | "M"}
+Uppercase_N_Z {"N" | "O" | "P" | "Q" | "R" | "S" | "T" | "U" | "V" | "W" | "X" | "Y" | "Z"}
+Uppercase {Uppercase_A_M | Uppercase_N_Z}
+
+# A refinement line, 'Name {Item}', has a single-item base.
+Space {" "}
+Underscore {"_"}
+
+# Inside a literal, a backslash starts an escape: \n is a newline,
+# \" a quote, \\ a backslash. The full escape grammar is in Step 3.
+Newline {"\n"}
+Quote {"\""}
+Backslash {"\\"}
+
+Operator_Symbol {"{" | "}" | "|" | "&" | "=" | "<" | ">" | "." | "#" | "*" | "+" | "-" | "/"}
+Other_Symbol {"," | ":" | ";" | "!" | "?" | "'" | "(" | ")" | "@" | "%" | "[" | "]" | "^" | "~" | "`" | "$"}
+Reserved {Operator_Symbol | Quote | Backslash}
+
+# Positive logic: a type that excludes something is a smaller union,
+# never a negation. Line_Character is every character except Newline.
+Line_Character {Space | Underscore | Reserved | Other_Symbol | Uppercase | Lowercase | Digit}
+Character {Line_Character | Newline}
+
+
+# ---------- Step 2: Truth Values ----------
+
+# TRUE and FALSE are distinct atoms, not encodings of anything else.
+# FALSE is an ordinary value. It is not the same as INVALID (Step 3).
+True {"TRUE"}
+False {"FALSE"}
+Fact {True | False}
+
+
+# ---------- Step 3: Sequences, Literals and Names ----------
+
+# Built-in sequence: '{X} qty=a..b' is a sequence of a to b values of X.
+#
+# Recursion. A record field may use its own record type only as a
+# sequence whose qty starts at 0, e.g. 'children {Node} qty=0..' or
+# 'rest {Chain} qty=0..1'. The empty sequence is the stopping branch, so
+# every value is finite. This is the only recursion: no other type may
+# refer to itself, and two types cannot refer to each other.
+# Two rules keep recursion polynomial:
+# - Each field is computed at most once per node, and the result is
+#   reused. So a field that reads rest.x twice costs nothing extra.
+# - A product may have at most one factor read through a recursive
+#   field. 'rest.x * 10' is allowed; 'rest.x * rest.x' would double the
+#   length of the number at every level and is an error.
+# Computed fields produce numbers and Facts, never new records or
+# sequences, so evaluation never makes the data bigger.
+#
+# Folds. A path step after a sequence names a field of its items and
+# gives the sequence of that field's values; a path through two
+# sequences flattens them. A path through a sequence must end in a fold:
+#   .qty    the number of items
+#   .sum    the total of a numeric field, with that field's places
+#   .count  the number of items whose Fact field is TRUE
+#   .size   the number of nodes in a recursive value, all levels down
+# e.g. lines.qty, lines.line_total.sum, lines.is_big.count,
+# children.size. An empty sequence folds to 0. Folds visit each item
+# once, so they are linear. A filtered fold puts the filter on the item
+# as a Fact field and counts it. "Every item" is a count compared with
+# qty. qty, sum, count, size, cost and val are reserved and cannot name
+# a field.
+Text {Character} qty=0..
+Line_Text {Line_Character} qty=0..       # Cannot contain a newline, by construction
+Natural {Digit} qty=1..                  # Every character is a digit
+
+# A layout is a refinement line followed by numbered positions at two
+# spaces. Its text is its positions in number order. On a position,
+# qty repeats that position's base.
+# A layout whose base is Integer or Decimal is a conversion: its 'val'
+# reads the Digit positions left to right in base 10, literal positions
+# contribute nothing, and the 'val' range must fit what the layout holds.
+Integer_Literal {Text}
+  1. {"-"} qty=0..1
+  2. {Digit} qty=1..
+
+Decimal_Literal {Text}
+  1. {"-"} qty=0..1
+  2. {Digit} qty=1..
+  3. {"."}
+  4. {Digit} qty=1..
+
+# Built-in numbers. Integer is unbounded, so overflow cannot occur.
+# Decimal is exact: for '+' and '-' the result has the larger number of
+# places of its operands; for '*' the places add.
+# A number literal denotes its exact decimal value. Comparisons use that
+# value, so 1.50 = 1.5.
+Number_Literal {Decimal_Literal | Integer_Literal}
+
+# A record is a header 'Name {}' followed by its fields at two spaces.
+# Its text is its stored fields in declaration order. Computed fields
+# (a 'val =' predicate, a mapping base, or a rule) contribute no text.
+# A field may name only fields of the same record declared above it.
+#
+# A rule is a field with base {True} and predicates. If its predicates
+# do not hold, the field is INVALID. A {True} field with no predicates
+# is a constant that always holds TRUE, not a rule.
+# Every field evaluates to a value or to INVALID. Anything computed from
+# an INVALID field is INVALID. A record with any INVALID field is
+# rejected, and every failed rule is reported by name.
+# When a type used in this grammar carries a rule, a text inhabits the
+# type only if the rule holds on it.
+#
+# A claim is a field with base {Fact} and a single comparison. It
+# narrows nothing: the checker must prove it holds for every value, by
+# one fixed method. Expand both sides into sums of stored fields by
+# substituting each 'val =' definition; move everything to one side and
+# cancel; bound what is left using each field's range. On a recursive
+# type, the claim itself may be assumed for the recursive field
+# (induction). A product of two fields is kept as one term, bounded by
+# multiplying their ranges. If the bound does not settle the comparison,
+# the claim is a compile error, "cannot prove". Each claim is checked
+# once against the declarations, never against data, so proofs are
+# polynomial in the size of the program.
+#
+# Ranges: low..high contains both ends. A bounded range is ordered by
+# definition through the rule below, so 5..1 does not parse. 2..2 is a
+# single value.
+Bounded_Range {}
+  low {Number_Literal}
+  dots {".."}
+  high {Number_Literal}
+  ordered {True} high >= low
+
+# low.. and ..high are open on one side. '..' with both ends missing
+# does not exist: to allow every value, omit the predicate.
+Lower_Range {Text}                       # low.. : low and everything above
+  1. {Number_Literal}
+  2. {".."}
+
+Upper_Range {Text}                       # ..high : high and everything below
+  1. {".."}
+  2. {Number_Literal}
+
+Range_Literal {Bounded_Range | Lower_Range | Upper_Range}
+
+# Raw quotes and backslashes cannot appear inside a string literal; they
+# are reachable only through an escape. No escapes exist other than
+# \" \\ and \n, which decode to a quote, a backslash and a newline.
+Plain_String_Character {Space | Underscore | Operator_Symbol | Other_Symbol | Uppercase | Lowercase | Digit}
+Escape_Code {Quote | Backslash | "n"}
+
+Escape {Text}
+  1. {Backslash}
+  2. {Escape_Code}
+
+String_Character {Plain_String_Character | Escape}
+
+String_Literal {Text}
+  1. {Quote}
+  2. {String_Character} qty=0..
+  3. {Quote}
+
+# Uppercase names are types. Lowercase names are fields.
+Name_Character {Uppercase | Lowercase | Digit | Underscore}
+Lower_Name_Character {Lowercase | Digit | Underscore}
+
+Type_Name {Text}
+  1. {Uppercase}
+  2. {Name_Character} qty=0..
+
+Field_Name {Text}
+  1. {Lowercase}
+  2. {Lower_Name_Character} qty=0..
+
+Name {Type_Name | Field_Name}
+
+Path_Step {Text}
+  1. {"."}
+  2. {Field_Name}
+
+# A path starts with a type or a field declared above it. A field cannot
+# refer to itself, and may use its own record type only as a recursive
+# field. 'val' names the value of the line it appears on.
+Path {Text}                              # e.g. customer.credit_limit
+  1. {Name}
+  2. {Path_Step} qty=0..
+
+
+# ---------- Step 4: Layout ----------
+
+# Indentation is part of the grammar. Top-level lines start in column
+# one, record bodies and layout positions at two spaces, mapping cases
+# at four.
+Indent_0 {""}
+
+Indent_2 {Text}
+  1. {Space} qty=2
+
+Indent_4 {Text}
+  1. {Space} qty=4
+
+Trailing_Comment {Text}
+  1. {Space} qty=1..
+  2. {"#"}
+  3. {Line_Text}
+
+Line_End {}
+  note {Trailing_Comment} qty=0..1
+  end {Newline}
+
+
+# ---------- Step 5: Values and Predicates ----------
+
+# Arithmetic is '+', '-' and '*'. Division does not exist. An expression
+# uses one operator kind only, so no precedence exists.
+Term {Path | Number_Literal}
+
+Sum_Tail {}
+  op {" + "}
+  next {Term}
+
+Difference_Tail {}
+  op {" - "}
+  next {Term}
+
+Product_Tail {}
+  op {" * "}
+  next {Term}
+
+Sum {}
+  first {Term}
+  rest {Sum_Tail} qty=1..
+
+Difference {}
+  first {Term}
+  rest {Difference_Tail} qty=1..
+
+Product {}
+  first {Term}
+  rest {Product_Tail} qty=1..
+
+Arithmetic {Sum | Difference | Product}  # One operator kind per expression
+
+Value {Arithmetic | Range_Literal | Number_Literal | String_Literal | Path}
+
+# Comparisons. There is no '!=', 'not', 'else', 'forall' or 'in'.
+Comparison {" = " | " < " | " <= " | " > " | " >= "}
+
+# Settings. qty bounds sequence length. places fixes decimal places;
+# without it, places are inferred from the literals on the line. mod
+# makes arithmetic wrap. A value assigned to a field must satisfy the
+# field's ranges, and assigning to fewer decimal places is a compile
+# error, so rounding never happens implicitly.
+#
+# cost states a worst-case running time, up to a constant factor, as a
+# size or a single product or sum of sizes: cost=1, cost=lines.qty,
+# cost=a.qty * b.qty, cost=children.size. The checker works out each
+# field's cost from fixed rules: reads, comparisons and arithmetic cost
+# 1 plus their parts; a mapping costs its inputs plus its cases; a fold
+# costs qty times the cost per item; a fold over a recursive value costs
+# its size. A sequence with an upper qty bound counts as a constant, so
+# only open-ended sequences are sizes. Costs only add and multiply, so
+# every program is polynomial, and the degree is how deeply folds nest.
+# A written cost is a promise: if the worked-out cost has a term with a
+# higher power of any size, it is a compile error. Without cost=, the
+# checker reports the cost it works out.
+Setting_Key {"qty" | "places" | "mod" | "cost"}
+Setting_Value {Arithmetic | Range_Literal | Number_Literal | Path}
+
+Setting {Text}
+  1. {Setting_Key}
+  2. {"="}
+  3. {Setting_Value}
+
+# unique forbids two rows with equal values in that field.
+Flag {"unique"}
+
+Plain_Predicate {}
+  field {Path}
+  op {Comparison}
+  value {Value}
+
+Clause {Plain_Predicate | Setting | Flag}
+
+# Predicates use only '&' or only '|'. The two connective forms below
+# are separate declarations, so a line that mixes them does not parse.
+And_Tail {}
+  op {" & "}
+  next {Clause}
+
+And_Predicates {}                        # One or more clauses joined by '&'
+  first {Clause}
+  rest {And_Tail} qty=0..
+
+Value_Tail {}
+  op {" | "}
+  next {Value}
+
+Multi_Value {}                           # e.g. 0 | 10..100
+  first {Value}
+  rest {Value_Tail} qty=1..
+
+Choice_Value {Multi_Value | Value}
+
+Choice_Predicate {}
+  field {Path}
+  op {Comparison}
+  value {Choice_Value}
+
+Or_Tail {}
+  op {" | "}
+  next {Choice_Predicate}
+
+Or_Chain {}                              # Two or more predicates joined by '|'
+  first {Choice_Predicate}
+  rest {Or_Tail} qty=1..
+
+Single_Choice {}                         # One predicate choosing among values
+  field {Path}
+  op {Comparison}
+  value {Multi_Value}
+
+Or_Predicates {Or_Chain | Single_Choice}
+
+Predicate_Block {And_Predicates | Or_Predicates}
+
+Predicate_Tail {}
+  space {Space}
+  predicates {Predicate_Block}
+
+
+# ---------- Step 6: Bases ----------
+
+# Inside braces, '|' is union.
+Union_Item {Type_Name | String_Literal | Number_Literal}
+
+Union_Tail {}
+  op {" | "}
+  next {Union_Item}
+
+Union_Base {}                            # Two or more items
+  first {Union_Item}
+  rest {Union_Tail} qty=1..
+
+Output_Union {Union_Base | Union_Item}
+
+# A mapping base is 'inputs -> output'. Inside braces, '&' joins inputs
+# and '->' separates them from the output.
+# Inputs are fields declared above the mapping, of a finite union type
+# or a numeric type. Text and sequence inputs are not allowed.
+# A mapping has one or two inputs, never more. With at most two inputs,
+# k cases give at most 2k boundaries per input, so at most
+# (2k + 1) x (2k + 1) cells to check: every mapping is a
+# two-dimensional table. Logic over more inputs is written as a chain,
+# where one mapping's output field is an input of the next.
+Input_Tail {}
+  op {" & "}
+  next {Field_Name}
+
+Single_Input_Map {}                      # One input, union output allowed
+  input {Field_Name}
+  arrow {" -> "}
+  output {Output_Union}
+
+Two_Input_Map {}                         # Exactly two inputs, single output item
+  first {Field_Name}
+  second {Input_Tail}
+  arrow {" -> "}
+  output {Union_Item}
+
+Mapping_Base {Single_Input_Map | Two_Input_Map}
+
+# Braces never nest, and there are no parentheses or local scopes.
+Item_Box {}
+  open {"{"}
+  item {Union_Item}
+  close {"}"}
+
+Union_Box {}
+  open {"{"}
+  items {Union_Base}
+  close {"}"}
+
+Mapping_Box {}
+  open {"{"}
+  map {Mapping_Base}
+  close {"}"}
+
+Empty_Box {"{}"}
+
+
+# ---------- Step 7: Lines, Blocks and Files ----------
+
+# Line forms. A refinement line has a single-item base and optional
+# predicates. A union line has two or more items and no predicates, so
+# predicates on a union do not parse. A mapping line has a mapping base
+# and no predicates.
+# A refinement of a record is a filter: its predicates may name the
+# record's fields, e.g. 'Big_Order {Order} total >= 1000.00'.
+Refinement_Line {}                       # Single-item base, optional predicates
+  indent {Indent_0}
+  name {Type_Name}
+  space {Space}
+  base {Item_Box}
+  tail {Predicate_Tail} qty=0..1
+  finish {Line_End}
+
+Union_Line {}                            # Union base, no predicates
+  indent {Indent_0}
+  name {Type_Name}
+  space {Space}
+  base {Union_Box}
+  finish {Line_End}
+
+Record_Header {}
+  indent {Indent_0}
+  name {Type_Name}
+  space {Space}
+  base {Empty_Box}
+  finish {Line_End}
+
+Field_Line {}
+  indent {Indent_2}
+  name {Field_Name}
+  space {Space}
+  base {Item_Box}
+  tail {Predicate_Tail} qty=0..1
+  finish {Line_End}
+
+Union_Field_Line {}
+  indent {Indent_2}
+  name {Field_Name}
+  space {Space}
+  base {Union_Box}
+  finish {Line_End}
+
+Mapping_Field_Line {}
+  indent {Indent_2}
+  name {Field_Name}
+  space {Space}
+  base {Mapping_Box}
+  finish {Line_End}
+
+# A case is '| {output} predicates', four spaces in. The '| ' marker is
+# a literal at a fixed position, not an operator, and exactly one space
+# follows the case box.
+# Each output is a singleton: a literal, or a type with exactly one
+# inhabitant such as True. A case predicate compares one input to a
+# literal or a range, with no arithmetic and no other fields, so every
+# case is a box: one interval or literal set per input.
+# Left side: the cases cover every input combination. Right side: every
+# value of the output type is produced by some case. Cases are disjoint.
+# All three checks are decidable by splitting each input at the case
+# boundaries. A missing combination is a compile error, not FALSE.
+Case_Line {}
+  indent {Indent_4}
+  marker {"| "}
+  output {Item_Box}
+  space {Space}
+  predicates {Predicate_Block}
+  finish {Line_End}
+
+Position_Line {}
+  indent {Indent_2}
+  number {Natural}
+  dot {". "}
+  base {Item_Box}
+  tail {Predicate_Tail} qty=0..1
+  finish {Line_End}
+
+Union_Position_Line {}
+  indent {Indent_2}
+  number {Natural}
+  dot {". "}
+  base {Union_Box}
+  finish {Line_End}
+
+# Comments start with '#'. A top-level comment starts in column one; a
+# comment inside a record body starts at two spaces.
+Comment_Line {}                          # Top level, column one
+  hash {"#"}
+  text {Line_Text}
+  end {Newline}
+
+Body_Comment_Line {}                     # Inside a record body
+  indent {Indent_2}
+  hash {"#"}
+  text {Line_Text}
+  end {Newline}
+
+Blank_Line {}
+  end {Newline}
+
+# Blocks. A mapped field owns the cases that follow it. A record owns
+# its body lines; blank lines may separate them, but blank lines after
+# the last body line belong to the top level. A layout owns its
+# positions. A block ends at the first line that cannot belong to it.
+Mapped_Field {}
+  head {Mapping_Field_Line}
+  cases {Case_Line} qty=1..
+
+Body_Content {Field_Line | Union_Field_Line | Mapped_Field | Body_Comment_Line}
+
+Body_Item {}                             # Blank lines only before more body
+  gap {Blank_Line} qty=0..
+  line {Body_Content}
+
+Record_Block {}
+  head {Record_Header}
+  body {Body_Item} qty=0..
+
+Position_Content {Position_Line | Union_Position_Line}
+
+Layout_Block {}
+  head {Refinement_Line}
+  positions {Position_Content} qty=1..
+
+Block {Record_Block | Layout_Block | Refinement_Line | Union_Line | Comment_Line | Blank_Line}
+
+File {Block} qty=0..
+
+
+# ---------- Step 8: Reference Gate ----------
+
+# Evaluation. Fields are evaluated lazily, each at most once.
+# A mapping keeps a candidate set, starting with all cases. For each
+# input in the order listed: if no remaining candidate mentions it
+# (names it in a predicate), stop. Otherwise evaluate it. If it is
+# INVALID, the result is INVALID. Otherwise drop every candidate that
+# constrains it and fails. Coverage and disjointness leave exactly one
+# candidate, whose output is the result.
+#
+# Three different outcomes: a failed rule makes its field INVALID and
+# rejects the record; a mapping whose output is False produces an
+# ordinary value; a mapping with an INVALID input produces INVALID.
+#
+# Here, when left is FALSE no remaining case mentions right, so right is
+# never evaluated. This matters only when right is computed; stored data
+# has nothing to defer.
+And_Gate {}                              # Short-circuit AND over two facts
+  left {Fact}
+  right {Fact}
+  out {left & right -> Fact}
+    | {True} left = True & right = True
+    | {False} left = True & right = False
+    | {False} left = False               # No remaining case mentions right

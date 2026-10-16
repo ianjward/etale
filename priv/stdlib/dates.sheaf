@@ -1,0 +1,49 @@
+# Calendar dates, "2026-10-15", valid in the Gregorian calendar.
+# Every step is a checked table; leap years use 'mod' arithmetic.
+
+Year {Integer}
+  1. {Digit 4}
+
+Month {Integer} val = 1..12
+  1. {Digit 2}
+
+Day_Of_Month {Integer} val = 1..31
+  1. {Digit 2}
+
+Month_Length {"31" | "30" | "feb"}
+Day_Fit {"yes" | "no" | "leap_day"}
+
+Date {}
+  year {Year}
+  dash1 {"-"}
+  month {Month}
+  dash2 {"-"}
+  day {Day_Of_Month}
+  r4 {Integer} val = year * 1 & mod = 4 & val = 0..3
+  r100 {Integer} val = year * 1 & mod = 100 & val = 0..99
+  r400 {Integer} val = year * 1 & mod = 400 & val = 0..399
+  length {month -> Month_Length}
+    | {"31"} month = 1 | 3 | 5 | 7 | 8 | 10 | 12
+    | {"30"} month = 4 | 6 | 9 | 11
+    | {"feb"} month = 2
+  fit {length & day -> Day_Fit}
+    | {"yes"} length = "31"
+    | {"yes"} length = "30" & day = 1..30
+    | {"no"} length = "30" & day = 31
+    | {"yes"} length = "feb" & day = 1..28
+    | {"leap_day"} length = "feb" & day = 29
+    | {"no"} length = "feb" & day = 30..31
+  by_four {r4 & r100 -> Fact}
+    | {True} r4 = 0 & r100 = 1..99
+    | {False} r4 = 0 & r100 = 0
+    | {False} r4 = 1..3
+  leap {by_four & r400 -> Fact}
+    | {True} by_four = True
+    | {True} by_four = False & r400 = 0
+    | {False} by_four = False & r400 = 1..399
+  valid {fit & leap -> Fact}
+    | {True} fit = "yes"
+    | {False} fit = "no"
+    | {True} fit = "leap_day" & leap = True
+    | {False} fit = "leap_day" & leap = False
+  real_date {True} valid = True

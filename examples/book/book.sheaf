@@ -1,0 +1,29 @@
+# Orders that belong to customers. A path that starts with a type name
+# reaches the nearest record of that type around this one: inside an
+# Order, 'Order.customer' is that order's customer, and 'Book.customers'
+# the customers of the book holding it. So "this order belongs to that
+# customer" is a filter, and "there is one" is a qty.
+Customer_Code {Text}
+  1. {"C"}
+  2. {Digit 3}
+
+Customer {}
+  code {Customer_Code} unique
+  gap {" "}
+  name {Line_Text}
+  nl {Newline}
+
+Its_Customer {Customer} code = Order.customer
+
+Order {}
+  number {Natural}
+  gap {" "}
+  customer {Customer_Code}
+  nl {Newline}
+  known {True} Book.customers.Its_Customer.qty = 1
+
+Book {}
+  customers {Customer 1..}
+  rule {"---"}
+  nl {Newline}
+  orders {Order 1..}

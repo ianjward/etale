@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sheaf Workspace</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;600&display=swap">
+<style>
+/* Layout: a fixed tool bar over an infinite canvas; code, graph and probes live in world space. */
+:root {
+  --bg: #e6ebf0; --bar: #f6f8fa; --ink: #18212c; --muted: #5d6b7a; --stroke: #cfd7df;
+  --panel: #fbfcfd; --head: #eef2f6; --accent: #2b59c3; --bad: #c03a33; --good: #2f7d4f;
+  --code: #15202b; --probe-head: #e9f0fb;
+  --st-core: #2b6cc4; --st-compiled: #2f8a4f; --st-proved: #7a4fc2; --st-changed: #b98a00;
+  --st-affected: #d4691a; --st-errors: #c03a33; --st-outside: #8d9aa8;
+  --font-ui: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-code: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11161c; --bar: #161d25; --ink: #e3e9ef; --muted: #93a1b0; --stroke: #2c3743;
+    --panel: #19212a; --head: #1e2731; --accent: #7aa5f0; --bad: #f07a72; --good: #6fcf97;
+    --code: #e3e9ef; --probe-head: #1d2a3b; color-scheme: dark;
+    --st-core: #6fa3f0; --st-compiled: #5cc98a; --st-proved: #b28cf0; --st-changed: #e6c440;
+    --st-affected: #f0975a; --st-errors: #f07a72; --st-outside: #6c7a89;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11161c; --bar: #161d25; --ink: #e3e9ef; --muted: #93a1b0; --stroke: #2c3743;
+  --panel: #19212a; --head: #1e2731; --accent: #7aa5f0; --bad: #f07a72; --good: #6fcf97;
+  --code: #e3e9ef; --probe-head: #1d2a3b; color-scheme: dark;
+  --st-core: #6fa3f0; --st-compiled: #5cc98a; --st-proved: #b28cf0; --st-changed: #e6c440;
+  --st-affected: #f0975a; --st-errors: #f07a72; --st-outside: #6c7a89;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--ink);
+  font: 14px/1.45 var(--font-ui); }
+#bar { position: fixed; top: 0; left: 0; right: 0; height: calc(50px + env(safe-area-inset-top, 0px));
+  display: flex; align-items: center; gap: 10px; overflow-x: auto;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  background: var(--bar); border-bottom: 1px solid var(--stroke); z-index: 10; }
+#bar > * { flex: none; }
+#bar h1 { font-size: 15px; font-weight: 600; margin: 0 6px 0 0; letter-spacing: .01em; }
+#bar select, #bar button { font: inherit; font-size: 13px; color: var(--ink); background: var(--panel);
+  border: 1px solid var(--stroke); border-radius: 7px; padding: 5px 10px; cursor: pointer; }
+#bar button:hover, #bar select:hover { border-color: var(--accent); }
+#bar button:focus-visible, #bar select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+#bar .grow { flex: 1; }
+#status { color: var(--muted); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#stage { position: fixed; top: calc(50px + env(safe-area-inset-top, 0px)); left: 0; right: 0; bottom: 0; overflow: hidden; touch-action: none; }
+#canvas { display: block; }
+#world-dom { position: absolute; inset: 0; pointer-events: none; }
+.panel { position: absolute; left: 0; top: 0; transform-origin: 0 0; display: flex; flex-direction: column;
+  background: var(--panel); border: 1px solid var(--stroke); border-radius: 10px; pointer-events: auto;
+  box-shadow: 0 1px 2px rgba(20, 30, 45, .06); overflow: hidden; }
+.panel header { display: flex; justify-content: space-between; gap: 12px; padding: 8px 12px; background: var(--head);
+  border-bottom: 1px solid var(--stroke); cursor: grab; user-select: none; font-size: 13px; font-weight: 600; }
+.panel.probe header { background: var(--probe-head); }
+.panel header .s { font-weight: 400; color: var(--good); white-space: nowrap; }
+.panel header .s.bad { color: var(--bad); }
+.panel textarea { flex: 1; width: 100%; resize: none; border: 0; outline: 0; padding: 10px 12px; margin: 0;
+  background: transparent; color: var(--code); font: var(--code-size, 13.2px)/17px var(--font-code);
+  tab-size: 2; white-space: pre; overflow-x: hidden; overflow-y: auto; }
+.panel.probe textarea { font-size: 13px; }
+/* file states: the outline says where a file stands */
+.panel { transition: opacity .3s ease, border-color .2s ease; border-width: 2px; }
+@media (prefers-reduced-motion: reduce) { .panel { transition: none; } }
+.panel.state-core { border-color: var(--st-core); }
+.panel.state-compiled { border-color: var(--st-compiled); }
+.panel.state-proved { border-color: var(--st-proved); }
+.panel.state-changed { border-color: var(--st-changed); }
+.panel.state-affected { border-color: var(--st-affected); }
+.panel.state-errors { border-color: var(--st-errors); }
+.panel.state-outside { border-color: var(--st-outside); border-style: dashed; }
+.panel header .s { color: var(--muted); }
+.panel.state-compiled header .s { color: var(--st-compiled); }
+.panel.state-proved header .s { color: var(--st-proved); }
+.panel.state-changed header .s { color: var(--st-changed); }
+.panel.state-affected header .s { color: var(--st-affected); }
+.panel.state-errors header .s { color: var(--st-errors); }
+.panel.state-core header .s { color: var(--st-core); }
+.panel header .t { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.panel header .b { display: inline-flex; gap: 4px; margin-left: 4px; }
+.panel header .b button { font: 600 11.5px var(--font-ui); color: var(--ink); background: var(--panel);
+  border: 1px solid var(--stroke); border-radius: 6px; padding: 1px 8px; cursor: pointer; }
+.panel header .b button:hover { border-color: var(--accent); }
+.panel.file textarea[readonly] { color: var(--muted); }
+/* explore mode: read-only text, type names as links */
+.panel pre.explore { flex: 1; margin: 0; padding: 10px 12px; overflow-x: hidden; overflow-y: auto; outline: 0; cursor: default;
+  font: var(--code-size, 13.2px)/17px var(--font-code); color: var(--code); white-space: pre; tab-size: 2; }
+.panel pre.explore .ln { display: block; min-height: 17px; }
+.panel pre.explore .ln.hl { background: color-mix(in srgb, var(--accent) 8%, transparent); border-radius: 3px; }
+.panel pre.explore .ln.sel { background: color-mix(in srgb, var(--accent) 24%, transparent); border-radius: 3px;
+  box-shadow: inset 3px 0 0 var(--accent); }
+.panel pre.explore .cm { color: var(--muted); font-style: italic; }
+.panel pre.explore .str { color: var(--good); }
+.panel pre.explore .num { color: var(--st-affected); }
+.panel pre.explore .ty { color: var(--accent); border-radius: 3px; }
+.panel pre.explore .ty:hover { cursor: pointer; text-decoration: underline; text-underline-offset: 2px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.panel.editing { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+/* jump markers: the line left behind, and the line landed on with a way back */
+.panel pre.explore .ln.from { background: color-mix(in srgb, var(--st-changed) 14%, transparent); border-radius: 3px; }
+.panel pre.explore .back { margin-left: 12px; padding: 0 7px; border-radius: 9px; font: 600 11px/16px var(--font-ui);
+  color: var(--panel); background: var(--accent); cursor: pointer; white-space: nowrap; }
+.panel pre.explore .back:hover { filter: brightness(1.1); }
+/* the preview card for a hovered type */
+#card { position: fixed; z-index: 20; max-width: min(560px, calc(100vw - 24px)); background: var(--panel);
+  border: 2px solid var(--stroke); border-radius: 10px; box-shadow: 0 8px 28px rgba(15, 25, 40, .18);
+  max-height: 60vh; overflow-y: auto; overflow-x: hidden; cursor: pointer;
+  animation: cardin .16s ease .12s both; }
+#card pre .ty:hover { text-decoration: underline; text-underline-offset: 2px; }
+#card .ct { padding: 7px 12px; font: 600 12px var(--font-ui); background: var(--head); border-bottom: 1px solid var(--stroke);
+  border-radius: 8px 8px 0 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#card pre { margin: 0; padding: 8px 12px; font: 12.5px/16px var(--font-code); color: var(--code); white-space: pre; overflow: hidden; }
+#card pre .ln { display: block; }
+#card pre .cm { color: var(--muted); font-style: italic; }
+#card pre .str { color: var(--good); }
+#card pre .num { color: var(--st-affected); }
+#card pre .ty { color: var(--accent); }
+#card .ch { padding: 4px 12px 7px; font-size: 11px; color: var(--muted); }
+#card.state-compiled { border-color: var(--st-compiled); } #card.state-proved { border-color: var(--st-proved); }
+#card.state-changed { border-color: var(--st-changed); } #card.state-affected { border-color: var(--st-affected); }
+#card.state-errors { border-color: var(--st-errors); } #card.state-core { border-color: var(--st-core); }
+#card.state-outside { border-color: var(--st-outside); border-style: dashed; }
+@keyframes cardin { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { #card { animation: none; } }
+/* canvas search */
+.sr { position: absolute; left: -9999px; }
+#bar .search { position: relative; flex: 0 1 300px; min-width: 160px; }
+#search { width: 100%; font: 13px var(--font-ui); color: var(--ink); background: var(--panel); border: 1px solid var(--stroke);
+  border-radius: 7px; padding: 6px 10px; }
+#search:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+#newfile { position: fixed; z-index: 30; width: min(380px, calc(100vw - 24px)); background: var(--panel); color: var(--ink);
+  border: 1px solid var(--stroke); border-radius: 10px; box-shadow: 0 8px 24px rgba(20, 30, 45, .18); padding: 12px;
+  display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+#newfile label { font-weight: 600; }
+#newfile .row { display: flex; gap: 8px; }
+#newfile input { flex: 1; min-width: 0; font: 13px var(--font-code, ui-monospace, monospace); padding: 6px 8px; color: var(--ink);
+  background: var(--bg, var(--panel)); border: 1px solid var(--stroke); border-radius: 7px; }
+#newfile input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+#newfile button { font: inherit; padding: 6px 12px; border-radius: 7px; border: 1px solid var(--accent); background: var(--accent); color: var(--panel); font-weight: 600; cursor: pointer; }
+#newfile p { margin: 0; color: var(--muted); font-size: 12px; }
+#results { position: fixed; z-index: 30; width: min(520px, calc(100vw - 24px)); max-height: 60vh; overflow-y: auto;
+  background: var(--panel); border: 1px solid var(--stroke); border-radius: 10px; box-shadow: 0 10px 30px rgba(15, 25, 40, .2); padding: 4px; }
+#results .rh { font: 600 11px var(--font-ui); text-transform: uppercase; letter-spacing: .07em; color: var(--muted); padding: 8px 10px 4px; }
+#results .r { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 10px; align-items: baseline; padding: 6px 10px;
+  border-radius: 6px; cursor: pointer; border-left: 3px solid transparent; }
+#results .r.on, #results .r:hover { background: var(--head); }
+#results .r.on { border-left-color: var(--accent); }
+#results .rk { font: 600 10px var(--font-ui); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+#results .rl { font: 13px var(--font-code); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#results .rw { font: 12px var(--font-code); color: var(--muted); white-space: nowrap; }
+#results .r.state-compiled .rw { color: var(--st-compiled); } #results .r.state-proved .rw { color: var(--st-proved); }
+#results .r.state-changed .rw { color: var(--st-changed); } #results .r.state-affected .rw { color: var(--st-affected); }
+#results .r.state-errors .rw { color: var(--st-errors); } #results .r.state-core .rw { color: var(--st-core); }
+#results .none { padding: 12px; color: var(--muted); font-size: 13px; }
+/* find in a pane */
+.panel { position: absolute; }
+.panel .find { position: absolute; top: 40px; right: 12px; z-index: 2; display: flex; align-items: center; gap: 4px;
+  background: var(--panel); border: 1px solid var(--stroke); border-radius: 8px; padding: 4px; box-shadow: 0 4px 14px rgba(15, 25, 40, .15); }
+.panel .find input { width: 200px; font: 12.5px var(--font-code); color: var(--ink); background: var(--bg); border: 1px solid var(--stroke);
+  border-radius: 5px; padding: 3px 7px; }
+.panel .find.miss input { border-color: var(--st-errors); }
+.panel .find .fc { font: 12px var(--font-code); color: var(--muted); min-width: 44px; text-align: center; font-variant-numeric: tabular-nums; }
+.panel .find button { font: 600 12px var(--font-ui); color: var(--ink); background: var(--panel); border: 1px solid var(--stroke);
+  border-radius: 5px; padding: 1px 7px; cursor: pointer; }
+::highlight(sheaf-find) { background-color: color-mix(in srgb, var(--st-changed) 40%, transparent); }
+::highlight(sheaf-find-now) { background-color: var(--st-changed); color: var(--panel); }
+#bar button.toggle[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--panel); }
+.seg { display: inline-flex; border: 1px solid var(--stroke); border-radius: 7px; overflow: hidden; }
+#bar .seg button { border: 0; border-radius: 0; }
+#bar .seg button[aria-pressed="true"] { background: var(--accent); color: var(--panel); }
+#bar label.auto { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink); cursor: pointer; }
+#legend { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; padding: 4px 10px; border-radius: 8px;
+  background: color-mix(in srgb, var(--bar) 92%, transparent); border: 1px solid var(--stroke); }
+#legend span { display: inline-flex; align-items: center; gap: 5px; }
+#legend i { width: 14px; height: 10px; border-radius: 3px; border: 2px solid; display: inline-block; }
+#info { position: fixed; right: max(14px, env(safe-area-inset-right, 0px)); top: calc(64px + env(safe-area-inset-top, 0px)); width: min(380px, calc(100% - 28px)); max-height: calc(100% - 140px);
+  overflow: auto; background: var(--panel); border: 1px solid var(--stroke); border-radius: 12px; padding: 12px 16px;
+  z-index: 9; font-size: 13px; }
+#info h2 { margin: 0 0 6px; font-size: 15px; }
+#info dt { color: var(--muted); margin-top: 8px; font-size: 12px; }
+#info dd { margin: 2px 0 0; font: 12px/1.5 var(--font-code); white-space: pre-wrap; word-break: break-word; }
+#hint { position: fixed; left: max(14px, env(safe-area-inset-left, 0px)); bottom: calc(10px + env(safe-area-inset-bottom, 0px)); color: var(--muted); font-size: 12px; z-index: 9; pointer-events: none; }
+#bar .grow { flex: 1 1 auto; }
+#bar .rings { display: inline-flex; align-items: center; gap: 4px; padding: 0 4px; border-left: 1px solid var(--stroke); }
+#lvn { font-size: 12.5px; color: var(--muted); min-width: 4.2em; text-align: center; font-variant-numeric: tabular-nums; }
+#status { flex: 0 1 auto; min-width: 0; }
+@media (max-width: 760px) { #status, #hint, .wide { display: none; } #bar { gap: 6px; } #bar select { flex: 1 1 auto; min-width: 0; max-width: 200px; } #info { max-height: 45%; top: auto; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); } }
+</style>
+</head>
+<body>
+<form id="newfile" hidden autocomplete="off">
+  <label for="newname">New file</label>
+  <div class="row"><input id="newname" spellcheck="false" placeholder="folder/name.sheaf"><button type="submit">Create</button></div>
+  <p>A file in the working file's folder can use that folder's types. Enter creates it, Esc cancels.</p>
+</form>
+<script>
+function openNewFile() {
+  const f = document.getElementById("newfile"), b = document.getElementById("newbtn"), i = document.getElementById("newname");
+  if (!f.hidden) { f.hidden = true; return; }
+  const cur = (document.getElementById("file").value || "/").replace(/^\//, "");
+  const dir = cur.includes("/") ? cur.slice(0, cur.lastIndexOf("/") + 1) : "";
+  i.value = dir + "untitled.sheaf";
+  const r = b.getBoundingClientRect();
+  f.style.top = (r.bottom + 6) + "px";
+  f.style.left = Math.max(12, Math.min(r.left, innerWidth - Math.min(380, innerWidth - 24) - 12)) + "px";
+  f.hidden = false;
+  i.focus();
+  i.setSelectionRange(dir.length, i.value.length - 6);
+}
+document.addEventListener("DOMContentLoaded", () => {
+  const f = document.getElementById("newfile"), i = document.getElementById("newname");
+  f.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const v = i.value.trim();
+    if (!v) return;
+    f.hidden = true;
+    __ide.command("new:" + v);
+  });
+  f.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); f.hidden = true; } });
+  document.addEventListener("mousedown", (e) => {
+    if (!f.hidden && !f.contains(e.target) && e.target.id !== "newbtn") f.hidden = true;
+  });
+});
+</script>
+<div id="bar">
+  <h1>Sheaf</h1>
+  <label for="file" style="position:absolute;left:-9999px">Example</label>
+  <select id="file" onchange="__ide.command('open:' + this.value)"></select>
+  <button id="newbtn" onclick="openNewFile()" title="Make a new .sheaf file (N)">New</button>
+  <button onclick="__ide.command('fit')" title="Fit everything (F)">Fit</button>
+  <button onclick="__ide.command('zoom_out')" title="Zoom out (−)" aria-label="Zoom out">−</button>
+  <button onclick="__ide.command('zoom_in')" title="Zoom in (+)" aria-label="Zoom in">+</button>
+  <span class="seg" role="group" aria-label="View">
+    <button id="v-code" onclick="__ide.command('view:code')" aria-pressed="true" title="The working file in the middle">Code</button>
+    <button id="v-types" onclick="__ide.command('view:types')" aria-pressed="false" title="The type graph">Types</button>
+  </span>
+  <label class="auto" title="Check in the background as you type: errors and the graph stay current, but a file only turns green when you compile it (Compile or Ctrl+Enter)"><input type="checkbox" id="auto" checked onchange="__ide.command(this.checked ? 'auto:on' : 'auto:off')"> Check as I type</label>
+  <span class="rings" id="ringsgrp" role="group" aria-label="Rings around the centred type" hidden>
+    <button onclick="__ide.command('levels:-1')" title="Fewer rings" aria-label="Fewer rings">−</button>
+    <span id="lvn" title="How many rings of related types surround a centred type (keys 1–5)">1 ring</span>
+    <button onclick="__ide.command('levels:+1')" title="More rings" aria-label="More rings">+</button>
+  </span>
+  <button id="allbtn" onclick="__ide.command('unfocus')" title="Show every type again (Esc)" hidden>All types</button>
+  <button class="wide toggle" id="probes" aria-pressed="false" onclick="__ide.command('probes')" title="Show or hide probes: sample texts checked live against a type">Probes</button>
+  <button class="wide" onclick="__ide.command('probe')" title="Check a text against the selected type, or the type on the clicked line (P)">Add probe</button>
+  <button class="wide" onclick="__ide.command('svg')" title="Save the data-flow graph as SVG">Export SVG</button>
+  <button class="wide" onclick="__ide.command('theme')" title="Switch between light and dark">Theme</button>
+  <span class="search" role="search">
+    <label for="search" class="sr">Search the project</label>
+    <input id="search" type="search" placeholder="Search types, fields, text  ·  Ctrl+K" autocomplete="off" spellcheck="false" aria-controls="results">
+    <div id="results" role="listbox" aria-label="Search results" hidden></div>
+  </span>
+  <span class="grow"></span>
+  <span id="status"></span>
+</div>
+<div id="stage"></div>
+<aside id="info" hidden></aside>
+<div id="card" hidden role="tooltip"></div>
+<div id="hint"><div id="legend" aria-label="File colours">
+  <span><i style="border-color:var(--st-compiled)"></i>compiled</span>
+  <span><i style="border-color:var(--st-proved)"></i>claims proved</span>
+  <span><i style="border-color:var(--st-changed)"></i>changed</span>
+  <span><i style="border-color:var(--st-affected)"></i>affected</span>
+  <span><i style="border-color:var(--st-errors)"></i>errors</span>
+  <span><i style="border-color:var(--st-outside);border-style:dashed"></i>outside scope</span>
+  <span><i style="border-color:var(--st-core)"></i>locked</span>
+  <span>· hover a type to preview it, click to bring it to the centre · Alt+← back · double-click to edit</span>
+</div></div>
+<script>/*__FILES__*/</script>
+<script>/*__BUNDLE__*/</script>
+<script>window.__sheaf.main();</script>
+</body>
+</html>

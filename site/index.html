@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sheaf</title>
+<meta name="description" content="Sheaf: a human-readable typed language for geometric theories, with proofs, drawn graphs and a browser workspace.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="site.css">
+<style>
+/* Layout: one reading column; each idea is a row of prose beside the code that shows it. */
+.wrap { max-width: 1040px; margin: 0 auto; padding-block: 0 72px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+nav { display: flex; align-items: center; gap: 18px; padding-block: 18px; }
+nav .name { font: 600 18px var(--font-ui); letter-spacing: .01em; margin-right: auto; color: var(--ink); text-decoration: none; }
+nav a { font-size: 14px; color: var(--muted); text-decoration: none; }
+nav a:hover { color: var(--ink); }
+.hero { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 40px; align-items: center; padding-block: 48px 64px; }
+.hero h1 { font-size: clamp(30px, 4.4vw, 46px); line-height: 1.12; letter-spacing: -0.02em; margin: 0 0 18px; text-wrap: balance; font-weight: 600; }
+.hero p { margin: 0 0 14px; color: var(--muted); max-width: 54ch; font-size: 16.5px; }
+.cta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 26px; }
+.card { background: var(--panel); border: 1px solid var(--stroke); border-radius: 12px; overflow: hidden; min-width: 0; }
+.card header { display: flex; justify-content: space-between; gap: 12px; padding: 8px 14px; background: var(--head);
+  border-bottom: 1px solid var(--stroke); font: 600 12.5px var(--font-code); color: var(--muted); }
+.card header .state { color: var(--st-compiled); font-family: var(--font-ui); font-weight: 500; }
+.card pre { margin: 0; padding: 14px 16px; overflow-x: auto; font-size: 13px; line-height: 1.6; }
+.card.hero-card { border: 2px solid var(--st-compiled); box-shadow: 0 10px 30px rgba(20, 30, 45, .10); }
+section.idea { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 36px; align-items: start; padding-block: 36px; border-top: 1px solid var(--stroke); }
+.idea h2 { margin: 0 0 10px; font-size: 22px; letter-spacing: -0.01em; text-wrap: balance; font-weight: 600; }
+.idea p { margin: 0 0 12px; max-width: 58ch; }
+.idea .label { font: 600 11.5px var(--font-ui); text-transform: uppercase; letter-spacing: .09em; color: var(--accent); margin-bottom: 8px; }
+.legend { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 14px; font-size: 13px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 14px; height: 10px; border-radius: 3px; border: 2px solid; display: inline-block; }
+.how { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.how .step { background: var(--panel); border: 1px solid var(--stroke); border-radius: 12px; padding: 18px; }
+.how .n { font: 600 12px var(--font-code); color: var(--accent); }
+.how h3 { margin: 6px 0 8px; font-size: 16px; }
+.how p { margin: 0; color: var(--muted); font-size: 14px; }
+.cli pre { font-size: 12.5px; }
+footer { margin-top: 48px; padding-top: 20px; border-top: 1px solid var(--stroke); color: var(--muted); font-size: 13.5px;
+  display: flex; flex-wrap: wrap; gap: 8px 20px; justify-content: space-between; }
+@media (max-width: 820px) {
+  .hero, section.idea { grid-template-columns: minmax(0, 1fr); gap: 22px; }
+  .hero { padding-block: 20px 40px; }
+  .how { grid-template-columns: minmax(0, 1fr); }
+  nav a.wide { display: none; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav>
+    <a class="name" href="./">Sheaf</a>
+    <a class="wide" href="#ideas">Language</a>
+    <a href="workspace.html">Workspace</a>
+    <a href="playground.html">Playground</a>
+    <a id="gh" href="https://github.com/" hidden>GitHub</a>
+  </nav>
+
+  <header class="hero">
+    <div>
+      <h1>Types you can read, checked by geometric logic</h1>
+      <p>Sheaf is a typed language for geometric theories of sequents, written as plain text. A type is the shape of a piece of text; a file of types is a theory; the checker proves facts about every value it could ever see.</p>
+      <p>Many small typed texts, each checked on its own, glue into one whole, which is where the name comes from.</p>
+      <div class="cta">
+        <a class="btn primary" href="workspace.html">Open the workspace</a>
+        <a class="btn" href="playground.html">Rebuild Sheaf in your browser</a>
+      </div>
+    </div>
+    <div class="card hero-card">
+      <header><span>examples/book/book.sheaf</span><span class="state">compiled</span></header>
+      <pre class="sheaf">Customer_Code {Text}
+  1. {"C"}
+  2. {Digit 3}
+
+Customer {}
+  code {Customer_Code} unique
+  gap {" "}
+  name {Line_Text}
+  nl {Newline}
+
+Its_Customer {Customer} code = Order.customer</pre>
+    </div>
+  </header>
+
+  <main id="ideas">
+    <section class="idea">
+      <div>
+        <div class="label">Types are shapes of text</div>
+        <h2>The grammar is the type</h2>
+        <p>Every type says exactly which texts belong to it. <code>Customer_Code</code> is a <code>C</code> then three digits; a record lists its fields in the order they appear. Data arriving at runtime is read against these types, so a value either fits its type in one way or is reported with the place it went wrong.</p>
+        <p>The language is described in itself: <code>priv/language.sheaf</code> must match its own <code>File</code> type before anything else runs.</p>
+      </div>
+      <div class="card">
+        <header><span>examples/orders/orders.sheaf</span><span class="state">compiled</span></header>
+        <pre class="sheaf"># A stock-keeping unit: three capital letters, a dash, four digits.
+Sku {Text}
+  1. {Uppercase 3}
+  2. {"-"}
+  3. {Digit 4}
+
+# One order line, e.g. "ABC-0001 x3 @ 19.99".
+Line {}
+  sku {Sku}
+  times {" x"}
+  units {Integer} val = 1..1000
+  at {" @ "}
+  price {Decimal} places = 2 & val >= 0.00
+  end {Newline}
+  line_total {Decimal} val = units * price & places = 2</pre>
+      </div>
+    </section>
+
+    <section class="idea">
+      <div>
+        <div class="label">Relations are filters</div>
+        <h2>Dot paths reach the record around you</h2>
+        <p>A path that starts with a type name means the nearest enclosing record of that type. Inside an <code>Order</code>, <code>Order.customer</code> is that order's customer code; <code>Book.customers</code> is the customer list of the book holding it.</p>
+        <p>So “this order belongs to that customer” is a filter, and “there is exactly one” is a count. No foreign keys, no joins: the relation is a type.</p>
+      </div>
+      <div class="card">
+        <header><span>examples/book/book.sheaf</span><span class="state">compiled</span></header>
+        <pre class="sheaf">Its_Customer {Customer} code = Order.customer
+
+Order {}
+  number {Natural}
+  gap {" "}
+  customer {Customer_Code}
+  nl {Newline}
+  known {True} Book.customers.Its_Customer.qty = 1
+
+Book {}
+  customers {Customer 1..}
+  rule {"---"}
+  nl {Newline}
+  orders {Order 1..}</pre>
+      </div>
+    </section>
+
+    <section class="idea">
+      <div>
+        <div class="label">Proofs</div>
+        <h2>Claims hold for every value</h2>
+        <p>A <code>Fact</code> field is a claim the checker proves for all data, by one fixed method: interval reasoning over the ranges the types allow, and induction over recursive types, assuming the claim for the rest of the chain.</p>
+        <p>A file whose claims are all proved is outlined purple in the workspace.</p>
+      </div>
+      <div class="card" style="border-color: var(--st-proved)">
+        <header><span>examples/proofs/proofs.sheaf</span><span class="state" style="color: var(--st-proved)">claims proved</span></header>
+        <pre class="sheaf"># A chain of digits written "+3+4+5". Its total is never negative:
+# proved by induction, assuming the claim for the rest of the chain.
+Chain {}
+  plus {"+"}
+  x {Integer} val = 0..9
+  rest {Chain 0..1}
+  total {Integer} val = x + rest.total
+  links {Integer} val = rest.qty + rest.links
+  nonnegative {Fact} total >= 0</pre>
+      </div>
+    </section>
+
+    <section class="idea">
+      <div>
+        <div class="label">The workspace</div>
+        <h2>Code on a canvas, with its graph</h2>
+        <p>The working file sits in the middle of an infinite canvas; the files it reads fade in beside it when a line names one of their types. Hover a type for its declaration and the base type it reduces to; click to glide there. A second view draws the theory as a graph of types and relations, in rings around the one you pick.</p>
+        <p>Each file's outline says where it stands:</p>
+        <div class="legend">
+          <span><i style="border-color: var(--st-compiled)"></i>compiled</span>
+          <span><i style="border-color: var(--st-proved)"></i>claims proved</span>
+          <span><i style="border-color: var(--st-changed)"></i>changed</span>
+          <span><i style="border-color: #d4691a"></i>affected</span>
+          <span><i style="border-color: var(--bad)"></i>errors</span>
+          <span><i style="border-color: var(--st-core)"></i>locked</span>
+        </div>
+        <div class="cta"><a class="btn primary" href="workspace.html">Open the workspace</a></div>
+      </div>
+      <div class="how">
+        <div class="step"><div class="n">01</div><h3>Explore</h3><p>Files open read-only with every type a link. Hover to preview, click to bring it to the centre; Alt+← goes back.</p></div>
+        <div class="step"><div class="n">02</div><h3>Edit</h3><p>Double-click to edit at that spot. With “Check as I type” on, the file and everything that reads it recheck on each keystroke.</p></div>
+        <div class="step"><div class="n">03</div><h3>Probe</h3><p>Probes are sample texts checked live against a type, so you can see a value parse, or the exact place it stops fitting.</p></div>
+      </div>
+    </section>
+
+    <section class="idea">
+      <div>
+        <div class="label">Built in Gleam</div>
+        <h2>Rebuild the whole toolchain in your browser</h2>
+        <p>Sheaf's checker, evaluator and workspace are written in <a href="https://gleam.run">Gleam</a> and compiled to JavaScript. The playground loads the Gleam compiler itself, built to WebAssembly, then compiles Sheaf's sources and the standard library on your machine and runs the result.</p>
+        <p>Change a line of the implementation, press Compile, and the workspace beside it is the one you just built. Nothing is sent to a server.</p>
+        <div class="cta"><a class="btn primary" href="playground.html">Open the playground</a></div>
+      </div>
+      <div class="card cli">
+        <header><span>command line</span><span>Node ≥ 22, Gleam 1.19</span></header>
+        <pre>gleam build
+node bin/sheaf.mjs bootstrap        <span class="cm"># language.sheaf parses itself</span>
+node bin/sheaf.mjs check examples/shop
+node bin/sheaf.mjs run examples/orders/orders.sheaf \
+     Order examples/orders/order_1042.txt --trace
+node bin/sheaf.mjs graph examples/orders/orders.sheaf -o orders.svg
+gleam test
+./tools/build_ide.sh                <span class="cm"># dist/workspace.html</span></pre>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <span>Sheaf · a typed language for geometric theories</span>
+    <span>Written in Gleam · compiled in your browser by Gleam's WebAssembly build</span>
+  </footer>
+</div>
+<script type="module">
+import { highlight } from "./highlight.js";
+for (const pre of document.querySelectorAll("pre.sheaf")) pre.innerHTML = highlight(pre.textContent);
+// the repository link, when the site knows where it is hosted
+const m = location.hostname.match(/^([^.]+)\.github\.io$/);
+if (m) {
+  const repo = location.pathname.split("/").filter(Boolean)[0];
+  const a = document.getElementById("gh");
+  a.href = `https://github.com/${m[1]}/${repo || ""}`;
+  a.hidden = false;
+}
+</script>
+</body>
+</html>

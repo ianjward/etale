@@ -1,0 +1,44 @@
+/* Shared by the landing page and the playground: the workspace's own palette. */
+:root {
+  --bg: #e6ebf0; --bar: #f6f8fa; --ink: #18212c; --muted: #5d6b7a; --stroke: #cfd7df;
+  --panel: #fbfcfd; --head: #eef2f6; --accent: #2b59c3; --accent-ink: #fbfcfd;
+  --bad: #c03a33; --good: #2f7d4f; --warn: #9a7300;
+  --c-type: #2b59c3; --c-str: #2f7d4f; --c-num: #b4521b; --c-cm: #6f7d8b; --c-kw: #7a4fc2;
+  --st-core: #2b6cc4; --st-compiled: #2f8a4f; --st-proved: #7a4fc2; --st-changed: #b98a00;
+  --font-ui: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-code: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11161c; --bar: #161d25; --ink: #e3e9ef; --muted: #93a1b0; --stroke: #2c3743;
+    --panel: #19212a; --head: #1e2731; --accent: #7aa5f0; --accent-ink: #11161c;
+    --bad: #f07a72; --good: #6fcf97; --warn: #e6c440;
+    --c-type: #7aa5f0; --c-str: #6fcf97; --c-num: #f0975a; --c-cm: #7d8b99; --c-kw: #b28cf0;
+    --st-core: #6fa3f0; --st-compiled: #5cc98a; --st-proved: #b28cf0; --st-changed: #e6c440;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11161c; --bar: #161d25; --ink: #e3e9ef; --muted: #93a1b0; --stroke: #2c3743;
+  --panel: #19212a; --head: #1e2731; --accent: #7aa5f0; --accent-ink: #11161c;
+  --bad: #f07a72; --good: #6fcf97; --warn: #e6c440;
+  --c-type: #7aa5f0; --c-str: #6fcf97; --c-num: #f0975a; --c-cm: #7d8b99; --c-kw: #b28cf0;
+  --st-core: #6fa3f0; --st-compiled: #5cc98a; --st-proved: #b28cf0; --st-changed: #e6c440;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.55 var(--font-ui); }
+a { color: var(--accent); }
+code, pre, kbd { font-family: var(--font-code); }
+.cm { color: var(--c-cm); font-style: italic; }
+.str { color: var(--c-str); }
+.ty { color: var(--c-type); }
+.num { color: var(--c-num); }
+.kw { color: var(--c-kw); }
+.btn { display: inline-flex; align-items: center; gap: 8px; font: 600 14px var(--font-ui); text-decoration: none; cursor: pointer;
+  padding: 9px 16px; border-radius: 8px; border: 1px solid var(--stroke); background: var(--panel); color: var(--ink); }
+.btn:hover { border-color: var(--accent); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn:focus-visible, button:focus-visible, a:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn:disabled { opacity: .6; cursor: progress; }

@@ -1,0 +1,12 @@
+# A temperature in whole degrees, like "-12" or "31".
+Temperature {Integer} val = -90..60
+  1. {"-" 0..1}                          # a "-" position makes the number negative
+  2. {Digit 1..2}
+
+Reading {}
+  where {Lowercase 1..}
+  gap {" "}
+  degrees {Temperature}
+  freezing {degrees -> Fact}
+    | {True} degrees <= 0
+    | {False} degrees > 0

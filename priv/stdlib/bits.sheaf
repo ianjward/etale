@@ -1,0 +1,38 @@
+# Bits and bytes.
+
+Binary_Digit {"0" | "1"}
+
+# A bit as a number, 0 or 1.
+Bit {Integer} val = 0..1
+  1. {Binary_Digit}
+
+# A byte written as eight bits, most significant first, e.g. "01000001" (65).
+Byte {}
+  b7 {Bit}
+  b6 {Bit}
+  b5 {Bit}
+  b4 {Bit}
+  b3 {Bit}
+  b2 {Bit}
+  b1 {Bit}
+  b0 {Bit}
+  w7 {Integer} val = b7 * 128
+  w6 {Integer} val = b6 * 64
+  w5 {Integer} val = b5 * 32
+  w4 {Integer} val = b4 * 16
+  w3 {Integer} val = b3 * 8
+  w2 {Integer} val = b2 * 4
+  w1 {Integer} val = b1 * 2
+  value {Integer} val = w7 + w6 + w5 + w4 + w3 + w2 + w1 + b0
+  at_least_zero {Fact} value >= 0
+  fits_in_a_byte {Fact} value <= 255
+
+# Exclusive or of two bits, as a checked table.
+Xor_Bit {}
+  a {Binary_Digit}
+  b {Binary_Digit}
+  out {a & b -> Binary_Digit}
+    | {"0"} a = "0" & b = "0"
+    | {"1"} a = "0" & b = "1"
+    | {"1"} a = "1" & b = "0"
+    | {"0"} a = "1" & b = "1"

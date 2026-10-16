@@ -1,0 +1,5 @@
+# The front file of catalog/: Item is seen outside this folder.
+Item {}
+  code {Code}
+  gap {" "}
+  price {Money}

@@ -1,0 +1,10 @@
+# Sees Money (shop/), Item (catalog/'s front file) and Date (the standard library).
+Order_Line {}
+  item {Item}
+  nl {Newline}
+
+Order {}
+  on {Date}
+  nl {Newline}
+  items {Order_Line 1..}
+  total {Decimal} val = items.item.price.sum & places = 2

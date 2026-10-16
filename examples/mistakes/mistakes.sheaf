@@ -1,0 +1,61 @@
+# Every declaration below breaks one rule of the spec; `check` explains each.
+
+# 1. A type used before it is declared.
+Early {Later}
+Later {"x"}
+
+# 2. A reserved word as a field name.
+Bad_Name {}
+  qty {Integer}
+
+# 3. A field that names a field below it.
+Wrong_Order {}
+  a {Integer} val = b + 1
+  b {Integer}
+
+# 4. A list used outside a fold.
+Basket {}
+  items {Digit 0..}
+  first {Integer} val = items
+
+# 5. A mapping that misses a combination and overlaps.
+Grade {}
+  score {Integer} val = 0..100
+  pass {score -> Fact}
+    | {True} score >= 50
+    | {False} score < 40
+    | {False} score = 45..49
+    | {True} score = 49..60
+
+# 6. A claim the ranges cannot settle.
+Pair {}
+  a {Integer} val = 0..10
+  b {Integer} val = 5..20
+  diff {Integer} val = b - a
+  positive {Fact} diff > 0
+
+# 7. A product of two reads through a recursive field.
+Tower {}
+  h {Integer} val = 1..9
+  rest {Tower 0..1}
+  blowup {Integer} val = rest.h * rest.h
+
+# 8. Rounding would be needed.
+Price {}
+  amount {Decimal} places = 2
+  tax {Decimal} val = amount * 0.075 & places = 2
+
+# 9. A broken cost promise.
+Pairs {}
+  xs {Digit 0..}
+  n {Integer} val = xs.qty & cost <= 1
+
+# 10. Arithmetic on text.
+Label {}
+  code {"5"}
+  twice {Integer} val = code * 2
+
+# 11. Reaching a record that is not around.
+Note {}
+  text {"n"}
+  filled {True} Basket.items.qty >= 1
