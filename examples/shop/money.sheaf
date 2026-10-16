@@ -1,0 +1,2 @@
+# Money, seen by every file in shop/ and below.
+Money {Decimal} places = 2 & val >= 0.00

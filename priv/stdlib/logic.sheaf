@@ -1,0 +1,33 @@
+# Logic gates over Fact, each a checked truth table.
+# (And_Gate is in language.sheaf itself, Step 8.)
+
+Not_Gate {}
+  x {Fact}
+  out {x -> Fact}
+    | {False} x = True
+    | {True} x = False
+
+Or_Gate {}
+  left {Fact}
+  right {Fact}
+  out {left & right -> Fact}
+    | {True} left = True
+    | {True} left = False & right = True
+    | {False} left = False & right = False
+
+Xor_Gate {}
+  left {Fact}
+  right {Fact}
+  out {left & right -> Fact}
+    | {False} left = True & right = True
+    | {True} left = True & right = False
+    | {True} left = False & right = True
+    | {False} left = False & right = False
+
+Implies_Gate {}
+  left {Fact}
+  right {Fact}
+  out {left & right -> Fact}
+    | {True} left = False
+    | {True} left = True & right = True
+    | {False} left = True & right = False

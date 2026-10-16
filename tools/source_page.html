@@ -1,0 +1,62 @@
+<title>Sheaf Source</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;600&display=swap">
+<style>
+/* Layout: a file index on the left (a scrolling strip on phones), each file as a numbered listing. */
+:root {
+  --bg: #f4f6f8; --paper: #fbfcfd; --ink: #18212c; --muted: #5d6b7a; --rule: #d5dce3;
+  --accent: #2b59c3; --am: #fff3cf; --am-edge: #d9a400;
+  --type: #2b59c3; --str: #2f7d4f; --num: #9a4f00; --op: #8a3f9e; --kw: #b0362e; --com: #6c7887;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #11161c; --paper: #161d25; --ink: #e3e9ef; --muted: #93a1b0; --rule: #2c3743;
+  --accent: #7aa5f0; --am: #3a3115; --am-edge: #d9a400;
+  --type: #7aa5f0; --str: #6fcf97; --num: #e3a25b; --op: #c78bd8; --kw: #f07a72; --com: #8391a0; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #11161c; --paper: #161d25; --ink: #e3e9ef; --muted: #93a1b0; --rule: #2c3743;
+  --accent: #7aa5f0; --am: #3a3115; --am-edge: #d9a400;
+  --type: #7aa5f0; --str: #6fcf97; --num: #e3a25b; --op: #c78bd8; --kw: #f07a72; --com: #8391a0; color-scheme: dark; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.5 var(--sans); }
+.wrap { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 32px; max-width: 1180px; margin: 0 auto;
+  padding-block: 32px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+nav { position: sticky; top: calc(16px + env(safe-area-inset-top, 0px)); align-self: start; display: flex; flex-direction: column; gap: 2px; }
+nav h1 { font-size: 18px; margin: 0 0 4px; text-wrap: balance; }
+nav .sub { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
+nav .group { text-transform: uppercase; letter-spacing: .06em; font-size: 11px; color: var(--muted); margin: 14px 0 4px; }
+nav a { display: flex; justify-content: space-between; gap: 8px; padding: 4px 8px; border-radius: 6px; color: var(--ink);
+  text-decoration: none; font: 13px/1.4 var(--mono); }
+nav a span { color: var(--muted); }
+nav a:hover { background: var(--paper); color: var(--accent); }
+main { display: flex; flex-direction: column; gap: 40px; min-width: 0; }
+section header h2 { font: 600 17px/1.3 var(--mono); margin: 0 0 4px; }
+section header p { margin: 0; color: var(--muted); font-size: 14px; max-width: 65ch; }
+.legend { display: flex; align-items: center; gap: 8px; margin-top: 6px !important; }
+.sw { width: 14px; height: 14px; background: var(--am); border-left: 3px solid var(--am-edge); flex: none; }
+.code { margin-top: 12px; background: var(--paper); border: 1px solid var(--rule); border-radius: 8px; overflow-x: auto; }
+table { border-collapse: collapse; font: 13px/1.6 var(--mono); width: 100%; }
+td.n { width: 1%; padding: 0 12px 0 14px; text-align: right; color: var(--muted); user-select: none; vertical-align: top; }
+td.c { white-space: pre; padding: 0 16px 0 4px; }
+tr.am td { background: var(--am); }
+tr.am td.n { box-shadow: inset 3px 0 0 var(--am-edge); }
+tr:target td { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.type { color: var(--type); } .str { color: var(--str); } .num { color: var(--num); } .op { color: var(--op); }
+.kw { color: var(--kw); } .com { color: var(--com); font-style: italic; }
+@media (max-width: 760px) {
+  .wrap { grid-template-columns: minmax(0, 1fr); gap: 20px; padding-block: 20px; }
+  nav { position: static; flex-direction: row; flex-wrap: wrap; gap: 4px; }
+  nav h1, nav .sub { flex-basis: 100%; }
+  nav .group { flex-basis: 100%; margin: 6px 0 0; }
+  nav a { background: var(--paper); border: 1px solid var(--rule); }
+}
+</style>
+<div class="wrap">
+<nav>
+  <h1>Sheaf Source</h1>
+  <p class="sub">The files sheaf v0.4 reads, unedited. Line links: add <code>#file-L12</code>.</p>
+  /*NAV*/
+</nav>
+<main>/*BODY*/</main>
+</div>

@@ -1,0 +1,40 @@
+# Orders: stored and computed fields, folds, a mapping, a rule and a filter.
+# Check:  node bin/sheaf.mjs check examples/orders/orders.sheaf
+# Run:    node bin/sheaf.mjs run examples/orders/orders.sheaf Order examples/orders/order_1042.txt
+
+# A stock-keeping unit: three capital letters, a dash, four digits.
+Sku {Text}
+  1. {Uppercase 3}
+  2. {"-"}
+  3. {Digit 4}
+
+# One order line, e.g. "ABC-0001 x3 @ 19.99".
+Line {}
+  sku {Sku}
+  times {" x"}
+  units {Integer} val = 1..1000
+  at {" @ "}
+  price {Decimal} places = 2 & val >= 0.00
+  end {Newline}
+  line_total {Decimal} val = units * price & places = 2
+  big {line_total -> Fact}
+    | {True} line_total >= 500.00
+    | {False} line_total < 500.00
+
+# A line worth 500.00 or more. Used below as a filter on a list.
+Big_Line {Line} line_total >= 500.00
+
+# An order: a header line, then one or more lines.
+Order {}
+  head {"order "}
+  number {Natural}
+  nl {Newline}
+  lines {Line 1..}
+  total {Decimal} val = lines.line_total.sum & cost <= lines.qty
+  big_lines {Integer} val = lines.Big_Line.qty
+  big_total {Decimal} val = lines.Big_Line.line_total.sum & places = 2
+  line_count {Integer} val = lines.qty
+  not_all_big {True} big_lines <= line_count
+
+# A refinement of a record is a filter, here on whole orders.
+Big_Order {Order} total >= 1000.00

@@ -1,0 +1,32 @@
+# Common text shapes.
+
+# A lowercase identifier: a letter, then letters, digits or '_'.
+Identifier {Text}
+  1. {Lowercase}
+  2. {Lower_Name_Character 0..}
+
+# A word of letters.
+Letter {Uppercase | Lowercase}
+Word {Letter 1..}
+
+# A domain name label and an email address, e.g. "ana@mail.example".
+Host_Character {Lowercase | Digit | "-"}
+Host_Label {Host_Character 1..63}
+Dot_Label {Text}
+  1. {"."}
+  2. {Host_Label}
+
+Email_Address {Text}
+  1. {Identifier}
+  2. {"@"}
+  3. {Host_Label}
+  4. {Dot_Label 1..}
+
+# One line of text and a block of lines.
+Text_Line {}
+  body {Line_Text}
+  end {Newline}
+
+Paragraph {}
+  lines {Text_Line 1..}
+  line_count {Integer} val = lines.qty
