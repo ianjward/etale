@@ -1,6 +1,6 @@
-# Sheaf
+# Etale
 
-**Sheaf** is an extremely rough outline for an experimental typed language that is hopefully a human readable version of positive (geometric) logic. It will feature proofs and drawn graphs (eventually). This repository contains its checker, evaluator, and infinite-canvas IDE workspace. Its core grammar is in `priv/language.sheaf`.
+**Etale** is an extremely rough outline for an experimental typed language that is hopefully a human readable version of positive (geometric) logic. It will feature proofs and drawn graphs (eventually). This repository contains its checker, evaluator, and infinite-canvas IDE workspace. Its core grammar is in `priv/language.sheaf`.
 
 ## Quick Start
 
