@@ -1,6 +1,8 @@
 # Etale
 
-**Etale** is an extremely rough outline for an experimental typed language that is hopefully a human readable version of positive (geometric) logic. It will feature proofs and drawn graphs (eventually). This repository contains its checker, evaluator, and infinite-canvas IDE workspace. Its core grammar is in `priv/language.sheaf`.
+**Etale** is an extremely rough outline for an experimental typed language that aims to be a human-readable version of positive (geometric) logic, with proofs and drawn graphs (eventually). This repository contains its checker, evaluator and infinite-canvas IDE workspace. Its core grammar is in priv/language.sheaf.
+
+The bigger picture is a fair, distributed network of verified OS level proof machines sharing knowledge repositories. No machine is in charge. Each machine’s history is a proof of its state, and every message carries a proof its receiver checks, so trust comes from checking, not from the sender. The repositories hold versioned theories and proved claims that anyone can publish, extend and check on equal terms.
 
 ## Quick Start
 - An overview of the language: https://ianjward.github.io/etale
