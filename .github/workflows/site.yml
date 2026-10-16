@@ -1,0 +1,59 @@
+# Tests Sheaf, builds the workspace and the demo site, and publishes the site
+# to GitHub Pages. The playground ships the Gleam compiler's own WebAssembly
+# build, pinned to the same version that builds the site.
+name: Test and publish the site
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+env:
+  GLEAM_VERSION: "1.19.2"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Gleam and its WebAssembly build
+        run: |
+          base=https://github.com/gleam-lang/gleam/releases/download/v$GLEAM_VERSION
+          mkdir -p "$HOME/.gleam/bin" wasm
+          curl -fsSL "$base/gleam-v$GLEAM_VERSION-x86_64-unknown-linux-musl.tar.gz" | tar xz -C "$HOME/.gleam/bin"
+          curl -fsSL "$base/gleam-v$GLEAM_VERSION-browser.tar.gz" | tar xz -C wasm
+          echo "$HOME/.gleam/bin" >> "$GITHUB_PATH"
+      - run: gleam --version
+      - run: gleam test
+      - run: node bin/sheaf.mjs bootstrap
+      - run: ./tools/build_ide.sh
+      - run: node tools/build_site.mjs wasm
+      - name: The playground's compiler builds Sheaf too
+        run: node tools/check_wasm.mjs wasm
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
