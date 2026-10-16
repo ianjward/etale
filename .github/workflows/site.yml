@@ -39,7 +39,7 @@ jobs:
       - run: gleam --version
       - run: gleam test
       - run: node bin/sheaf.mjs bootstrap
-      - run: ./tools/build_ide.sh
+      - run: sh tools/build_ide.sh
       - run: node tools/build_site.mjs wasm
       - name: The playground's compiler builds Sheaf too
         run: node tools/check_wasm.mjs wasm
