@@ -349,13 +349,37 @@ fn check_settings(
   numeric: Bool,
 ) -> Nil {
   list.each(model.settings(b), fn(s) {
-    let #(k, _) = s
+    let #(k, v) = s
     case { k == "places" || k == "mod" } && !numeric {
       True ->
         err(c, d, line, "'" <> k <> "=' applies only to numeric values", d.name)
       False -> Nil
     }
+    // 'mod' divides, so its divisor must be known to be positive: a written
+    // number above 0 (docs/geometric.md, partial operations need a guard).
+    case k, v {
+      "mod", VNum(n) ->
+        case decimal.compare(n.value, decimal.zero()) == order.Gt {
+          True -> Nil
+          False -> err(c, d, line, mod_message(), d.name)
+        }
+      "mod", _ -> err(c, d, line, mod_message(), d.name)
+      _, _ -> Nil
+    }
   })
+}
+
+fn mod_message() -> String {
+  "'mod =' needs a positive number written out, e.g. mod = 7: "
+  <> "a zero, negative or computed divisor has no guard"
+}
+
+/// The written divisor of a field's 'mod', when it has one.
+fn mod_of(f: Field) -> Option(Decimal) {
+  case model.setting(f.preds, "mod") {
+    Some(VNum(n)) -> Some(n.value)
+    _ -> None
+  }
 }
 
 fn digit_capacity(d: Decl) -> Option(Int) {
@@ -1307,7 +1331,17 @@ fn field_bounds(c: Ctx, fl: Field) -> #(B, B) {
       }
     })
   let #(tl, th) = type_bounds(c, model.base(fl), [])
-  #(bmax(lo, tl), bmin(hi, th))
+  let #(lo, hi) = #(bmax(lo, tl), bmin(hi, th))
+  case mod_of(fl) {
+    Some(m) -> {
+      let top = case integer_type(c, model.base(fl)) && decimal.is_integral(m) {
+        True -> decimal.sub(m, decimal.from_int(1))
+        False -> m
+      }
+      #(bmax(lo, d0()), bmin(hi, Fin(top)))
+    }
+    None -> #(lo, hi)
+  }
 }
 
 fn type_bounds(c: Ctx, it: Item, seen: List(String)) -> #(B, B) {
@@ -1973,9 +2007,11 @@ fn expand(d: Decl, v: Value, depth: Int) -> Option(Poly) {
       case model.field(d, head), parts {
         None, _ -> None
         Some(fl), [_] ->
-          case fl.role, model.definition(fl) {
-            model.Computed, Some(def) -> expand(d, def, depth + 1)
-            _, _ -> Some(dict.from_list([#([head], decimal.from_int(1))]))
+          // a field that wraps ('mod =') is not its definition: it stays an
+          // atom, bounded by field_bounds to [0, m)
+          case fl.role, model.definition(fl), model.setting(fl.preds, "mod") {
+            model.Computed, Some(def), None -> expand(d, def, depth + 1)
+            _, _, _ -> Some(dict.from_list([#([head], decimal.from_int(1))]))
           }
         Some(_), _ ->
           Some(

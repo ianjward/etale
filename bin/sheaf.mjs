@@ -28,7 +28,7 @@ if (isMainThread) {
 } else {
   globalThis.SHEAF_HOME = workerData.home;
   const { parentPort } = await import("node:worker_threads");
-  const { main } = await import(resolve(workerData.home, "build/dev/javascript/sheaf/sheaf.mjs"));
+  const { main } = await import(resolve(workerData.home, "build/dev/javascript/etale/sheaf.mjs"));
   main();
   parentPort.postMessage({ exit: process.exitCode ?? 0 });
 }
