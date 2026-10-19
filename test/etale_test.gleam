@@ -15,20 +15,21 @@ import sheaf/graph
 import sheaf/model
 import sheaf/printer
 import sheaf/program.{type Program}
+import sheaf/sequents
 
-@external(javascript, "../sheaf/sheaf/ffi.mjs", "read_file")
+@external(javascript, "../etale/sheaf/ffi.mjs", "read_file")
 fn read_file(p: String) -> Result(String, Nil)
 
-@external(javascript, "../sheaf/sheaf/ffi.mjs", "cwd")
+@external(javascript, "../etale/sheaf/ffi.mjs", "cwd")
 fn cwd() -> String
 
-@external(javascript, "../sheaf/sheaf/ffi.mjs", "list_dir")
+@external(javascript, "../etale/sheaf/ffi.mjs", "list_dir")
 fn list_dir(dir: String) -> List(#(String, Bool))
 
-@external(javascript, "../sheaf/sheaf/ffi.mjs", "exit")
+@external(javascript, "../etale/sheaf/ffi.mjs", "exit")
 fn exit(code: Int) -> Nil
 
-@external(javascript, "../sheaf/sheaf/ffi.mjs", "now_ms")
+@external(javascript, "../etale/sheaf/ffi.mjs", "now_ms")
 fn now_ms() -> Float
 
 type Outcome {
@@ -229,6 +230,67 @@ fn mistakes() -> Outcome {
   |> all
 }
 
+fn geometric_mistakes() -> Outcome {
+  let #(_, rep) = load("examples/mistakes/geometric.sheaf")
+  let text = msgs(rep)
+  let wrapped =
+    "Clock {}\n  hour {Integer} val = 0..23\n"
+    <> "  later {Integer} val = hour + 5 & mod = 24\n  in_day {Fact} later <= 23\n"
+  let assert Ok(#(_, ok)) = source(wrapped)
+  let assert Ok(#(table, _)) =
+    source(
+      "Row {}\n  p {Decimal} unique\n  nl {Newline}\nTable {}\n  rows {Row 1..}\n",
+    )
+  all([
+    expect(
+      list.length(string.split(text, "needs a positive number written out"))
+        == 3,
+      "mod needs a positive written divisor",
+    ),
+    expect(
+      string.contains(text, "cannot prove later >= hour"),
+      "a wrapped field is not its definition",
+    ),
+    expect(
+      list.key_find(ok.claims, "Clock.in_day") |> is_ok,
+      "a wrapped field lies in [0, m)",
+    ),
+    expect(
+      !program.check(table, "Table", "1.50\n1.5\n").ok
+        && program.check(table, "Table", "1.50\n1.6\n").ok,
+      "unique compares numbers by value",
+    ),
+  ])
+}
+
+fn sequents_print() -> Outcome {
+  let theory = fn(path) {
+    let #(p, _) = load(path)
+    sequents.file(p, option.unwrap(p.main_file, path))
+  }
+  let orders = theory("examples/orders/orders.sheaf")
+  let book = theory("examples/book/book.sheaf")
+  let has = fn(text, needle) { expect(string.contains(text, needle), needle) }
+  all([
+    has(orders, "Big_Line(t) ⊣⊢ Line(t) ∧ t.line_total ≥ 500.00"),
+    has(orders, "Order(t) ⊢ t.total = t.lines.line_total.sum"),
+    has(orders, "Line(t) ∧ t.line_total ≥ 500.00 ⊢ t.big = TRUE"),
+    has(orders, "∧ Line{1..}(lines)"),
+    has(
+      book,
+      "Its_Customer(t) ⊣⊢ Customer(t) ∧ t.code = around(t, Order).customer",
+    ),
+    has(book, "around(t, Book).customers.Its_Customer.qty = 1"),
+    has(book, "t.code = u.code ⊢ t = u"),
+    expect(
+      !string.contains(orders <> book, "¬")
+        && !string.contains(orders <> book, "→")
+        && !string.contains(orders <> book, "∀"),
+      "no ¬, → or ∀",
+    ),
+  ])
+}
+
 fn mapping_outputs_and_inputs() -> Outcome {
   let assert Ok(#(_, r1)) =
     source(
@@ -282,9 +344,10 @@ fn is_ok(r: Result(a, b)) -> Bool {
 fn libraries_clean() -> Outcome {
   list.map(
     [
-      "priv/stdlib/logic.sheaf", "priv/stdlib/bits.sheaf", "priv/stdlib/dates.sheaf",
-      "priv/stdlib/text.sheaf", "examples/orders/orders.sheaf",
-      "examples/proofs/proofs.sheaf", "examples/meeting/meeting.sheaf",
+      "priv/stdlib/logic.sheaf", "priv/stdlib/bits.sheaf",
+      "priv/stdlib/dates.sheaf", "priv/stdlib/text.sheaf",
+      "examples/orders/orders.sheaf", "examples/proofs/proofs.sheaf",
+      "examples/meeting/meeting.sheaf",
     ],
     fn(f) {
       let #(_, rep) = load(f)
@@ -869,6 +932,8 @@ pub fn main() {
     #("And_Gate short circuit", and_gate_short_circuit),
     #("Bounded_Range rule", bounded_range_rule),
     #("mistakes file", mistakes),
+    #("geometric mistakes", geometric_mistakes),
+    #("sequents", sequents_print),
     #("mapping outputs and inputs", mapping_outputs_and_inputs),
     #("claims and costs", claims_and_costs),
     #("libraries check clean", libraries_clean),

@@ -490,19 +490,46 @@ fn field_value(ev: Ev, r: Rec, f: Field) -> Val {
       note(r, Trace(f.name, "constant", "TRUE", [], ""))
       VText("TRUE")
     }
-    model.Claim -> {
-      note(
-        r,
-        Trace(
-          f.name,
-          "claim",
-          "TRUE",
-          deps(f.preds),
-          "proved for every value: " <> model.block_text(f.preds),
-        ),
-      )
-      VText("TRUE")
-    }
+    model.Claim ->
+      // A claim was proved for every value, so it narrows nothing. It is
+      // still evaluated here: if it ever fails, the proof was wrong, and the
+      // text is refused rather than shown with a false TRUE.
+      case eval_block(ev, Some(r), f.preds, VInvalid) {
+        Later -> VLater
+        No -> {
+          fail(
+            r,
+            f.name
+              <> ": "
+              <> model.block_text(f.preds)
+              <> " was proved but is false here (a checker bug; please report it)",
+          )
+          note(
+            r,
+            Trace(
+              f.name,
+              "claim",
+              "INVALID",
+              deps(f.preds),
+              "proved, but false here: " <> model.block_text(f.preds),
+            ),
+          )
+          VInvalid
+        }
+        _ -> {
+          note(
+            r,
+            Trace(
+              f.name,
+              "claim",
+              "TRUE",
+              deps(f.preds),
+              "proved for every value: " <> model.block_text(f.preds),
+            ),
+          )
+          VText("TRUE")
+        }
+      }
     model.Rule -> {
       let ds = deps(f.preds)
       case eval_block(ev, Some(r), f.preds, VInvalid) {
@@ -1255,10 +1282,16 @@ fn unique_ok(ev: Ev, d: Decl, kids: List(Node), text: String) -> Bool {
   }
 }
 
+/// Rows are equal when their values are equal, as with '=': numbers by
+/// value (1.50 = 1.5), everything else by its text.
 fn unique_key(ev: Ev, r: Rec, f: Field) -> String {
-  case model.is_stored(f) {
-    True -> stored_text(r, f.name)
-    False -> show(get(ev, r, f.name))
+  case get(ev, r, f.name) {
+    VNumber(x) -> decimal.to_short(x)
+    v ->
+      case model.is_stored(f) {
+        True -> stored_text(r, f.name)
+        False -> show(v)
+      }
   }
 }
 

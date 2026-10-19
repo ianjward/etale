@@ -18,6 +18,7 @@ node bin/sheaf.mjs bundle examples/shop -o shop.txt   # Bundle project into one 
 node bin/sheaf.mjs run examples/orders/orders.sheaf Order examples/orders/order_1042.txt --trace
 node bin/sheaf.mjs run priv/stdlib/dates.sheaf Date --text 2024-02-29
 node bin/sheaf.mjs graph examples/orders/orders.sheaf -o orders.svg
+node bin/sheaf.mjs sequents examples/orders/orders.sheaf  # Its theory as geometric sequents (docs/geometric.md)
 node bin/sheaf.mjs fmt examples/orders/orders.sheaf --check   # Validate spacing
 node bin/sheaf.mjs print examples/orders/orders.sheaf Line          # Print type source
 node bin/sheaf.mjs print examples/orders/orders.sheaf Order examples/orders/order_1042.txt   # Print values
