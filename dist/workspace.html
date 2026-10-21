@@ -273,7 +273,7 @@ document.addEventListener("DOMContentLoaded", () => {
   <span><i style="border-color:var(--st-core)"></i>locked</span>
   <span>· hover a type to preview it, click to bring it to the centre · Alt+← back · double-click to edit</span>
 </div></div>
-<script>window.SHEAF_FILES = {"/priv/language.sheaf":"# ==========================================================================\n# language.sheaf - The Formal Self-Bootstrapping Core Logic Specification (v3)\n#\n# Sheaf is named for sheaves, where geometric logic lives: many small typed\n# texts, each checked on its own, that glue together into one whole.\n# ==========================================================================\n#\n# This file defines the complete syntax of the language in the language\n# itself. The whole file, comments included, is a File (end of Step 7).\n# Each rule is explained directly above the declaration that defines it.\n#\n# How to read the declarations:\n# - There is no separate lexer. Every separator is a literal in some\n#   declaration, so the declarations are also the whitespace rules.\n# - A text inhabits a type when some way of matching it succeeds.\n# - A source file must match File in exactly one way. An ambiguous file\n#   is rejected like an unparseable one.\n# ==========================================================================\n\n\n# ---------- Step 1: Characters ----------\n\n# A union line, 'Name {A | B | C}', lists the alternatives of a type.\n# A quoted item is a literal: exactly that text, never an operator.\nDigit {\"0\" | \"1\" | \"2\" | \"3\" | \"4\" | \"5\" | \"6\" | \"7\" | \"8\" | \"9\"}\n\nLowercase_A_M {\"a\" | \"b\" | \"c\" | \"d\" | \"e\" | \"f\" | \"g\" | \"h\" | \"i\" | \"j\" | \"k\" | \"l\" | \"m\"}\nLowercase_N_Z {\"n\" | \"o\" | \"p\" | \"q\" | \"r\" | \"s\" | \"t\" | \"u\" | \"v\" | \"w\" | \"x\" | \"y\" | \"z\"}\n\n# An unquoted item names a type. A type name resolves only to a type\n# declared strictly above it, so no type can refer to itself, directly\n# or through others. The one exception is a recursive field (Step 3).\nLowercase {Lowercase_A_M | Lowercase_N_Z}\n\nUppercase_A_M {\"A\" | \"B\" | \"C\" | \"D\" | \"E\" | \"F\" | \"G\" | \"H\" | \"I\" | \"J\" | \"K\" | \"L\" | \"M\"}\nUppercase_N_Z {\"N\" | \"O\" | \"P\" | \"Q\" | \"R\" | \"S\" | \"T\" | \"U\" | \"V\" | \"W\" | \"X\" | \"Y\" | \"Z\"}\nUppercase {Uppercase_A_M | Uppercase_N_Z}\n\n# A refinement line, 'Name {Item}', has a single-item base.\nSpace {\" \"}\nUnderscore {\"_\"}\n\n# Inside a literal, a backslash starts an escape: \\n is a newline,\n# \\\" a quote, \\\\ a backslash. The full escape grammar is in Step 3.\nNewline {\"\\n\"}\nQuote {\"\\\"\"}\nBackslash {\"\\\\\"}\n\nOperator_Symbol {\"{\" | \"}\" | \"|\" | \"&\" | \"=\" | \"<\" | \">\" | \".\" | \"#\" | \"*\" | \"+\" | \"-\" | \"/\"}\nOther_Symbol_A {\",\" | \":\" | \";\" | \"!\" | \"?\" | \"'\" | \"(\" | \")\"}\nOther_Symbol_B {\"@\" | \"%\" | \"[\" | \"]\" | \"^\" | \"~\" | \"`\" | \"$\"}\nOther_Symbol {Other_Symbol_A | Other_Symbol_B}\nReserved {Operator_Symbol | Quote | Backslash}\n\n# Positive logic: a type that excludes something is a smaller union,\n# never a negation. Line_Character is every character except Newline.\nLine_Character {Space | Underscore | Reserved | Other_Symbol | Uppercase | Lowercase | Digit}\nCharacter {Line_Character | Newline}\n\n\n# ---------- Step 2: Truth Values ----------\n\n# TRUE and FALSE are distinct atoms, not encodings of anything else.\n# FALSE is an ordinary value. It is not the same as INVALID (Step 3).\nTrue {\"TRUE\"}\nFalse {\"FALSE\"}\nFact {True | False}\n\n\n# ---------- Step 3: Sequences, Literals and Names ----------\n\n# Lists. A count after a single item in braces makes a list: '{X 2}' is\n# two values of X, '{X 1..}' one or more, '{X 0..1}' none or one. With\n# no count the count is 1, so '{X}' is exactly one X. A list of X is a\n# function from positions 1..n to X, where n is its number of items.\n# A count is a natural number or a range of them, and goes after a\n# single item only: to repeat a union, name it first.\n#\n# Recursion. A record field may use its own record type only as a\n# list whose count starts at 0, e.g. 'children {Node 0..}' or\n# 'rest {Chain 0..1}'. The empty list is the stopping branch, so\n# every value is finite. This is the only recursion: no other type may\n# refer to itself, and two types cannot refer to each other.\n# Two rules keep recursion polynomial:\n# - Each field is computed at most once per node, and the result is\n#   reused. So a field that reads rest.x twice costs nothing extra.\n# - A product may have at most one factor read through a recursive\n#   field. 'rest.x * 10' is allowed; 'rest.x * rest.x' would double the\n#   length of the number at every level and is an error.\n# Computed fields produce numbers and Facts, never new records or\n# sequences, so evaluation never makes the data bigger.\n#\n# Folds. A path step after a list names a field of its items and gives\n# the list of that field's values; a path through two lists flattens\n# them. A path through a list must end in a fold, so a list never\n# appears in an expression except inside one:\n#   .qty    the number of items\n#   .sum    the total of a numeric field, with that field's places\n# e.g. lines.qty, lines.line_total.sum. An empty list folds to 0. Both\n# give the same answer whatever the order of the items. Other counts\n# are written with these: the nodes of a tree, all levels down, are\n# 'nodes {Integer} val = 1 + children.nodes.sum'. A field whose count\n# is at most 1 reads as its item, or as 0 when it is absent, so\n# 'rest.x * 10' needs no fold.\n#\n# Filters. A path step that names a type keeps the items that inhabit\n# it: with 'Big_Line {Line} line_total >= 500.00', 'lines.Big_Line' is\n# the lines that are a Big_Line, so 'lines.Big_Line.qty' counts them and\n# 'lines.Big_Line.line_total.sum' adds up theirs. The type must be a\n# refinement of the item type. Folds and filters visit each item once,\n# so they are linear. \"Every item\" is a filtered qty compared with qty.\n#\n# Context. A path that starts with a type name and goes on to a field\n# reaches the nearest record of that type around this one:\n#   Its_Customer {Customer}  code = Order.customer\n# and, in Order, 'known {True} Book.customers.Its_Customer.qty = 1'.\n# Inside an Order, 'Order.customer' is that order's customer, and\n# 'Book.customers' the customers of the book holding it. So a relation\n# between items is a filter, and \"there is one\" is a qty of at least 1.\n# A type that reaches Order must always sit inside an Order; the check\n# says where it might not. Such values are worked out once the whole\n# text is read, when every record knows the records around it. A type\n# name with no field after it is the value of a one-value type: True.\n# qty, sum, val, places, mod, cost and print are reserved and cannot\n# name a field.\nText {Character 0..}\nLine_Text {Line_Character 0..}           # Cannot contain a newline, by construction\nNatural {Digit 1..}                      # Every character is a digit\n\n# A layout is a refinement line followed by numbered positions at two\n# spaces. Its text is its positions in number order. On a position,\n# a count repeats that position's base.\n# A layout whose base is Integer or Decimal is a conversion: its 'val'\n# reads the Digit positions left to right in base 10. A \"-\" position,\n# when present, makes the number negative; other literal positions\n# contribute nothing. The 'val' range must fit what the layout holds.\n# For example:\n#   Temperature {Integer} val = -90..60\n#     1. {\"-\" 0..1}                      # a \"-\" position makes it negative\n#     2. {Digit 1..2}\nInteger_Literal {Text}\n  1. {\"-\" 0..1}                          # an optional minus sign\n  2. {Digit 1..}\n\nDecimal_Literal {Text}\n  1. {\"-\" 0..1}                          # an optional minus sign\n  2. {Digit 1..}\n  3. {\".\"}\n  4. {Digit 1..}\n\n# Built-in numbers. Integer is unbounded, so overflow cannot occur.\n# Decimal is exact: for '+' and '-' the result has the larger number of\n# places of its operands; for '*' the places add.\n# A number literal denotes its exact decimal value. Comparisons use that\n# value, so 1.50 = 1.5.\nNumber_Literal {Decimal_Literal | Integer_Literal}\n\n# A record is a header 'Name {}' followed by its fields at two spaces.\n# Its text is its stored fields in declaration order. Computed fields\n# (a 'val =' predicate, a mapping base, or a rule) contribute no text.\n# A field may name only fields of the same record declared above it.\n#\n# A rule is a field with base {True} and predicates. If its predicates\n# do not hold, the field is INVALID. A {True} field with no predicates\n# is an error: it would always hold, so it says nothing.\n# Every field evaluates to a value or to INVALID. Anything computed from\n# an INVALID field is INVALID. A record with any INVALID field is\n# rejected, and every failed rule is reported by name.\n# When a type used in this grammar carries a rule, a text inhabits the\n# type only if the rule holds on it.\n#\n# A claim is a field with base {Fact} and a single comparison. It\n# narrows nothing: the checker must prove it holds for every value, by\n# one fixed method. Expand both sides into sums of stored fields by\n# substituting each 'val =' definition; move everything to one side and\n# cancel; bound what is left using each field's range. On a recursive\n# type, the claim itself may be assumed for the recursive field\n# (induction). A product of two fields is kept as one term, bounded by\n# multiplying their ranges. If the bound does not settle the comparison,\n# the claim is a compile error, \"cannot prove\". Each claim is checked\n# once against the declarations, never against data, so proofs are\n# polynomial in the size of the program.\n#\n# Ranges: low..high contains both ends, and high is above low by the\n# rule below, so neither 5..1 nor 5..5 parses. A range always spans more\n# than one value: a single fixed value is a literal type, '{5}'. So\n# 'val = 5' can only compute, and 'val = 1..9' can only check.\nBounded_Range {}\n  low {Number_Literal}\n  dots {\"..\"}\n  high {Number_Literal}\n  ordered {True} high > low\n\n# low.. and ..high are open on one side. '..' with both ends missing\n# does not exist: to allow every value, omit the predicate.\nLower_Range {Text}                       # low.. : low and everything above\n  1. {Number_Literal}\n  2. {\"..\"}\n\nUpper_Range {Text}                       # ..high : high and everything below\n  1. {\"..\"}\n  2. {Number_Literal}\n\nRange_Literal {Bounded_Range | Lower_Range | Upper_Range}\n\n# Raw quotes and backslashes cannot appear inside a string literal; they\n# are reachable only through an escape. No escapes exist other than\n# \\\" \\\\ and \\n, which decode to a quote, a backslash and a newline.\nPlain_Symbol {Operator_Symbol | Other_Symbol}\nPlain_String_Character {Space | Underscore | Plain_Symbol | Uppercase | Lowercase | Digit}\nEscape_Code {Quote | Backslash | \"n\"}\n\nEscape {Text}\n  1. {Backslash}\n  2. {Escape_Code}\n\nString_Character {Plain_String_Character | Escape}\n\nString_Literal {Text}\n  1. {Quote}\n  2. {String_Character 0..}\n  3. {Quote}\n\n# Uppercase names are types. Lowercase names are fields.\nName_Character {Uppercase | Lowercase | Digit | Underscore}\nLower_Name_Character {Lowercase | Digit | Underscore}\n\nType_Name {Text}\n  1. {Uppercase}\n  2. {Name_Character 0..}\n\nField_Name {Text}\n  1. {Lowercase}\n  2. {Lower_Name_Character 0..}\n\nName {Type_Name | Field_Name}\n\nField_Step {Text}\n  1. {\".\"}\n  2. {Field_Name}\n\nFilter_Step {Text}                       # e.g. .Big_Line, the items that are one\n  1. {\".\"}\n  2. {Type_Name}\n\nPath_Step {Field_Step | Filter_Step}\n\n# A path starts with a field declared above it, a one-value type, or a\n# record type around this one (Step 3, Context). A field cannot refer\n# to itself, and may use its own record type only as a recursive\n# field. 'val' names the value of the line it appears on.\nPath {Text}                              # e.g. customer.credit_limit\n  1. {Name}\n  2. {Path_Step 0..}\n\n\n# ---------- Step 4: Layout ----------\n\n# Indentation is part of the grammar. Top-level lines start in column\n# one, record bodies and layout positions at two spaces, mapping cases\n# at four.\nIndent_0 {\"\"}\n\nIndent_2 {Text}\n  1. {Space 2}\n\nIndent_4 {Text}\n  1. {Space 4}\n\n# Spacing around operators. Any number of spaces, none included, may\n# surround '&', '|', '->', '+', '-', '*' and the comparisons. Lines\n# are at most 100 characters long (File, Step 7), which bounds every\n# run of spaces. 'print = 1' makes Pad and Gap print as one space, and\n# 'print = 0' drops trailing spaces (Step 9).\nPad {Space 0..} print = 1\nGap {Space 1..} print = 1\nEnd_Spaces {Space 0..} print = 0\n\nTrailing_Comment {Text}\n  1. {Space 1..}\n  2. {\"#\"}\n  3. {Line_Text}\n\n# A line may end in spaces; they mean nothing.\nPlain_End {}\n  spaces {End_Spaces}\n  end {Newline}\n\nNoted_End {}\n  note {Trailing_Comment}\n  end {Newline}\n\nLine_End {Plain_End | Noted_End}\n\n\n# ---------- Step 5: Values and Predicates ----------\n\n# Arithmetic is '+', '-' and '*'. Division does not exist. An expression\n# uses one operator kind only, so no precedence exists.\nTerm {Path | Number_Literal}\n\nSum_Tail {}\n  pad1 {Pad}\n  op {\"+\"}\n  pad2 {Pad}\n  next {Term}\n\nDifference_Tail {}\n  pad1 {Pad}\n  op {\"-\"}\n  pad2 {Pad}\n  next {Term}\n\nProduct_Tail {}\n  pad1 {Pad}\n  op {\"*\"}\n  pad2 {Pad}\n  next {Term}\n\nSum {}\n  first {Term}\n  rest {Sum_Tail 1..}\n\nDifference {}\n  first {Term}\n  rest {Difference_Tail 1..}\n\nProduct {}\n  first {Term}\n  rest {Product_Tail 1..}\n\nArithmetic {Sum | Difference | Product}  # One operator kind per expression\n\nValue {Arithmetic | Range_Literal | Number_Literal | String_Literal | Path}\n\n# Comparisons. There is no '!=', 'not', 'else', 'forall' or 'in'.\nComparison_Symbol {\"=\" | \"<\" | \"<=\" | \">\" | \">=\"}\n\nComparison {}\n  pad1 {Pad}\n  symbol {Comparison_Symbol}\n  pad2 {Pad}\n\n# Properties. Four reserved names describe a line rather than a field,\n# and are compared like any field. 'places = 2' fixes decimal places;\n# without it, places are inferred from the literals on the line.\n# 'mod = 7' makes arithmetic wrap. A value assigned to a field must\n# satisfy the field's ranges, and assigning to fewer decimal places is\n# a compile error, so rounding never happens implicitly.\n#\n# 'cost <= ...' promises a worst-case running time, up to a constant\n# factor, as a size or a single product or sum of sizes: cost <= 1,\n# cost <= lines.qty, cost <= a.qty * b.qty. The size of a tree is named\n# by a field that counts its nodes, 'nodes {Integer} val = 1 +\n# children.nodes.sum', and then cost <= nodes.\n# The checker works out each\n# field's cost from fixed rules: reads, comparisons and arithmetic cost\n# 1 plus their parts; a mapping costs its inputs plus its cases; a fold\n# costs the number of items times the cost per item; a fold over a recursive value costs\n# its size. A list with an upper count counts as a constant, so only\n# open-ended lists are sizes. Costs only add and multiply, so every\n# program is polynomial, and the degree is how deeply folds nest. A\n# written cost is a promise: if the worked-out cost has a term with a\n# higher power of any size, it is a compile error. Without one, the\n# checker reports the cost it works out.\n# 'print = n' gives the number of items a list prints when its value\n# does not say, as for spacing (Step 9); without it, the fewest its\n# count allows.\n\n# unique forbids two rows with equal values in that field.\nFlag {\"unique\"}\n\nPlain_Predicate {}\n  field {Path}\n  op {Comparison}\n  value {Value}\n\nClause {Plain_Predicate | Flag}\n\n# Predicates use only '&' or only '|'. The two connective forms below\n# are separate declarations, so a line that mixes them does not parse.\nAnd_Tail {}\n  pad1 {Pad}\n  op {\"&\"}\n  pad2 {Pad}\n  next {Clause}\n\nAnd_Predicates {}                        # One or more clauses joined by '&'\n  first {Clause}\n  rest {And_Tail 0..}\n\nValue_Tail {}\n  pad1 {Pad}\n  op {\"|\"}\n  pad2 {Pad}\n  next {Value}\n\nMulti_Value {}                           # e.g. 0 | 10..100\n  first {Value}\n  rest {Value_Tail 1..}\n\nChoice_Value {Multi_Value | Value}\n\nChoice_Predicate {}\n  field {Path}\n  op {Comparison}\n  value {Choice_Value}\n\nOr_Tail {}\n  pad1 {Pad}\n  op {\"|\"}\n  pad2 {Pad}\n  next {Choice_Predicate}\n\nOr_Chain {}                              # Two or more predicates joined by '|'\n  first {Choice_Predicate}\n  rest {Or_Tail 1..}\n\nSingle_Choice {}                         # One predicate choosing among values\n  field {Path}\n  op {Comparison}\n  value {Multi_Value}\n\nOr_Predicates {Or_Chain | Single_Choice}\n\nPredicate_Block {And_Predicates | Or_Predicates}\n\nPredicate_Tail {}                        # One or more spaces, then predicates\n  space {Gap}\n  predicates {Predicate_Block}\n\n\n# ---------- Step 6: Bases ----------\n\n# Inside braces, '|' is union.\nUnion_Item {Type_Name | String_Literal | Number_Literal}\n\nUnion_Tail {}\n  pad1 {Pad}\n  op {\"|\"}\n  pad2 {Pad}\n  next {Union_Item}\n\nUnion_Base {}                            # Two or more items\n  first {Union_Item}\n  rest {Union_Tail 1..}\n\nOutput_Union {Union_Base | Union_Item}\n\n# A mapping base is 'inputs -> output'. Inside braces, '&' joins inputs\n# and '->' separates them from the output.\n# Inputs are fields declared above the mapping, of a finite union type\n# or a numeric type. Text and sequence inputs are not allowed.\n# A mapping has one or two inputs, never more. With at most two inputs,\n# k cases give at most 2k boundaries per input, so at most\n# (2k + 1) x (2k + 1) cells to check: every mapping is a\n# two-dimensional table. Logic over more inputs is written as a chain,\n# where one mapping's output field is an input of the next.\nInput_Tail {}\n  pad1 {Pad}\n  op {\"&\"}\n  pad2 {Pad}\n  next {Field_Name}\n\nArrow {}\n  pad1 {Pad}\n  op {\"->\"}\n  pad2 {Pad}\n\nSingle_Input_Map {}                      # One input, union output allowed\n  input {Field_Name}\n  arrow {Arrow}\n  output {Output_Union}\n\nTwo_Input_Map {}                         # Exactly two inputs, single output item\n  first {Field_Name}\n  second {Input_Tail}\n  arrow {Arrow}\n  output {Union_Item}\n\nMapping_Base {Single_Input_Map | Two_Input_Map}\n\n# Braces never nest, and there are no parentheses or local scopes.\n# A count after a single item makes a list (Step 3).\nCount {Range_Literal | Natural}\n\nCount_Tail {}\n  space {Gap}\n  count {Count}\n\nItem_Box {}\n  open {\"{\"}\n  item {Union_Item}\n  count {Count_Tail 0..1}\n  close {\"}\"}\n\nUnion_Box {}\n  open {\"{\"}\n  items {Union_Base}\n  close {\"}\"}\n\nMapping_Box {}\n  open {\"{\"}\n  map {Mapping_Base}\n  close {\"}\"}\n\nEmpty_Box {\"{}\"}\n\n# Intersection. Between type names, '&' inside braces joins types: a\n# text inhabits {A & B} when it matches A and matches B over exactly\n# the same span. It is a conjunction, so it stays positive. Its value\n# and fields come from the first type, and only the first type's\n# readings count as ways of matching; the other types only constrain.\nIntersection_Tail {}\n  pad1 {Pad}\n  op {\"&\"}\n  pad2 {Pad}\n  next {Type_Name}\n\nIntersection_Base {}                     # Two or more type names\n  first {Type_Name}\n  rest {Intersection_Tail 1..}\n\nIntersection_Box {}\n  open {\"{\"}\n  items {Intersection_Base}\n  close {\"}\"}\n\n\n# ---------- Step 7: Lines, Blocks and Files ----------\n\n# Line forms. One or more spaces separate a name from its base, so\n# bases and predicates can be lined up in columns.\n# A refinement line has a single-item base and optional\n# predicates. A union line has two or more items and no predicates, so\n# predicates on a union do not parse. A mapping line has a mapping base\n# and no predicates.\n# A refinement of a record is a filter: its predicates may name the\n# record's fields, e.g. 'Big_Order {Order} total >= 1000.00'.\nRefinement_Line {}                       # Single-item base, optional predicates\n  indent {Indent_0}\n  name {Type_Name}\n  space {Gap}\n  base {Item_Box}\n  tail {Predicate_Tail 0..1}\n  finish {Line_End}\n\nUnion_Line {}                            # Union base, no predicates\n  indent {Indent_0}\n  name {Type_Name}\n  space {Gap}\n  base {Union_Box}\n  finish {Line_End}\n\n# An intersection line has an intersection base and no predicates.\nIntersection_Line {}                     # e.g. Short_Code {Code & Short_Text}\n  indent {Indent_0}\n  name {Type_Name}\n  space {Gap}\n  base {Intersection_Box}\n  finish {Line_End}\n\nRecord_Header {}\n  indent {Indent_0}\n  name {Type_Name}\n  space {Gap}\n  base {Empty_Box}\n  finish {Line_End}\n\nField_Line {}\n  indent {Indent_2}\n  name {Field_Name}\n  space {Gap}\n  base {Item_Box}\n  tail {Predicate_Tail 0..1}\n  finish {Line_End}\n\nUnion_Field_Line {}\n  indent {Indent_2}\n  name {Field_Name}\n  space {Gap}\n  base {Union_Box}\n  finish {Line_End}\n\nMapping_Field_Line {}\n  indent {Indent_2}\n  name {Field_Name}\n  space {Gap}\n  base {Mapping_Box}\n  finish {Line_End}\n\n# A case is '| {output} predicates', four spaces in. The '| ' marker is\n# a literal at a fixed position, not an operator; one or more spaces\n# follow the case box.\n# Each output is a singleton: a literal, or a type with exactly one\n# inhabitant such as True. A case predicate compares one input to a\n# literal or a range, with no arithmetic and no other fields, so every\n# case is a box: one interval or literal set per input.\n# Left side: the cases cover every input combination. Right side: every\n# value of the output type is produced by some case. Cases are disjoint.\n# All three checks are decidable by splitting each input at the case\n# boundaries. A missing combination is a compile error, not FALSE.\nCase_Line {}\n  indent {Indent_4}\n  marker {\"| \"}\n  output {Item_Box}\n  space {Gap}\n  predicates {Predicate_Block}\n  finish {Line_End}\n\nPosition_Line {}\n  indent {Indent_2}\n  number {Natural}\n  dot {\". \"}\n  base {Item_Box}\n  tail {Predicate_Tail 0..1}\n  finish {Line_End}\n\nUnion_Position_Line {}\n  indent {Indent_2}\n  number {Natural}\n  dot {\". \"}\n  base {Union_Box}\n  finish {Line_End}\n\n# Comments start with '#'. A top-level comment starts in column one; a\n# comment inside a record body starts at two spaces.\nComment_Line {}                          # Top level, column one\n  hash {\"#\"}\n  text {Line_Text}\n  end {Newline}\n\nBody_Comment_Line {}                     # Inside a record body\n  indent {Indent_2}\n  hash {\"#\"}\n  text {Line_Text}\n  end {Newline}\n\nBlank_Line {}                            # Empty, or only spaces\n  spaces {End_Spaces}\n  end {Newline}\n\n# Blocks. A mapped field owns the cases that follow it. A record owns\n# its body lines; blank lines may separate them, but blank lines after\n# the last body line belong to the top level. A layout owns its\n# positions. A block ends at the first line that cannot belong to it.\nMapped_Field {}\n  head {Mapping_Field_Line}\n  cases {Case_Line 1..}\n\nBody_Content {Field_Line | Union_Field_Line | Mapped_Field | Body_Comment_Line}\n\nBody_Item {}                             # Blank lines only before more body\n  gap {Blank_Line 0..}\n  line {Body_Content}\n\nRecord_Block {}\n  head {Record_Header}\n  body {Body_Item 0..}\n\nPosition_Content {Position_Line | Union_Position_Line}\n\nLayout_Block {}\n  head {Refinement_Line}\n  positions {Position_Content 1..}\n\nLine_Block {Refinement_Line | Union_Line | Intersection_Line}\nBlock {Record_Block | Layout_Block | Line_Block | Comment_Line | Blank_Line}\n\nBlocks {Block 0..}\n\n# A physical line: at most 100 characters, then a newline.\nShort_Line {}\n  chars {Line_Character 0..100}\n  end {Newline}\n\nShort_Lines {Short_Line 0..}\n\n# A file is its blocks, read as lines of at most 100 characters each.\n# The last line of a file may omit its newline: a file that does not end\n# in a newline is read as if it did. This is the one exception to the\n# rule that every line ends in Line_End.\nFile {Blocks & Short_Lines}\n\n\n# ---------- Step 8: Reference Gate ----------\n\n# Evaluation. Fields are evaluated lazily, each at most once.\n# A mapping keeps a candidate set, starting with all cases. For each\n# input in the order listed: if no remaining candidate mentions it\n# (names it in a predicate), stop. Otherwise evaluate it. If it is\n# INVALID, the result is INVALID. Otherwise drop every candidate that\n# constrains it and fails. Coverage and disjointness leave exactly one\n# candidate, whose output is the result.\n#\n# Three different outcomes: a failed rule makes its field INVALID and\n# rejects the record; a mapping whose output is False produces an\n# ordinary value; a mapping with an INVALID input produces INVALID.\n#\n# Here, when left is FALSE no remaining case mentions right, so right is\n# never evaluated. This matters only when right is computed; stored data\n# has nothing to defer.\nAnd_Gate {}                              # Short-circuit AND over two facts\n  left {Fact}\n  right {Fact}\n  out {left & right -> Fact}\n    | {True} left = True & right = True\n    | {False} left = True & right = False\n    | {False} left = False               # No remaining case mentions right\n\n\n# ---------- Step 9: Printing ----------\n\n# Printing is parsing run backwards: given a type and a value, it gives\n# the one canonical text that parses back to that value.\n# - A literal prints as itself; a type with one inhabitant, as that.\n# - Integer prints its exact value. Decimal prints with the places of\n#   its field's places property, padding with zeros; if the value needs\n#   more places, printing fails rather than round.\n# - A conversion layout prints its value in its digit positions,\n#   padded with leading zeros to the fewest digits its count allows.\n# - A union prints as the first item, in order, that prints the value.\n# - A record prints its stored fields in declaration order. A field the\n#   value leaves out prints as its default: a literal, a type with one\n#   inhabitant, or a sequence of its print count (or its fewest items).\n# - A sequence prints its items in order; a text value prints as is.\n# - An intersection prints as its first type.\n# The printed text must then parse back to the given value in exactly\n# one way; if not, printing fails and names the value. So printing\n# never returns a text that means something else.\n#\n# One rule covers data and code: data prints its values, and a type\n# prints its code, since a declaration is itself a text of language.sheaf's\n# types. Printing a declaration gives its canonical form with the comment\n# lines directly above it.\n#\n# Formatting a file is printing it from its own parse: every sequence\n# with a print property is reset to that many items. So 'a&b' formats\n# as 'a & b', and trailing spaces are dropped.\n\n\n# ---------- Step 10: Projects ----------\n\n# A project is a list of texts, each with a name such as\n# 'shop/dates/dates.sheaf'. It may be stored as folders and files, in\n# memory, or as one text in which each entry is a name line and then\n# the file. No line of a file starts with '=', so a name line can only\n# start the next entry. The part of a name before its last '/' is its\n# group; the groups form a tree.\n#\n# Scope. There are no imports. A text sees:\n# - language.sheaf and the standard library;\n# - every text in its own group and in every group above it;\n# - the front text of each group directly below a group it sees: the\n#   text named after that group, so 'shop/dates/dates.sheaf' counts as a\n#   text of 'shop'. The other texts of 'shop/dates' stay private to it.\n# A name declared in a text means that declaration within the text.\n# Otherwise it must be declared by exactly one text the text sees; two\n# is an error naming both. Texts may use each other's types, but not\n# in a cycle; within a text a name refers only to declarations above.\nEntry_Name {}                            # e.g. \"=== shop/dates/dates.sheaf\"\n  mark {\"=== \"}\n  path {Line_Text}\n  end {Newline}\n\nEntry {}\n  name {Entry_Name}\n  file {File}\n\nProject {Entry 0..}","/priv/stdlib/bits.sheaf":"# Bits and bytes.\n\nBinary_Digit {\"0\" | \"1\"}\n\n# A bit as a number, 0 or 1.\nBit {Integer} val = 0..1\n  1. {Binary_Digit}\n\n# A byte written as eight bits, most significant first, e.g. \"01000001\" (65).\nByte {}\n  b7 {Bit}\n  b6 {Bit}\n  b5 {Bit}\n  b4 {Bit}\n  b3 {Bit}\n  b2 {Bit}\n  b1 {Bit}\n  b0 {Bit}\n  w7 {Integer} val = b7 * 128\n  w6 {Integer} val = b6 * 64\n  w5 {Integer} val = b5 * 32\n  w4 {Integer} val = b4 * 16\n  w3 {Integer} val = b3 * 8\n  w2 {Integer} val = b2 * 4\n  w1 {Integer} val = b1 * 2\n  value {Integer} val = w7 + w6 + w5 + w4 + w3 + w2 + w1 + b0\n  at_least_zero {Fact} value >= 0\n  fits_in_a_byte {Fact} value <= 255\n\n# Exclusive or of two bits, as a checked table.\nXor_Bit {}\n  a {Binary_Digit}\n  b {Binary_Digit}\n  out {a & b -> Binary_Digit}\n    | {\"0\"} a = \"0\" & b = \"0\"\n    | {\"1\"} a = \"0\" & b = \"1\"\n    | {\"1\"} a = \"1\" & b = \"0\"\n    | {\"0\"} a = \"1\" & b = \"1\"\n","/priv/stdlib/dates.sheaf":"# Calendar dates, \"2026-10-15\", valid in the Gregorian calendar.\n# Every step is a checked table; leap years use 'mod' arithmetic.\n\nYear {Integer}\n  1. {Digit 4}\n\nMonth {Integer} val = 1..12\n  1. {Digit 2}\n\nDay_Of_Month {Integer} val = 1..31\n  1. {Digit 2}\n\nMonth_Length {\"31\" | \"30\" | \"feb\"}\nDay_Fit {\"yes\" | \"no\" | \"leap_day\"}\n\nDate {}\n  year {Year}\n  dash1 {\"-\"}\n  month {Month}\n  dash2 {\"-\"}\n  day {Day_Of_Month}\n  r4 {Integer} val = year * 1 & mod = 4 & val = 0..3\n  r100 {Integer} val = year * 1 & mod = 100 & val = 0..99\n  r400 {Integer} val = year * 1 & mod = 400 & val = 0..399\n  length {month -> Month_Length}\n    | {\"31\"} month = 1 | 3 | 5 | 7 | 8 | 10 | 12\n    | {\"30\"} month = 4 | 6 | 9 | 11\n    | {\"feb\"} month = 2\n  fit {length & day -> Day_Fit}\n    | {\"yes\"} length = \"31\"\n    | {\"yes\"} length = \"30\" & day = 1..30\n    | {\"no\"} length = \"30\" & day = 31\n    | {\"yes\"} length = \"feb\" & day = 1..28\n    | {\"leap_day\"} length = \"feb\" & day = 29\n    | {\"no\"} length = \"feb\" & day = 30..31\n  by_four {r4 & r100 -> Fact}\n    | {True} r4 = 0 & r100 = 1..99\n    | {False} r4 = 0 & r100 = 0\n    | {False} r4 = 1..3\n  leap {by_four & r400 -> Fact}\n    | {True} by_four = True\n    | {True} by_four = False & r400 = 0\n    | {False} by_four = False & r400 = 1..399\n  valid {fit & leap -> Fact}\n    | {True} fit = \"yes\"\n    | {False} fit = \"no\"\n    | {True} fit = \"leap_day\" & leap = True\n    | {False} fit = \"leap_day\" & leap = False\n  real_date {True} valid = True\n","/priv/stdlib/logic.sheaf":"# Logic gates over Fact, each a checked truth table.\n# (And_Gate is in language.sheaf itself, Step 8.)\n\nNot_Gate {}\n  x {Fact}\n  out {x -> Fact}\n    | {False} x = True\n    | {True} x = False\n\nOr_Gate {}\n  left {Fact}\n  right {Fact}\n  out {left & right -> Fact}\n    | {True} left = True\n    | {True} left = False & right = True\n    | {False} left = False & right = False\n\nXor_Gate {}\n  left {Fact}\n  right {Fact}\n  out {left & right -> Fact}\n    | {False} left = True & right = True\n    | {True} left = True & right = False\n    | {True} left = False & right = True\n    | {False} left = False & right = False\n\nImplies_Gate {}\n  left {Fact}\n  right {Fact}\n  out {left & right -> Fact}\n    | {True} left = False\n    | {True} left = True & right = True\n    | {False} left = True & right = False\n","/priv/stdlib/text.sheaf":"# Common text shapes.\n\n# A lowercase identifier: a letter, then letters, digits or '_'.\nIdentifier {Text}\n  1. {Lowercase}\n  2. {Lower_Name_Character 0..}\n\n# A word of letters.\nLetter {Uppercase | Lowercase}\nWord {Letter 1..}\n\n# A domain name label and an email address, e.g. \"ana@mail.example\".\nHost_Character {Lowercase | Digit | \"-\"}\nHost_Label {Host_Character 1..63}\nDot_Label {Text}\n  1. {\".\"}\n  2. {Host_Label}\n\nEmail_Address {Text}\n  1. {Identifier}\n  2. {\"@\"}\n  3. {Host_Label}\n  4. {Dot_Label 1..}\n\n# One line of text and a block of lines.\nText_Line {}\n  body {Line_Text}\n  end {Newline}\n\nParagraph {}\n  lines {Text_Line 1..}\n  line_count {Integer} val = lines.qty\n","/examples/book/book.sheaf":"# Orders that belong to customers. A path that starts with a type name\n# reaches the nearest record of that type around this one: inside an\n# Order, 'Order.customer' is that order's customer, and 'Book.customers'\n# the customers of the book holding it. So \"this order belongs to that\n# customer\" is a filter, and \"there is one\" is a qty.\nCustomer_Code {Text}\n  1. {\"C\"}\n  2. {Digit 3}\n\nCustomer {}\n  code {Customer_Code} unique\n  gap {\" \"}\n  name {Line_Text}\n  nl {Newline}\n\nIts_Customer {Customer} code = Order.customer\n\nOrder {}\n  number {Natural}\n  gap {\" \"}\n  customer {Customer_Code}\n  nl {Newline}\n  known {True} Book.customers.Its_Customer.qty = 1\n\nBook {}\n  customers {Customer 1..}\n  rule {\"---\"}\n  nl {Newline}\n  orders {Order 1..}\n","/examples/book/book.txt":"C001 Ada Lovelace\nC002 Alan Turing\n---\n1041 C001\n1042 C002\n1043 C001\n","/examples/book/book_unknown.txt":"C001 Ada Lovelace\nC002 Alan Turing\n---\n1041 C001\n1042 C009\n","/examples/cycle/a.sheaf":"# a.sheaf and b.sheaf use each other's types, which is a cycle: an error.\nA_Type {B_Type}\n","/examples/cycle/b.sheaf":"B_Type {\"b\" | A_Type}\n","/examples/meeting/meeting.sheaf":"# The standard library is in every file's scope: Date and Identifier need no import.\nMeeting {}\n  on {Date}\n  gap {\" \"}\n  room {Identifier}\n","/examples/mistakes/mistakes.sheaf":"# Every declaration below breaks one rule of the spec; `check` explains each.\n\n# 1. A type used before it is declared.\nEarly {Later}\nLater {\"x\"}\n\n# 2. A reserved word as a field name.\nBad_Name {}\n  qty {Integer}\n\n# 3. A field that names a field below it.\nWrong_Order {}\n  a {Integer} val = b + 1\n  b {Integer}\n\n# 4. A list used outside a fold.\nBasket {}\n  items {Digit 0..}\n  first {Integer} val = items\n\n# 5. A mapping that misses a combination and overlaps.\nGrade {}\n  score {Integer} val = 0..100\n  pass {score -> Fact}\n    | {True} score >= 50\n    | {False} score < 40\n    | {False} score = 45..49\n    | {True} score = 49..60\n\n# 6. A claim the ranges cannot settle.\nPair {}\n  a {Integer} val = 0..10\n  b {Integer} val = 5..20\n  diff {Integer} val = b - a\n  positive {Fact} diff > 0\n\n# 7. A product of two reads through a recursive field.\nTower {}\n  h {Integer} val = 1..9\n  rest {Tower 0..1}\n  blowup {Integer} val = rest.h * rest.h\n\n# 8. Rounding would be needed.\nPrice {}\n  amount {Decimal} places = 2\n  tax {Decimal} val = amount * 0.075 & places = 2\n\n# 9. A broken cost promise.\nPairs {}\n  xs {Digit 0..}\n  n {Integer} val = xs.qty & cost <= 1\n\n# 10. Arithmetic on text.\nLabel {}\n  code {\"5\"}\n  twice {Integer} val = code * 2\n\n# 11. Reaching a record that is not around.\nNote {}\n  text {\"n\"}\n  filled {True} Basket.items.qty >= 1\n","/examples/orders/order_1042.txt":"order 1042\nABC-0001 x3 @ 19.99\nXYZ-0420 x10 @ 120.00\n","/examples/orders/orders.sheaf":"# Orders: stored and computed fields, folds, a mapping, a rule and a filter.\n# Check:  node bin/sheaf.mjs check examples/orders/orders.sheaf\n# Run:    node bin/sheaf.mjs run examples/orders/orders.sheaf Order examples/orders/order_1042.txt\n\n# A stock-keeping unit: three capital letters, a dash, four digits.\nSku {Text}\n  1. {Uppercase 3}\n  2. {\"-\"}\n  3. {Digit 4}\n\n# One order line, e.g. \"ABC-0001 x3 @ 19.99\".\nLine {}\n  sku {Sku}\n  times {\" x\"}\n  units {Integer} val = 1..1000\n  at {\" @ \"}\n  price {Decimal} places = 2 & val >= 0.00\n  end {Newline}\n  line_total {Decimal} val = units * price & places = 2\n  big {line_total -> Fact}\n    | {True} line_total >= 500.00\n    | {False} line_total < 500.00\n\n# A line worth 500.00 or more. Used below as a filter on a list.\nBig_Line {Line} line_total >= 500.00\n\n# An order: a header line, then one or more lines.\nOrder {}\n  head {\"order \"}\n  number {Natural}\n  nl {Newline}\n  lines {Line 1..}\n  total {Decimal} val = lines.line_total.sum & cost <= lines.qty\n  big_lines {Integer} val = lines.Big_Line.qty\n  big_total {Decimal} val = lines.Big_Line.line_total.sum & places = 2\n  line_count {Integer} val = lines.qty\n  not_all_big {True} big_lines <= line_count\n\n# A refinement of a record is a filter, here on whole orders.\nBig_Order {Order} total >= 1000.00\n","/examples/proofs/proofs.sheaf":"# Claims: facts the checker proves for every value, by one fixed method.\n\n# The window always has width at least 10, whatever the stored values are,\n# because their ranges do not overlap.\nWindow {}\n  start {Integer} val = 0..10\n  dots {\"..\"}\n  finish {Integer} val = 20..30\n  width {Integer} val = finish - start\n  wide_enough {Fact} width >= 10\n\n# A chain of digits written \"+3+4+5\". Its total is never negative:\n# proved by induction, assuming the claim for the rest of the chain.\nChain {}\n  plus {\"+\"}\n  x {Integer} val = 0..9\n  rest {Chain 0..1}\n  total {Integer} val = x + rest.total\n  links {Integer} val = rest.qty + rest.links\n  nonnegative {Fact} total >= 0\n\n# A two-input mapping: a table over a numeric range and a finite set.\nZone {\"A\" | \"B\"}\nTier {\"light\" | \"heavy\" | \"far\"}\n\nParcel {}\n  weight {Integer} val = 0..50\n  space {\" \"}\n  zone {Zone}\n  tier {weight & zone -> Tier}\n    | {\"light\"} weight = 0..5 & zone = \"A\"\n    | {\"heavy\"} weight = 6..50 & zone = \"A\"\n    | {\"far\"} zone = \"B\"\n","/examples/shop/catalog/catalog.sheaf":"# The front file of catalog/: Item is seen outside this folder.\nItem {}\n  code {Code}\n  gap {\" \"}\n  price {Money}\n","/examples/shop/catalog/codes.sheaf":"# Private to catalog/: only files in this folder see Code.\nCode {Text}\n  1. {Uppercase 3}\n  2. {Digit 3}\n","/examples/shop/money.sheaf":"# Money, seen by every file in shop/ and below.\nMoney {Decimal} places = 2 & val >= 0.00\n","/examples/shop/orders/orders.sheaf":"# Sees Money (shop/), Item (catalog/'s front file) and Date (the standard library).\nOrder_Line {}\n  item {Item}\n  nl {Newline}\n\nOrder {}\n  on {Date}\n  nl {Newline}\n  items {Order_Line 1..}\n  total {Decimal} val = items.item.price.sum & places = 2\n","/examples/shop/orders/peek.sheaf":"# Code is private to catalog/, so this file cannot use it.\nPeek {Code}\n","/examples/temperature/temperature.sheaf":"# A temperature in whole degrees, like \"-12\" or \"31\".\nTemperature {Integer} val = -90..60\n  1. {\"-\" 0..1}                          # a \"-\" position makes the number negative\n  2. {Digit 1..2}\n\nReading {}\n  where {Lowercase 1..}\n  gap {\" \"}\n  degrees {Temperature}\n  freezing {degrees -> Fact}\n    | {True} degrees <= 0\n    | {False} degrees > 0\n"};</script>
+<script>window.SHEAF_FILES = {"/priv/language.sheaf":"# ==========================================================================\n# language.sheaf - The Formal Self-Bootstrapping Core Logic Specification (v3)\n#\n# Sheaf is named for sheaves, where geometric logic lives: many small typed\n# texts, each checked on its own, that glue together into one whole.\n# ==========================================================================\n#\n# This file defines the complete syntax of the language in the language\n# itself. The whole file, comments included, is a File (end of Step 7).\n# Each rule is explained directly above the declaration that defines it.\n#\n# How to read the declarations:\n# - There is no separate lexer. Every separator is a literal in some\n#   declaration, so the declarations are also the whitespace rules.\n# - A text inhabits a type when some way of matching it succeeds.\n# - A source file must match File in exactly one way. An ambiguous file\n#   is rejected like an unparseable one.\n# ==========================================================================\n\n\n# ---------- Step 1: Characters ----------\n\n# A union line, 'Name {A | B | C}', lists the alternatives of a type.\n# A quoted item is a literal: exactly that text, never an operator.\nDigit {\"0\" | \"1\" | \"2\" | \"3\" | \"4\" | \"5\" | \"6\" | \"7\" | \"8\" | \"9\"}\n\nLowercase_A_M {\"a\" | \"b\" | \"c\" | \"d\" | \"e\" | \"f\" | \"g\" | \"h\" | \"i\" | \"j\" | \"k\" | \"l\" | \"m\"}\nLowercase_N_Z {\"n\" | \"o\" | \"p\" | \"q\" | \"r\" | \"s\" | \"t\" | \"u\" | \"v\" | \"w\" | \"x\" | \"y\" | \"z\"}\n\n# An unquoted item names a type. A type name resolves only to a type\n# declared strictly above it, so no type can refer to itself, directly\n# or through others. The one exception is a recursive field (Step 3).\nLowercase {Lowercase_A_M | Lowercase_N_Z}\n\nUppercase_A_M {\"A\" | \"B\" | \"C\" | \"D\" | \"E\" | \"F\" | \"G\" | \"H\" | \"I\" | \"J\" | \"K\" | \"L\" | \"M\"}\nUppercase_N_Z {\"N\" | \"O\" | \"P\" | \"Q\" | \"R\" | \"S\" | \"T\" | \"U\" | \"V\" | \"W\" | \"X\" | \"Y\" | \"Z\"}\nUppercase {Uppercase_A_M | Uppercase_N_Z}\n\n# A refinement line, 'Name {Item}', has a single-item base.\nSpace {\" \"}\nUnderscore {\"_\"}\n\n# Inside a literal, a backslash starts an escape: \\n is a newline,\n# \\\" a quote, \\\\ a backslash. The full escape grammar is in Step 3.\nNewline {\"\\n\"}\nQuote {\"\\\"\"}\nBackslash {\"\\\\\"}\n\nOperator_Symbol {\"{\" | \"}\" | \"|\" | \"&\" | \"=\" | \"<\" | \">\" | \".\" | \"#\" | \"*\" | \"+\" | \"-\" | \"/\"}\nOther_Symbol_A {\",\" | \":\" | \";\" | \"!\" | \"?\" | \"'\" | \"(\" | \")\"}\nOther_Symbol_B {\"@\" | \"%\" | \"[\" | \"]\" | \"^\" | \"~\" | \"`\" | \"$\"}\nOther_Symbol {Other_Symbol_A | Other_Symbol_B}\nReserved {Operator_Symbol | Quote | Backslash}\n\n# Positive logic: a type that excludes something is a smaller union,\n# never a negation. Line_Character is every character except Newline.\nLine_Character {Space | Underscore | Reserved | Other_Symbol | Uppercase | Lowercase | Digit}\nCharacter {Line_Character | Newline}\n\n\n# ---------- Step 2: Truth Values ----------\n\n# TRUE and FALSE are distinct atoms, not encodings of anything else.\n# FALSE is an ordinary value. It is not the same as INVALID (Step 3).\nTrue {\"TRUE\"}\nFalse {\"FALSE\"}\nFact {True | False}\n\n\n# ---------- Step 3: Sequences, Literals and Names ----------\n\n# Lists. A count after a single item in braces makes a list: '{X 2}' is\n# two values of X, '{X 1..}' one or more, '{X 0..1}' none or one. With\n# no count the count is 1, so '{X}' is exactly one X. A list of X is a\n# function from positions 1..n to X, where n is its number of items.\n# A count is a natural number or a range of them, and goes after a\n# single item only: to repeat a union, name it first.\n#\n# Recursion. A record field may use its own record type only as a\n# list whose count starts at 0, e.g. 'children {Node 0..}' or\n# 'rest {Chain 0..1}'. The empty list is the stopping branch, so\n# every value is finite. This is the only recursion: no other type may\n# refer to itself, and two types cannot refer to each other.\n# Two rules keep recursion polynomial:\n# - Each field is computed at most once per node, and the result is\n#   reused. So a field that reads rest.x twice costs nothing extra.\n# - A product may have at most one factor read through a recursive\n#   field. 'rest.x * 10' is allowed; 'rest.x * rest.x' would double the\n#   length of the number at every level and is an error.\n# Computed fields produce numbers and Facts, never new records or\n# sequences, so evaluation never makes the data bigger.\n#\n# Folds. A path step after a list names a field of its items and gives\n# the list of that field's values; a path through two lists flattens\n# them. A path through a list must end in a fold, so a list never\n# appears in an expression except inside one:\n#   .qty    the number of items\n#   .sum    the total of a numeric field, with that field's places\n# e.g. lines.qty, lines.line_total.sum. An empty list folds to 0. Both\n# give the same answer whatever the order of the items. Other counts\n# are written with these: the nodes of a tree, all levels down, are\n# 'nodes {Integer} val = 1 + children.nodes.sum'. A field whose count\n# is at most 1 reads as its item, or as 0 when it is absent, so\n# 'rest.x * 10' needs no fold.\n#\n# Filters. A path step that names a type keeps the items that inhabit\n# it: with 'Big_Line {Line} line_total >= 500.00', 'lines.Big_Line' is\n# the lines that are a Big_Line, so 'lines.Big_Line.qty' counts them and\n# 'lines.Big_Line.line_total.sum' adds up theirs. The type must be a\n# refinement of the item type. Folds and filters visit each item once,\n# so they are linear. \"Every item\" is a filtered qty compared with qty.\n#\n# Context. A path that starts with a type name and goes on to a field\n# reaches the nearest record of that type around this one:\n#   Its_Customer {Customer}  code = Order.customer\n# and, in Order, 'known {True} Book.customers.Its_Customer.qty = 1'.\n# Inside an Order, 'Order.customer' is that order's customer, and\n# 'Book.customers' the customers of the book holding it. So a relation\n# between items is a filter, and \"there is one\" is a qty of at least 1.\n# A type that reaches Order must always sit inside an Order; the check\n# says where it might not. Such values are worked out once the whole\n# text is read, when every record knows the records around it. A type\n# name with no field after it is the value of a one-value type: True.\n# qty, sum, val, places, mod, cost and print are reserved and cannot\n# name a field.\nText {Character 0..}\nLine_Text {Line_Character 0..}           # Cannot contain a newline, by construction\nNatural {Digit 1..}                      # Every character is a digit\n\n# A layout is a refinement line followed by numbered positions at two\n# spaces. Its text is its positions in number order. On a position,\n# a count repeats that position's base.\n# A layout whose base is Integer or Decimal is a conversion: its 'val'\n# reads the Digit positions left to right in base 10. A \"-\" position,\n# when present, makes the number negative; other literal positions\n# contribute nothing. The 'val' range must fit what the layout holds.\n# For example:\n#   Temperature {Integer} val = -90..60\n#     1. {\"-\" 0..1}                      # a \"-\" position makes it negative\n#     2. {Digit 1..2}\nInteger_Literal {Text}\n  1. {\"-\" 0..1}                          # an optional minus sign\n  2. {Digit 1..}\n\nDecimal_Literal {Text}\n  1. {\"-\" 0..1}                          # an optional minus sign\n  2. {Digit 1..}\n  3. {\".\"}\n  4. {Digit 1..}\n\n# Built-in numbers. Integer is unbounded, so overflow cannot occur.\n# Decimal is exact: for '+' and '-' the result has the larger number of\n# places of its operands; for '*' the places add.\n# A number literal denotes its exact decimal value. Comparisons use that\n# value, so 1.50 = 1.5.\nNumber_Literal {Decimal_Literal | Integer_Literal}\n\n# A record is a header 'Name {}' followed by its fields at two spaces.\n# Its text is its stored fields in declaration order. Computed fields\n# (a 'val =' predicate, a mapping base, or a rule) contribute no text.\n# A field may name only fields of the same record declared above it.\n#\n# A rule is a field with base {True} and predicates. If its predicates\n# do not hold, the field is INVALID. A {True} field with no predicates\n# is an error: it would always hold, so it says nothing.\n# Every field evaluates to a value or to INVALID. Anything computed from\n# an INVALID field is INVALID. A record with any INVALID field is\n# rejected, and every failed rule is reported by name.\n# When a type used in this grammar carries a rule, a text inhabits the\n# type only if the rule holds on it.\n#\n# A claim is a field with base {Fact} and a single comparison. It\n# narrows nothing: the checker must prove it holds for every value, by\n# one fixed method. Expand both sides into sums of stored fields by\n# substituting each 'val =' definition; move everything to one side and\n# cancel; bound what is left using each field's range. On a recursive\n# type, the claim itself may be assumed for the recursive field\n# (induction). A product of two fields is kept as one term, bounded by\n# multiplying their ranges. If the bound does not settle the comparison,\n# the claim is a compile error, \"cannot prove\". Each claim is checked\n# once against the declarations, never against data, so proofs are\n# polynomial in the size of the program.\n#\n# Ranges: low..high contains both ends, and high is above low by the\n# rule below, so neither 5..1 nor 5..5 parses. A range always spans more\n# than one value: a single fixed value is a literal type, '{5}'. So\n# 'val = 5' can only compute, and 'val = 1..9' can only check.\nBounded_Range {}\n  low {Number_Literal}\n  dots {\"..\"}\n  high {Number_Literal}\n  ordered {True} high > low\n\n# low.. and ..high are open on one side. '..' with both ends missing\n# does not exist: to allow every value, omit the predicate.\nLower_Range {Text}                       # low.. : low and everything above\n  1. {Number_Literal}\n  2. {\"..\"}\n\nUpper_Range {Text}                       # ..high : high and everything below\n  1. {\"..\"}\n  2. {Number_Literal}\n\nRange_Literal {Bounded_Range | Lower_Range | Upper_Range}\n\n# Raw quotes and backslashes cannot appear inside a string literal; they\n# are reachable only through an escape. No escapes exist other than\n# \\\" \\\\ and \\n, which decode to a quote, a backslash and a newline.\nPlain_Symbol {Operator_Symbol | Other_Symbol}\nPlain_String_Character {Space | Underscore | Plain_Symbol | Uppercase | Lowercase | Digit}\nEscape_Code {Quote | Backslash | \"n\"}\n\nEscape {Text}\n  1. {Backslash}\n  2. {Escape_Code}\n\nString_Character {Plain_String_Character | Escape}\n\nString_Literal {Text}\n  1. {Quote}\n  2. {String_Character 0..}\n  3. {Quote}\n\n# Uppercase names are types. Lowercase names are fields.\nName_Character {Uppercase | Lowercase | Digit | Underscore}\nLower_Name_Character {Lowercase | Digit | Underscore}\n\nType_Name {Text}\n  1. {Uppercase}\n  2. {Name_Character 0..}\n\nField_Name {Text}\n  1. {Lowercase}\n  2. {Lower_Name_Character 0..}\n\nName {Type_Name | Field_Name}\n\nField_Step {Text}\n  1. {\".\"}\n  2. {Field_Name}\n\nFilter_Step {Text}                       # e.g. .Big_Line, the items that are one\n  1. {\".\"}\n  2. {Type_Name}\n\nPath_Step {Field_Step | Filter_Step}\n\n# A path starts with a field declared above it, a one-value type, or a\n# record type around this one (Step 3, Context). A field cannot refer\n# to itself, and may use its own record type only as a recursive\n# field. 'val' names the value of the line it appears on.\nPath {Text}                              # e.g. customer.credit_limit\n  1. {Name}\n  2. {Path_Step 0..}\n\n\n# ---------- Step 4: Layout ----------\n\n# Indentation is part of the grammar. Top-level lines start in column\n# one, record bodies and layout positions at two spaces, mapping cases\n# at four.\nIndent_0 {\"\"}\n\nIndent_2 {Text}\n  1. {Space 2}\n\nIndent_4 {Text}\n  1. {Space 4}\n\n# Spacing around operators. Any number of spaces, none included, may\n# surround '&', '|', '->', '+', '-', '*' and the comparisons. Lines\n# are at most 100 characters long (File, Step 7), which bounds every\n# run of spaces. 'print = 1' makes Pad and Gap print as one space, and\n# 'print = 0' drops trailing spaces (Step 9).\nPad {Space 0..} print = 1\nGap {Space 1..} print = 1\nEnd_Spaces {Space 0..} print = 0\n\nTrailing_Comment {Text}\n  1. {Space 1..}\n  2. {\"#\"}\n  3. {Line_Text}\n\n# A line may end in spaces; they mean nothing.\nPlain_End {}\n  spaces {End_Spaces}\n  end {Newline}\n\nNoted_End {}\n  note {Trailing_Comment}\n  end {Newline}\n\nLine_End {Plain_End | Noted_End}\n\n\n# ---------- Step 5: Values and Predicates ----------\n\n# Arithmetic is '+', '-' and '*'. Division does not exist. An expression\n# uses one operator kind only, so no precedence exists.\nTerm {Path | Number_Literal}\n\nSum_Tail {}\n  pad1 {Pad}\n  op {\"+\"}\n  pad2 {Pad}\n  next {Term}\n\nDifference_Tail {}\n  pad1 {Pad}\n  op {\"-\"}\n  pad2 {Pad}\n  next {Term}\n\nProduct_Tail {}\n  pad1 {Pad}\n  op {\"*\"}\n  pad2 {Pad}\n  next {Term}\n\nSum {}\n  first {Term}\n  rest {Sum_Tail 1..}\n\nDifference {}\n  first {Term}\n  rest {Difference_Tail 1..}\n\nProduct {}\n  first {Term}\n  rest {Product_Tail 1..}\n\nArithmetic {Sum | Difference | Product}  # One operator kind per expression\n\nValue {Arithmetic | Range_Literal | Number_Literal | String_Literal | Path}\n\n# Comparisons. There is no '!=', 'not', 'else', 'forall' or 'in'.\nComparison_Symbol {\"=\" | \"<\" | \"<=\" | \">\" | \">=\"}\n\nComparison {}\n  pad1 {Pad}\n  symbol {Comparison_Symbol}\n  pad2 {Pad}\n\n# Properties. Four reserved names describe a line rather than a field,\n# and are compared like any field. 'places = 2' fixes decimal places;\n# without it, places are inferred from the literals on the line.\n# 'mod = 7' makes arithmetic wrap. A value assigned to a field must\n# satisfy the field's ranges, and assigning to fewer decimal places is\n# a compile error, so rounding never happens implicitly.\n#\n# 'cost <= ...' promises a worst-case running time, up to a constant\n# factor, as a size or a single product or sum of sizes: cost <= 1,\n# cost <= lines.qty, cost <= a.qty * b.qty. The size of a tree is named\n# by a field that counts its nodes, 'nodes {Integer} val = 1 +\n# children.nodes.sum', and then cost <= nodes.\n# The checker works out each\n# field's cost from fixed rules: reads, comparisons and arithmetic cost\n# 1 plus their parts; a mapping costs its inputs plus its cases; a fold\n# costs the number of items times the cost per item; a fold over a recursive value costs\n# its size. A list with an upper count counts as a constant, so only\n# open-ended lists are sizes. Costs only add and multiply, so every\n# program is polynomial, and the degree is how deeply folds nest. A\n# written cost is a promise: if the worked-out cost has a term with a\n# higher power of any size, it is a compile error. Without one, the\n# checker reports the cost it works out.\n# 'print = n' gives the number of items a list prints when its value\n# does not say, as for spacing (Step 9); without it, the fewest its\n# count allows.\n\n# unique forbids two rows with equal values in that field.\nFlag {\"unique\"}\n\nPlain_Predicate {}\n  field {Path}\n  op {Comparison}\n  value {Value}\n\nClause {Plain_Predicate | Flag}\n\n# Predicates use only '&' or only '|'. The two connective forms below\n# are separate declarations, so a line that mixes them does not parse.\nAnd_Tail {}\n  pad1 {Pad}\n  op {\"&\"}\n  pad2 {Pad}\n  next {Clause}\n\nAnd_Predicates {}                        # One or more clauses joined by '&'\n  first {Clause}\n  rest {And_Tail 0..}\n\nValue_Tail {}\n  pad1 {Pad}\n  op {\"|\"}\n  pad2 {Pad}\n  next {Value}\n\nMulti_Value {}                           # e.g. 0 | 10..100\n  first {Value}\n  rest {Value_Tail 1..}\n\nChoice_Value {Multi_Value | Value}\n\nChoice_Predicate {}\n  field {Path}\n  op {Comparison}\n  value {Choice_Value}\n\nOr_Tail {}\n  pad1 {Pad}\n  op {\"|\"}\n  pad2 {Pad}\n  next {Choice_Predicate}\n\nOr_Chain {}                              # Two or more predicates joined by '|'\n  first {Choice_Predicate}\n  rest {Or_Tail 1..}\n\nSingle_Choice {}                         # One predicate choosing among values\n  field {Path}\n  op {Comparison}\n  value {Multi_Value}\n\nOr_Predicates {Or_Chain | Single_Choice}\n\nPredicate_Block {And_Predicates | Or_Predicates}\n\nPredicate_Tail {}                        # One or more spaces, then predicates\n  space {Gap}\n  predicates {Predicate_Block}\n\n\n# ---------- Step 6: Bases ----------\n\n# Inside braces, '|' is union.\nUnion_Item {Type_Name | String_Literal | Number_Literal}\n\nUnion_Tail {}\n  pad1 {Pad}\n  op {\"|\"}\n  pad2 {Pad}\n  next {Union_Item}\n\nUnion_Base {}                            # Two or more items\n  first {Union_Item}\n  rest {Union_Tail 1..}\n\nOutput_Union {Union_Base | Union_Item}\n\n# A mapping base is 'inputs -> output'. Inside braces, '&' joins inputs\n# and '->' separates them from the output.\n# Inputs are fields declared above the mapping, of a finite union type\n# or a numeric type. Text and sequence inputs are not allowed.\n# A mapping has one or two inputs, never more. With at most two inputs,\n# k cases give at most 2k boundaries per input, so at most\n# (2k + 1) x (2k + 1) cells to check: every mapping is a\n# two-dimensional table. Logic over more inputs is written as a chain,\n# where one mapping's output field is an input of the next.\nInput_Tail {}\n  pad1 {Pad}\n  op {\"&\"}\n  pad2 {Pad}\n  next {Field_Name}\n\nArrow {}\n  pad1 {Pad}\n  op {\"->\"}\n  pad2 {Pad}\n\nSingle_Input_Map {}                      # One input, union output allowed\n  input {Field_Name}\n  arrow {Arrow}\n  output {Output_Union}\n\nTwo_Input_Map {}                         # Exactly two inputs, single output item\n  first {Field_Name}\n  second {Input_Tail}\n  arrow {Arrow}\n  output {Union_Item}\n\nMapping_Base {Single_Input_Map | Two_Input_Map}\n\n# Braces never nest, and there are no parentheses or local scopes.\n# A count after a single item makes a list (Step 3).\nCount {Range_Literal | Natural}\n\nCount_Tail {}\n  space {Gap}\n  count {Count}\n\nItem_Box {}\n  open {\"{\"}\n  item {Union_Item}\n  count {Count_Tail 0..1}\n  close {\"}\"}\n\nUnion_Box {}\n  open {\"{\"}\n  items {Union_Base}\n  close {\"}\"}\n\nMapping_Box {}\n  open {\"{\"}\n  map {Mapping_Base}\n  close {\"}\"}\n\nEmpty_Box {\"{}\"}\n\n# Intersection. Between type names, '&' inside braces joins types: a\n# text inhabits {A & B} when it matches A and matches B over exactly\n# the same span. It is a conjunction, so it stays positive. Its value\n# and fields come from the first type, and only the first type's\n# readings count as ways of matching; the other types only constrain.\nIntersection_Tail {}\n  pad1 {Pad}\n  op {\"&\"}\n  pad2 {Pad}\n  next {Type_Name}\n\nIntersection_Base {}                     # Two or more type names\n  first {Type_Name}\n  rest {Intersection_Tail 1..}\n\nIntersection_Box {}\n  open {\"{\"}\n  items {Intersection_Base}\n  close {\"}\"}\n\n\n# ---------- Step 7: Lines, Blocks and Files ----------\n\n# Line forms. One or more spaces separate a name from its base, so\n# bases and predicates can be lined up in columns.\n# A refinement line has a single-item base and optional\n# predicates. A union line has two or more items and no predicates, so\n# predicates on a union do not parse. A mapping line has a mapping base\n# and no predicates.\n# A refinement of a record is a filter: its predicates may name the\n# record's fields, e.g. 'Big_Order {Order} total >= 1000.00'.\nRefinement_Line {}                       # Single-item base, optional predicates\n  indent {Indent_0}\n  name {Type_Name}\n  space {Gap}\n  base {Item_Box}\n  tail {Predicate_Tail 0..1}\n  finish {Line_End}\n\nUnion_Line {}                            # Union base, no predicates\n  indent {Indent_0}\n  name {Type_Name}\n  space {Gap}\n  base {Union_Box}\n  finish {Line_End}\n\n# An intersection line has an intersection base and no predicates.\nIntersection_Line {}                     # e.g. Short_Code {Code & Short_Text}\n  indent {Indent_0}\n  name {Type_Name}\n  space {Gap}\n  base {Intersection_Box}\n  finish {Line_End}\n\nRecord_Header {}\n  indent {Indent_0}\n  name {Type_Name}\n  space {Gap}\n  base {Empty_Box}\n  finish {Line_End}\n\nField_Line {}\n  indent {Indent_2}\n  name {Field_Name}\n  space {Gap}\n  base {Item_Box}\n  tail {Predicate_Tail 0..1}\n  finish {Line_End}\n\nUnion_Field_Line {}\n  indent {Indent_2}\n  name {Field_Name}\n  space {Gap}\n  base {Union_Box}\n  finish {Line_End}\n\nMapping_Field_Line {}\n  indent {Indent_2}\n  name {Field_Name}\n  space {Gap}\n  base {Mapping_Box}\n  finish {Line_End}\n\n# A case is '| {output} predicates', four spaces in. The '| ' marker is\n# a literal at a fixed position, not an operator; one or more spaces\n# follow the case box.\n# Each output is a singleton: a literal, or a type with exactly one\n# inhabitant such as True. A case predicate compares one input to a\n# literal or a range, with no arithmetic and no other fields, so every\n# case is a box: one interval or literal set per input.\n# Left side: the cases cover every input combination. Right side: every\n# value of the output type is produced by some case. Cases are disjoint.\n# All three checks are decidable by splitting each input at the case\n# boundaries. A missing combination is a compile error, not FALSE.\nCase_Line {}\n  indent {Indent_4}\n  marker {\"| \"}\n  output {Item_Box}\n  space {Gap}\n  predicates {Predicate_Block}\n  finish {Line_End}\n\nPosition_Line {}\n  indent {Indent_2}\n  number {Natural}\n  dot {\". \"}\n  base {Item_Box}\n  tail {Predicate_Tail 0..1}\n  finish {Line_End}\n\nUnion_Position_Line {}\n  indent {Indent_2}\n  number {Natural}\n  dot {\". \"}\n  base {Union_Box}\n  finish {Line_End}\n\n# Comments start with '#'. A top-level comment starts in column one; a\n# comment inside a record body starts at two spaces.\nComment_Line {}                          # Top level, column one\n  hash {\"#\"}\n  text {Line_Text}\n  end {Newline}\n\nBody_Comment_Line {}                     # Inside a record body\n  indent {Indent_2}\n  hash {\"#\"}\n  text {Line_Text}\n  end {Newline}\n\nBlank_Line {}                            # Empty, or only spaces\n  spaces {End_Spaces}\n  end {Newline}\n\n# Blocks. A mapped field owns the cases that follow it. A record owns\n# its body lines; blank lines may separate them, but blank lines after\n# the last body line belong to the top level. A layout owns its\n# positions. A block ends at the first line that cannot belong to it.\nMapped_Field {}\n  head {Mapping_Field_Line}\n  cases {Case_Line 1..}\n\nBody_Content {Field_Line | Union_Field_Line | Mapped_Field | Body_Comment_Line}\n\nBody_Item {}                             # Blank lines only before more body\n  gap {Blank_Line 0..}\n  line {Body_Content}\n\nRecord_Block {}\n  head {Record_Header}\n  body {Body_Item 0..}\n\nPosition_Content {Position_Line | Union_Position_Line}\n\nLayout_Block {}\n  head {Refinement_Line}\n  positions {Position_Content 1..}\n\nLine_Block {Refinement_Line | Union_Line | Intersection_Line}\nBlock {Record_Block | Layout_Block | Line_Block | Comment_Line | Blank_Line}\n\nBlocks {Block 0..}\n\n# A physical line: at most 100 characters, then a newline.\nShort_Line {}\n  chars {Line_Character 0..100}\n  end {Newline}\n\nShort_Lines {Short_Line 0..}\n\n# A file is its blocks, read as lines of at most 100 characters each.\n# The last line of a file may omit its newline: a file that does not end\n# in a newline is read as if it did. This is the one exception to the\n# rule that every line ends in Line_End.\nFile {Blocks & Short_Lines}\n\n\n# ---------- Step 8: Reference Gate ----------\n\n# Evaluation. Fields are evaluated lazily, each at most once.\n# A mapping keeps a candidate set, starting with all cases. For each\n# input in the order listed: if no remaining candidate mentions it\n# (names it in a predicate), stop. Otherwise evaluate it. If it is\n# INVALID, the result is INVALID. Otherwise drop every candidate that\n# constrains it and fails. Coverage and disjointness leave exactly one\n# candidate, whose output is the result.\n#\n# Three different outcomes: a failed rule makes its field INVALID and\n# rejects the record; a mapping whose output is False produces an\n# ordinary value; a mapping with an INVALID input produces INVALID.\n#\n# Here, when left is FALSE no remaining case mentions right, so right is\n# never evaluated. This matters only when right is computed; stored data\n# has nothing to defer.\nAnd_Gate {}                              # Short-circuit AND over two facts\n  left {Fact}\n  right {Fact}\n  out {left & right -> Fact}\n    | {True} left = True & right = True\n    | {False} left = True & right = False\n    | {False} left = False               # No remaining case mentions right\n\n\n# ---------- Step 9: Printing ----------\n\n# Printing is parsing run backwards: given a type and a value, it gives\n# the one canonical text that parses back to that value.\n# - A literal prints as itself; a type with one inhabitant, as that.\n# - Integer prints its exact value. Decimal prints with the places of\n#   its field's places property, padding with zeros; if the value needs\n#   more places, printing fails rather than round.\n# - A conversion layout prints its value in its digit positions,\n#   padded with leading zeros to the fewest digits its count allows.\n# - A union prints as the first item, in order, that prints the value.\n# - A record prints its stored fields in declaration order. A field the\n#   value leaves out prints as its default: a literal, a type with one\n#   inhabitant, or a sequence of its print count (or its fewest items).\n# - A sequence prints its items in order; a text value prints as is.\n# - An intersection prints as its first type.\n# The printed text must then parse back to the given value in exactly\n# one way; if not, printing fails and names the value. So printing\n# never returns a text that means something else.\n#\n# One rule covers data and code: data prints its values, and a type\n# prints its code, since a declaration is itself a text of language.sheaf's\n# types. Printing a declaration gives its canonical form with the comment\n# lines directly above it.\n#\n# Formatting a file is printing it from its own parse: every sequence\n# with a print property is reset to that many items. So 'a&b' formats\n# as 'a & b', and trailing spaces are dropped.\n\n\n# ---------- Step 10: Projects ----------\n\n# A project is a list of texts, each with a name such as\n# 'shop/dates/dates.sheaf'. It may be stored as folders and files, in\n# memory, or as one text in which each entry is a name line and then\n# the file. No line of a file starts with '=', so a name line can only\n# start the next entry. The part of a name before its last '/' is its\n# group; the groups form a tree.\n#\n# Scope. There are no imports. A text sees:\n# - language.sheaf and the standard library;\n# - every text in its own group and in every group above it;\n# - the front text of each group directly below a group it sees: the\n#   text named after that group, so 'shop/dates/dates.sheaf' counts as a\n#   text of 'shop'. The other texts of 'shop/dates' stay private to it.\n# A name declared in a text means that declaration within the text.\n# Otherwise it must be declared by exactly one text the text sees; two\n# is an error naming both. Texts may use each other's types, but not\n# in a cycle; within a text a name refers only to declarations above.\nEntry_Name {}                            # e.g. \"=== shop/dates/dates.sheaf\"\n  mark {\"=== \"}\n  path {Line_Text}\n  end {Newline}\n\nEntry {}\n  name {Entry_Name}\n  file {File}\n\nProject {Entry 0..}","/priv/stdlib/bits.sheaf":"# Bits and bytes.\n\nBinary_Digit {\"0\" | \"1\"}\n\n# A bit as a number, 0 or 1.\nBit {Integer} val = 0..1\n  1. {Binary_Digit}\n\n# A byte written as eight bits, most significant first, e.g. \"01000001\" (65).\nByte {}\n  b7 {Bit}\n  b6 {Bit}\n  b5 {Bit}\n  b4 {Bit}\n  b3 {Bit}\n  b2 {Bit}\n  b1 {Bit}\n  b0 {Bit}\n  w7 {Integer} val = b7 * 128\n  w6 {Integer} val = b6 * 64\n  w5 {Integer} val = b5 * 32\n  w4 {Integer} val = b4 * 16\n  w3 {Integer} val = b3 * 8\n  w2 {Integer} val = b2 * 4\n  w1 {Integer} val = b1 * 2\n  value {Integer} val = w7 + w6 + w5 + w4 + w3 + w2 + w1 + b0\n  at_least_zero {Fact} value >= 0\n  fits_in_a_byte {Fact} value <= 255\n\n# Exclusive or of two bits, as a checked table.\nXor_Bit {}\n  a {Binary_Digit}\n  b {Binary_Digit}\n  out {a & b -> Binary_Digit}\n    | {\"0\"} a = \"0\" & b = \"0\"\n    | {\"1\"} a = \"0\" & b = \"1\"\n    | {\"1\"} a = \"1\" & b = \"0\"\n    | {\"0\"} a = \"1\" & b = \"1\"\n","/priv/stdlib/dates.sheaf":"# Calendar dates, \"2026-10-15\", valid in the Gregorian calendar.\n# Every step is a checked table; leap years use 'mod' arithmetic.\n\nYear {Integer}\n  1. {Digit 4}\n\nMonth {Integer} val = 1..12\n  1. {Digit 2}\n\nDay_Of_Month {Integer} val = 1..31\n  1. {Digit 2}\n\nMonth_Length {\"31\" | \"30\" | \"feb\"}\nDay_Fit {\"yes\" | \"no\" | \"leap_day\"}\n\nDate {}\n  year {Year}\n  dash1 {\"-\"}\n  month {Month}\n  dash2 {\"-\"}\n  day {Day_Of_Month}\n  r4 {Integer} val = year * 1 & mod = 4 & val = 0..3\n  r100 {Integer} val = year * 1 & mod = 100 & val = 0..99\n  r400 {Integer} val = year * 1 & mod = 400 & val = 0..399\n  length {month -> Month_Length}\n    | {\"31\"} month = 1 | 3 | 5 | 7 | 8 | 10 | 12\n    | {\"30\"} month = 4 | 6 | 9 | 11\n    | {\"feb\"} month = 2\n  fit {length & day -> Day_Fit}\n    | {\"yes\"} length = \"31\"\n    | {\"yes\"} length = \"30\" & day = 1..30\n    | {\"no\"} length = \"30\" & day = 31\n    | {\"yes\"} length = \"feb\" & day = 1..28\n    | {\"leap_day\"} length = \"feb\" & day = 29\n    | {\"no\"} length = \"feb\" & day = 30..31\n  by_four {r4 & r100 -> Fact}\n    | {True} r4 = 0 & r100 = 1..99\n    | {False} r4 = 0 & r100 = 0\n    | {False} r4 = 1..3\n  leap {by_four & r400 -> Fact}\n    | {True} by_four = True\n    | {True} by_four = False & r400 = 0\n    | {False} by_four = False & r400 = 1..399\n  valid {fit & leap -> Fact}\n    | {True} fit = \"yes\"\n    | {False} fit = \"no\"\n    | {True} fit = \"leap_day\" & leap = True\n    | {False} fit = \"leap_day\" & leap = False\n  real_date {True} valid = True\n","/priv/stdlib/logic.sheaf":"# Logic gates over Fact, each a checked truth table.\n# (And_Gate is in language.sheaf itself, Step 8.)\n\nNot_Gate {}\n  x {Fact}\n  out {x -> Fact}\n    | {False} x = True\n    | {True} x = False\n\nOr_Gate {}\n  left {Fact}\n  right {Fact}\n  out {left & right -> Fact}\n    | {True} left = True\n    | {True} left = False & right = True\n    | {False} left = False & right = False\n\nXor_Gate {}\n  left {Fact}\n  right {Fact}\n  out {left & right -> Fact}\n    | {False} left = True & right = True\n    | {True} left = True & right = False\n    | {True} left = False & right = True\n    | {False} left = False & right = False\n\nImplies_Gate {}\n  left {Fact}\n  right {Fact}\n  out {left & right -> Fact}\n    | {True} left = False\n    | {True} left = True & right = True\n    | {False} left = True & right = False\n","/priv/stdlib/text.sheaf":"# Common text shapes.\n\n# A lowercase identifier: a letter, then letters, digits or '_'.\nIdentifier {Text}\n  1. {Lowercase}\n  2. {Lower_Name_Character 0..}\n\n# A word of letters.\nLetter {Uppercase | Lowercase}\nWord {Letter 1..}\n\n# A domain name label and an email address, e.g. \"ana@mail.example\".\nHost_Character {Lowercase | Digit | \"-\"}\nHost_Label {Host_Character 1..63}\nDot_Label {Text}\n  1. {\".\"}\n  2. {Host_Label}\n\nEmail_Address {Text}\n  1. {Identifier}\n  2. {\"@\"}\n  3. {Host_Label}\n  4. {Dot_Label 1..}\n\n# One line of text and a block of lines.\nText_Line {}\n  body {Line_Text}\n  end {Newline}\n\nParagraph {}\n  lines {Text_Line 1..}\n  line_count {Integer} val = lines.qty\n","/examples/book/book.sheaf":"# Orders that belong to customers. A path that starts with a type name\n# reaches the nearest record of that type around this one: inside an\n# Order, 'Order.customer' is that order's customer, and 'Book.customers'\n# the customers of the book holding it. So \"this order belongs to that\n# customer\" is a filter, and \"there is one\" is a qty.\nCustomer_Code {Text}\n  1. {\"C\"}\n  2. {Digit 3}\n\nCustomer {}\n  code {Customer_Code} unique\n  gap {\" \"}\n  name {Line_Text}\n  nl {Newline}\n\nIts_Customer {Customer} code = Order.customer\n\nOrder {}\n  number {Natural}\n  gap {\" \"}\n  customer {Customer_Code}\n  nl {Newline}\n  known {True} Book.customers.Its_Customer.qty = 1\n\nBook {}\n  customers {Customer 1..}\n  rule {\"---\"}\n  nl {Newline}\n  orders {Order 1..}\n","/examples/book/book.txt":"C001 Ada Lovelace\nC002 Alan Turing\n---\n1041 C001\n1042 C002\n1043 C001\n","/examples/book/book_unknown.txt":"C001 Ada Lovelace\nC002 Alan Turing\n---\n1041 C001\n1042 C009\n","/examples/cycle/a.sheaf":"# a.sheaf and b.sheaf use each other's types, which is a cycle: an error.\nA_Type {B_Type}\n","/examples/cycle/b.sheaf":"B_Type {\"b\" | A_Type}\n","/examples/meeting/meeting.sheaf":"# The standard library is in every file's scope: Date and Identifier need no import.\nMeeting {}\n  on {Date}\n  gap {\" \"}\n  room {Identifier}\n","/examples/mistakes/geometric.sheaf":"# Each declaration below falls outside geometric logic or would let the\n# prover claim something false; `check` explains each (docs/geometric.md).\n\n# 1. A divisor that may be zero. 'mod' divides, so it needs a guard: a\n#    positive number written out.\nWrap_By_Field {}\n  hour {Integer} val = 0..23\n  m {Integer} val = 0..3\n  later {Integer} val = hour + 5 & mod = m\n\n# 2. A divisor that is not positive.\nWrap_Negative {}\n  hour {Integer} val = 0..23\n  later {Integer} val = hour + 5 & mod = -3\n\n# 3. A claim about wrapped arithmetic. 'later' is not 'hour + 5': at hour 20\n#    it is 1. The prover bounds a wrapped field by [0, m) and cannot prove it.\nClock {}\n  hour {Integer} val = 0..23\n  later {Integer} val = hour + 5 & mod = 24\n  ahead {Fact} later >= hour\n","/examples/mistakes/mistakes.sheaf":"# Every declaration below breaks one rule of the spec; `check` explains each.\n\n# 1. A type used before it is declared.\nEarly {Later}\nLater {\"x\"}\n\n# 2. A reserved word as a field name.\nBad_Name {}\n  qty {Integer}\n\n# 3. A field that names a field below it.\nWrong_Order {}\n  a {Integer} val = b + 1\n  b {Integer}\n\n# 4. A list used outside a fold.\nBasket {}\n  items {Digit 0..}\n  first {Integer} val = items\n\n# 5. A mapping that misses a combination and overlaps.\nGrade {}\n  score {Integer} val = 0..100\n  pass {score -> Fact}\n    | {True} score >= 50\n    | {False} score < 40\n    | {False} score = 45..49\n    | {True} score = 49..60\n\n# 6. A claim the ranges cannot settle.\nPair {}\n  a {Integer} val = 0..10\n  b {Integer} val = 5..20\n  diff {Integer} val = b - a\n  positive {Fact} diff > 0\n\n# 7. A product of two reads through a recursive field.\nTower {}\n  h {Integer} val = 1..9\n  rest {Tower 0..1}\n  blowup {Integer} val = rest.h * rest.h\n\n# 8. Rounding would be needed.\nPrice {}\n  amount {Decimal} places = 2\n  tax {Decimal} val = amount * 0.075 & places = 2\n\n# 9. A broken cost promise.\nPairs {}\n  xs {Digit 0..}\n  n {Integer} val = xs.qty & cost <= 1\n\n# 10. Arithmetic on text.\nLabel {}\n  code {\"5\"}\n  twice {Integer} val = code * 2\n\n# 11. Reaching a record that is not around.\nNote {}\n  text {\"n\"}\n  filled {True} Basket.items.qty >= 1\n","/examples/orders/order_1042.txt":"order 1042\nABC-0001 x3 @ 19.99\nXYZ-0420 x10 @ 120.00\n","/examples/orders/orders.sheaf":"# Orders: stored and computed fields, folds, a mapping, a rule and a filter.\n# Check:  node bin/sheaf.mjs check examples/orders/orders.sheaf\n# Run:    node bin/sheaf.mjs run examples/orders/orders.sheaf Order examples/orders/order_1042.txt\n\n# A stock-keeping unit: three capital letters, a dash, four digits.\nSku {Text}\n  1. {Uppercase 3}\n  2. {\"-\"}\n  3. {Digit 4}\n\n# One order line, e.g. \"ABC-0001 x3 @ 19.99\".\nLine {}\n  sku {Sku}\n  times {\" x\"}\n  units {Integer} val = 1..1000\n  at {\" @ \"}\n  price {Decimal} places = 2 & val >= 0.00\n  end {Newline}\n  line_total {Decimal} val = units * price & places = 2\n  big {line_total -> Fact}\n    | {True} line_total >= 500.00\n    | {False} line_total < 500.00\n\n# A line worth 500.00 or more. Used below as a filter on a list.\nBig_Line {Line} line_total >= 500.00\n\n# An order: a header line, then one or more lines.\nOrder {}\n  head {\"order \"}\n  number {Natural}\n  nl {Newline}\n  lines {Line 1..}\n  total {Decimal} val = lines.line_total.sum & cost <= lines.qty\n  big_lines {Integer} val = lines.Big_Line.qty\n  big_total {Decimal} val = lines.Big_Line.line_total.sum & places = 2\n  line_count {Integer} val = lines.qty\n  not_all_big {True} big_lines <= line_count\n\n# A refinement of a record is a filter, here on whole orders.\nBig_Order {Order} total >= 1000.00\n","/examples/proofs/proofs.sheaf":"# Claims: facts the checker proves for every value, by one fixed method.\n\n# The window always has width at least 10, whatever the stored values are,\n# because their ranges do not overlap.\nWindow {}\n  start {Integer} val = 0..10\n  dots {\"..\"}\n  finish {Integer} val = 20..30\n  width {Integer} val = finish - start\n  wide_enough {Fact} width >= 10\n\n# A chain of digits written \"+3+4+5\". Its total is never negative:\n# proved by induction, assuming the claim for the rest of the chain.\nChain {}\n  plus {\"+\"}\n  x {Integer} val = 0..9\n  rest {Chain 0..1}\n  total {Integer} val = x + rest.total\n  links {Integer} val = rest.qty + rest.links\n  nonnegative {Fact} total >= 0\n\n# A two-input mapping: a table over a numeric range and a finite set.\nZone {\"A\" | \"B\"}\nTier {\"light\" | \"heavy\" | \"far\"}\n\nParcel {}\n  weight {Integer} val = 0..50\n  space {\" \"}\n  zone {Zone}\n  tier {weight & zone -> Tier}\n    | {\"light\"} weight = 0..5 & zone = \"A\"\n    | {\"heavy\"} weight = 6..50 & zone = \"A\"\n    | {\"far\"} zone = \"B\"\n","/examples/shop/catalog/catalog.sheaf":"# The front file of catalog/: Item is seen outside this folder.\nItem {}\n  code {Code}\n  gap {\" \"}\n  price {Money}\n","/examples/shop/catalog/codes.sheaf":"# Private to catalog/: only files in this folder see Code.\nCode {Text}\n  1. {Uppercase 3}\n  2. {Digit 3}\n","/examples/shop/money.sheaf":"# Money, seen by every file in shop/ and below.\nMoney {Decimal} places = 2 & val >= 0.00\n","/examples/shop/orders/orders.sheaf":"# Sees Money (shop/), Item (catalog/'s front file) and Date (the standard library).\nOrder_Line {}\n  item {Item}\n  nl {Newline}\n\nOrder {}\n  on {Date}\n  nl {Newline}\n  items {Order_Line 1..}\n  total {Decimal} val = items.item.price.sum & places = 2\n","/examples/shop/orders/peek.sheaf":"# Code is private to catalog/, so this file cannot use it.\nPeek {Code}\n","/examples/temperature/temperature.sheaf":"# A temperature in whole degrees, like \"-12\" or \"31\".\nTemperature {Integer} val = -90..60\n  1. {\"-\" 0..1}                          # a \"-\" position makes the number negative\n  2. {Digit 1..2}\n\nReading {}\n  where {Lowercase 1..}\n  gap {\" \"}\n  degrees {Temperature}\n  freezing {degrees -> Fact}\n    | {True} degrees <= 0\n    | {False} degrees > 0\n"};</script>
 <script>(function(){
 const __defs = {}, __cache = {};
 function __node(n){ throw new Error('node module ' + n + ' is not available in the browser'); }
@@ -24287,15 +24287,15 @@ function cost_path(c, d, p, prefix, seen) {
       "let_assert",
       FILEPATH,
       "sheaf/check",
-      2253,
+      2289,
       "cost_path",
       "Pattern match failed, no pattern matched the value.",
       {
         value: p,
-        start: 63668,
-        end: 63697,
-        pattern_start: 63679,
-        pattern_end: 63693
+        start: 64910,
+        end: 64939,
+        pattern_start: 64921,
+        pattern_end: 64935
       }
     )
   } else {
@@ -24891,15 +24891,15 @@ function imul(x, y) {
       "let_assert",
       FILEPATH,
       "sheaf/check",
-      1262,
+      1286,
       "imul",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $,
-        start: 33764,
-        end: 33805,
-        pattern_start: 33775,
-        pattern_end: 33781
+        start: 34546,
+        end: 34587,
+        pattern_start: 34557,
+        pattern_end: 34563
       }
     )
   }
@@ -24912,15 +24912,15 @@ function imul(x, y) {
       "let_assert",
       FILEPATH,
       "sheaf/check",
-      1263,
+      1287,
       "imul",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $1,
-        start: 33808,
-        end: 33849,
-        pattern_start: 33819,
-        pattern_end: 33825
+        start: 34590,
+        end: 34631,
+        pattern_start: 34601,
+        pattern_end: 34607
       }
     )
   }
@@ -24929,6 +24929,71 @@ function imul(x, y) {
 
 function d0() {
   return new Fin($decimal.zero());
+}
+
+function integer_type(loop$c, loop$it) {
+  while (true) {
+    let c = loop$c;
+    let it = loop$it;
+    if (it instanceof TypeItem) {
+      let $ = it.name;
+      if ($ === "Integer") {
+        return true;
+      } else if ($ === "Integer_Literal") {
+        return true;
+      } else {
+        let name = $;
+        let $1 = $dict.get(c.decls, name);
+        if ($1 instanceof Ok) {
+          let dd = $1[0];
+          let $2 = dd.kind;
+          if ($2 instanceof $model.Union) {
+            return $list.all(dd.items, (i) => { return integer_type(c, i); });
+          } else if ($2 instanceof $model.Refine) {
+            loop$c = c;
+            loop$it = $model.decl_base(dd);
+          } else if ($2 instanceof $model.Layout) {
+            return isEqual(
+              dd.items,
+              listPrepend(new TypeItem("Integer"), $List$Empty$const)
+            );
+          } else if ($2 instanceof $model.Record) {
+            return false;
+          } else {
+            loop$c = c;
+            loop$it = $model.decl_base(dd);
+          }
+        } else {
+          return false;
+        }
+      }
+    } else if (it instanceof StrItem) {
+      return false;
+    } else {
+      let v = it.value;
+      return $decimal.is_integral(v);
+    }
+  }
+}
+
+/**
+ * The written divisor of a field's 'mod', when it has one.
+ * 
+ * @ignore
+ */
+function mod_of(f) {
+  let $ = $model.setting(f.preds, "mod");
+  if ($ instanceof Some) {
+    let $1 = $[0];
+    if ($1 instanceof VNum) {
+      let n = $1.num;
+      return new Some(n.value);
+    } else {
+      return Option$None$const;
+    }
+  } else {
+    return Option$None$const;
+  }
 }
 
 function pow10_minus1(n) {
@@ -24941,15 +25006,15 @@ function pow10_minus1(n) {
       "let_assert",
       FILEPATH,
       "sheaf/check",
-      385,
+      409,
       "pow10_minus1",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $,
-        start: 9824,
-        end: 9879,
-        pattern_start: 9835,
-        pattern_end: 9840
+        start: 10606,
+        end: 10661,
+        pattern_start: 10617,
+        pattern_end: 10622
       }
     )
   }
@@ -25352,7 +25417,24 @@ function field_bounds(c, fl) {
   let $1 = type_bounds(c, $model.base(fl), $List$Empty$const);
   let tl = $1[0];
   let th = $1[1];
-  return [bmax(lo, tl), bmin(hi, th)];
+  let $2 = [bmax(lo, tl), bmin(hi, th)];
+  let lo$1 = $2[0];
+  let hi$1 = $2[1];
+  let $3 = mod_of(fl);
+  if ($3 instanceof Some) {
+    let m = $3[0];
+    let _block;
+    let $4 = integer_type(c, $model.base(fl)) && $decimal.is_integral(m);
+    if ($4) {
+      _block = $decimal.sub(m, $decimal.from_int(1));
+    } else {
+      _block = m;
+    }
+    let top = _block;
+    return [bmax(lo$1, d0()), bmin(hi$1, new Fin(top))];
+  } else {
+    return [lo$1, hi$1];
+  }
 }
 
 function claim_parts(claim) {
@@ -25365,15 +25447,15 @@ function claim_parts(claim) {
       "let_assert",
       FILEPATH,
       "sheaf/check",
-      1991,
+      2027,
       "claim_parts",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $,
-        start: 56284,
-        end: 56340,
-        pattern_start: 56295,
-        pattern_end: 56312
+        start: 57526,
+        end: 57582,
+        pattern_start: 57537,
+        pattern_end: 57554
       }
     )
   } else if ($.tail instanceof $Empty) {
@@ -25387,15 +25469,15 @@ function claim_parts(claim) {
         "let_assert",
         FILEPATH,
         "sheaf/check",
-        1991,
+        2027,
         "claim_parts",
         "Pattern match failed, no pattern matched the value.",
         {
           value: $,
-          start: 56284,
-          end: 56340,
-          pattern_start: 56295,
-          pattern_end: 56312
+          start: 57526,
+          end: 57582,
+          pattern_start: 57537,
+          pattern_end: 57554
         }
       )
     }
@@ -25404,15 +25486,15 @@ function claim_parts(claim) {
       "let_assert",
       FILEPATH,
       "sheaf/check",
-      1991,
+      2027,
       "claim_parts",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $,
-        start: 56284,
-        end: 56340,
-        pattern_start: 56295,
-        pattern_end: 56312
+        start: 57526,
+        end: 57582,
+        pattern_start: 57537,
+        pattern_end: 57554
       }
     )
   }
@@ -25472,15 +25554,15 @@ function atom_bounds(c, d, atom, claim) {
       "let_assert",
       FILEPATH,
       "sheaf/check",
-      2018,
+      2054,
       "atom_bounds",
       "Pattern match failed, no pattern matched the value.",
       {
         value: parts,
-        start: 57098,
-        end: 57127,
-        pattern_start: 57109,
-        pattern_end: 57119
+        start: 58340,
+        end: 58369,
+        pattern_start: 58351,
+        pattern_end: 58361
       }
     )
   } else {
@@ -25499,15 +25581,15 @@ function atom_bounds(c, d, atom, claim) {
           "let_assert",
           FILEPATH,
           "sheaf/check",
-          2025,
+          2061,
           "atom_bounds",
           "Pattern match failed, no pattern matched the value.",
           {
             value: $1,
-            start: 57283,
-            end: 57321,
-            pattern_start: 57294,
-            pattern_end: 57302
+            start: 58525,
+            end: 58563,
+            pattern_start: 58536,
+            pattern_end: 58544
           }
         )
       }
@@ -25648,15 +25730,15 @@ function atom_bounds(c, d, atom, claim) {
           "let_assert",
           FILEPATH,
           "sheaf/check",
-          2025,
+          2061,
           "atom_bounds",
           "Pattern match failed, no pattern matched the value.",
           {
             value: $1,
-            start: 57283,
-            end: 57321,
-            pattern_start: 57294,
-            pattern_end: 57302
+            start: 58525,
+            end: 58563,
+            pattern_start: 58536,
+            pattern_end: 58544
           }
         )
       }
@@ -25897,15 +25979,15 @@ function expand(loop$d, loop$v, loop$depth) {
           "let_assert",
           FILEPATH,
           "sheaf/check",
-          1972,
+          2006,
           "expand",
           "Pattern match failed, no pattern matched the value.",
           {
             value: parts,
-            start: 55725,
-            end: 55754,
-            pattern_start: 55736,
-            pattern_end: 55746
+            start: 56796,
+            end: 56825,
+            pattern_start: 56807,
+            pattern_end: 56817
           }
         )
       } else {
@@ -25929,7 +26011,12 @@ function expand(loop$d, loop$v, loop$depth) {
           let fl = $1[0];
           let $2 = fl.role;
           let $3 = $model.definition(fl);
-          if ($3 instanceof Some && $2 instanceof $model.Computed) {
+          let $4 = $model.setting(fl.preds, "mod");
+          if (
+            $3 instanceof Some &&
+            $4 instanceof None &&
+            $2 instanceof $model.Computed
+          ) {
             let def = $3[0];
             loop$d = d;
             loop$v = def;
@@ -25976,15 +26063,15 @@ function prove_claim(c, d, f) {
       "let_assert",
       FILEPATH,
       "sheaf/check",
-      2118,
+      2154,
       "prove_claim",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $,
-        start: 60310,
-        end: 60362,
-        pattern_start: 60321,
-        pattern_end: 60338
+        start: 61552,
+        end: 61604,
+        pattern_start: 61563,
+        pattern_end: 61580
       }
     )
   } else if ($.tail instanceof $Empty) {
@@ -25998,15 +26085,15 @@ function prove_claim(c, d, f) {
         "let_assert",
         FILEPATH,
         "sheaf/check",
-        2118,
+        2154,
         "prove_claim",
         "Pattern match failed, no pattern matched the value.",
         {
           value: $,
-          start: 60310,
-          end: 60362,
-          pattern_start: 60321,
-          pattern_end: 60338
+          start: 61552,
+          end: 61604,
+          pattern_start: 61563,
+          pattern_end: 61580
         }
       )
     }
@@ -26015,15 +26102,15 @@ function prove_claim(c, d, f) {
       "let_assert",
       FILEPATH,
       "sheaf/check",
-      2118,
+      2154,
       "prove_claim",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $,
-        start: 60310,
-        end: 60362,
-        pattern_start: 60321,
-        pattern_end: 60338
+        start: 61552,
+        end: 61604,
+        pattern_start: 61563,
+        pattern_end: 61580
       }
     )
   }
@@ -26400,15 +26487,15 @@ function check_numbers(c, d, f) {
           "let_assert",
           FILEPATH,
           "sheaf/check",
-          1092,
+          1116,
           "check_numbers",
           "Pattern match failed, no pattern matched the value.",
           {
             value: cl,
-            start: 29605,
-            end: 29639,
-            pattern_start: 29616,
-            pattern_end: 29634
+            start: 30387,
+            end: 30421,
+            pattern_start: 30398,
+            pattern_end: 30416
           }
         )
       }
@@ -26675,15 +26762,15 @@ function sample(dom, boxes, inp) {
       "let_assert",
       FILEPATH,
       "sheaf/check",
-      1643,
+      1677,
       "sample",
       "Pattern match failed, no pattern matched the value.",
       {
         value: dom,
-        start: 46366,
-        end: 46407,
-        pattern_start: 46377,
-        pattern_end: 46401
+        start: 47437,
+        end: 47478,
+        pattern_start: 47448,
+        pattern_end: 47472
       }
     )
   }
@@ -26847,15 +26934,15 @@ function case_box(c, d, f, cs, inputs, domains) {
                     "let_assert",
                     FILEPATH,
                     "sheaf/check",
-                    1503,
+                    1537,
                     "case_box",
                     "Pattern match failed, no pattern matched the value.",
                     {
                       value: $4,
-                      start: 41209,
-                      end: 41253,
-                      pattern_start: 41220,
-                      pattern_end: 41227
+                      start: 42280,
+                      end: 42324,
+                      pattern_start: 42291,
+                      pattern_end: 42298
                     }
                   )
                 }
@@ -27114,51 +27201,6 @@ function type_ok(c, d, name, line, recursive_ok) {
   }
 }
 
-function integer_type(loop$c, loop$it) {
-  while (true) {
-    let c = loop$c;
-    let it = loop$it;
-    if (it instanceof TypeItem) {
-      let $ = it.name;
-      if ($ === "Integer") {
-        return true;
-      } else if ($ === "Integer_Literal") {
-        return true;
-      } else {
-        let name = $;
-        let $1 = $dict.get(c.decls, name);
-        if ($1 instanceof Ok) {
-          let dd = $1[0];
-          let $2 = dd.kind;
-          if ($2 instanceof $model.Union) {
-            return $list.all(dd.items, (i) => { return integer_type(c, i); });
-          } else if ($2 instanceof $model.Refine) {
-            loop$c = c;
-            loop$it = $model.decl_base(dd);
-          } else if ($2 instanceof $model.Layout) {
-            return isEqual(
-              dd.items,
-              listPrepend(new TypeItem("Integer"), $List$Empty$const)
-            );
-          } else if ($2 instanceof $model.Record) {
-            return false;
-          } else {
-            loop$c = c;
-            loop$it = $model.decl_base(dd);
-          }
-        } else {
-          return false;
-        }
-      }
-    } else if (it instanceof StrItem) {
-      return false;
-    } else {
-      let v = it.value;
-      return $decimal.is_integral(v);
-    }
-  }
-}
-
 function domain(c, fl) {
   let $ = $model.qty(fl);
   let $1 = fl.mapping;
@@ -27217,15 +27259,15 @@ function check_mapping(c, d, f, above) {
       "let_assert",
       FILEPATH,
       "sheaf/check",
-      1723,
+      1757,
       "check_mapping",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $,
-        start: 48233,
-        end: 48264,
-        pattern_start: 48244,
-        pattern_end: 48252
+        start: 49304,
+        end: 49335,
+        pattern_start: 49315,
+        pattern_end: 49323
       }
     )
   }
@@ -27330,15 +27372,15 @@ function check_mapping(c, d, f, above) {
               "let_assert",
               FILEPATH,
               "sheaf/check",
-              1810,
+              1844,
               "check_mapping",
               "Pattern match failed, no pattern matched the value.",
               {
                 value: $1,
-                start: 50839,
-                end: 50882,
-                pattern_start: 50850,
-                pattern_end: 50857
+                start: 51910,
+                end: 51953,
+                pattern_start: 51921,
+                pattern_end: 51928
               }
             )
           }
@@ -27857,15 +27899,15 @@ function check_path(c, d, f, p, line, above) {
       "let_assert",
       FILEPATH,
       "sheaf/check",
-      588,
+      612,
       "check_path",
       "Pattern match failed, no pattern matched the value.",
       {
         value: p,
-        start: 14860,
-        end: 14885,
-        pattern_start: 14871,
-        pattern_end: 14881
+        start: 15642,
+        end: 15667,
+        pattern_start: 15653,
+        pattern_end: 15663
       }
     )
   } else {
@@ -27952,20 +27994,36 @@ function is_fact(i) {
   }
 }
 
+function mod_message() {
+  return "'mod =' needs a positive number written out, e.g. mod = 7: " + "a zero, negative or computed divisor has no guard";
+}
+
 function check_settings(c, d, b, line, numeric) {
   return $list.each(
     $model.settings(b),
     (s) => {
       let k = s[0];
+      let v = s[1];
       let $ = ((k === "places") || (k === "mod")) && !numeric;
       if ($) {
-        return err(
-          c,
-          d,
-          line,
-          ("'" + k) + "=' applies only to numeric values",
-          d.name,
-        );
+        err(c, d, line, ("'" + k) + "=' applies only to numeric values", d.name);
+      } else {
+        undefined;
+      }
+      if (v instanceof VNum) {
+        if (k === "mod") {
+          let n = v.num;
+          let $1 = $decimal.compare(n.value, $decimal.zero()) instanceof $order.Gt;
+          if ($1) {
+            return undefined;
+          } else {
+            return err(c, d, line, mod_message(), d.name);
+          }
+        } else {
+          return undefined;
+        }
+      } else if (k === "mod") {
+        return err(c, d, line, mod_message(), d.name);
       } else {
         return undefined;
       }
@@ -28267,15 +28325,15 @@ function check_refine_numbers(c, d) {
                   "let_assert",
                   FILEPATH,
                   "sheaf/check",
-                  1128,
+                  1152,
                   "check_refine_numbers",
                   "Pattern match failed, no pattern matched the value.",
                   {
                     value: cl,
-                    start: 30711,
-                    end: 30745,
-                    pattern_start: 30722,
-                    pattern_end: 30740
+                    start: 31493,
+                    end: 31527,
+                    pattern_start: 31504,
+                    pattern_end: 31522
                   }
                 )
               }
@@ -28814,15 +28872,15 @@ function mapping_grid(decls, index, d, f) {
                 "let_assert",
                 FILEPATH,
                 "sheaf/check",
-                2583,
+                2619,
                 "mapping_grid",
                 "Pattern match failed, no pattern matched the value.",
                 {
                   value: $1,
-                  start: 72897,
-                  end: 72940,
-                  pattern_start: 72908,
-                  pattern_end: 72915
+                  start: 74139,
+                  end: 74182,
+                  pattern_start: 74150,
+                  pattern_end: 74157
                 }
               )
             }
@@ -30266,15 +30324,15 @@ function fold(_, s, kind) {
       "let_assert",
       FILEPATH,
       "sheaf/evaluate",
-      1084,
+      1111,
       "fold",
       "Pattern match failed, no pattern matched the value.",
       {
         value: s,
-        start: 29721,
-        end: 29754,
-        pattern_start: 29732,
-        pattern_end: 29750
+        start: 30587,
+        end: 30620,
+        pattern_start: 30598,
+        pattern_end: 30616
       }
     )
   }
@@ -30505,15 +30563,15 @@ function eval_path(ev, r, parts, cur) {
       "let_assert",
       FILEPATH,
       "sheaf/evaluate",
-      935,
+      962,
       "eval_path",
       "Pattern match failed, no pattern matched the value.",
       {
         value: parts,
-        start: 25413,
-        end: 25447,
-        pattern_start: 25424,
-        pattern_end: 25439
+        start: 26279,
+        end: 26313,
+        pattern_start: 26290,
+        pattern_end: 26305
       }
     )
   } else {
@@ -30797,15 +30855,15 @@ function eval_mapping(ev, r, f) {
       "let_assert",
       FILEPATH,
       "sheaf/evaluate",
-      724,
+      751,
       "eval_mapping",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $,
-        start: 19463,
-        end: 19494,
-        pattern_start: 19474,
-        pattern_end: 19482
+        start: 20329,
+        end: 20360,
+        pattern_start: 20340,
+        pattern_end: 20348
       }
     )
   }
@@ -31241,17 +31299,38 @@ function field_value(ev, r, f) {
     note(r, new Trace(f.name, "constant", "TRUE", $List$Empty$const, ""));
     return new VText("TRUE");
   } else if ($ instanceof $model.Claim) {
-    note(
-      r,
-      new Trace(
-        f.name,
-        "claim",
-        "TRUE",
-        deps(f.preds),
-        "proved for every value: " + $model.block_text(f.preds),
-      ),
-    );
-    return new VText("TRUE");
+    let $1 = eval_block(ev, new Some(r), f.preds, Val$VInvalid$const);
+    if ($1 instanceof No) {
+      fail(
+        r,
+        ((f.name + ": ") + $model.block_text(f.preds)) + " was proved but is false here (a checker bug; please report it)",
+      );
+      note(
+        r,
+        new Trace(
+          f.name,
+          "claim",
+          "INVALID",
+          deps(f.preds),
+          "proved, but false here: " + $model.block_text(f.preds),
+        ),
+      );
+      return Val$VInvalid$const;
+    } else if ($1 instanceof Later) {
+      return Val$VLater$const;
+    } else {
+      note(
+        r,
+        new Trace(
+          f.name,
+          "claim",
+          "TRUE",
+          deps(f.preds),
+          "proved for every value: " + $model.block_text(f.preds),
+        ),
+      );
+      return new VText("TRUE");
+    }
   } else if ($ instanceof $model.Computed) {
     let $1 = $model.definition(f);
     let def;
@@ -31262,15 +31341,15 @@ function field_value(ev, r, f) {
         "let_assert",
         FILEPATH,
         "sheaf/evaluate",
-        535,
+        562,
         "field_value",
         "Pattern match failed, no pattern matched the value.",
         {
           value: $1,
-          start: 14183,
-          end: 14225,
-          pattern_start: 14194,
-          pattern_end: 14203
+          start: 15049,
+          end: 15091,
+          pattern_start: 15060,
+          pattern_end: 15069
         }
       )
     }
@@ -31448,12 +31527,25 @@ function places_fit(d, v, written) {
   }
 }
 
+/**
+ * Rows are equal when their values are equal, as with '=': numbers by
+ * value (1.50 = 1.5), everything else by its text.
+ * 
+ * @ignore
+ */
 function unique_key(ev, r, f) {
-  let $ = $model.is_stored(f);
-  if ($) {
-    return stored_text(r, f.name);
+  let $ = get(ev, r, f.name);
+  if ($ instanceof VNumber) {
+    let x = $[0];
+    return $decimal.to_short(x);
   } else {
-    return show(get(ev, r, f.name));
+    let v = $;
+    let $1 = $model.is_stored(f);
+    if ($1) {
+      return stored_text(r, f.name);
+    } else {
+      return show(v);
+    }
   }
 }
 
@@ -31511,15 +31603,15 @@ function checker(ev, text) {
           "let_assert",
           FILEPATH,
           "sheaf/evaluate",
-          1195,
+          1222,
           "checker",
           "Pattern match failed, no pattern matched the value.",
           {
             value: $,
-            start: 32393,
-            end: 32436,
-            pattern_start: 32404,
-            pattern_end: 32409
+            start: 33259,
+            end: 33302,
+            pattern_start: 33270,
+            pattern_end: 33275
           }
         )
       }
@@ -31535,15 +31627,15 @@ function checker(ev, text) {
           "let_assert",
           FILEPATH,
           "sheaf/evaluate",
-          1199,
+          1226,
           "checker",
           "Pattern match failed, no pattern matched the value.",
           {
             value: $,
-            start: 32527,
-            end: 32570,
-            pattern_start: 32538,
-            pattern_end: 32543
+            start: 33393,
+            end: 33436,
+            pattern_start: 33404,
+            pattern_end: 33409
           }
         )
       }
@@ -31575,15 +31667,15 @@ function checker(ev, text) {
           "let_assert",
           FILEPATH,
           "sheaf/evaluate",
-          1213,
+          1240,
           "checker",
           "Pattern match failed, no pattern matched the value.",
           {
             value: $,
-            start: 32995,
-            end: 33038,
-            pattern_start: 33006,
-            pattern_end: 33011
+            start: 33861,
+            end: 33904,
+            pattern_start: 33872,
+            pattern_end: 33877
           }
         )
       }
@@ -31596,15 +31688,15 @@ function checker(ev, text) {
           "let_assert",
           FILEPATH,
           "sheaf/evaluate",
-          1214,
+          1241,
           "checker",
           "Pattern match failed, no pattern matched the value.",
           {
             value: $1,
-            start: 33047,
-            end: 33118,
-            pattern_start: 33058,
-            pattern_end: 33063
+            start: 33913,
+            end: 33984,
+            pattern_start: 33924,
+            pattern_end: 33929
           }
         )
       }
@@ -31627,15 +31719,15 @@ function checker(ev, text) {
           "let_assert",
           FILEPATH,
           "sheaf/evaluate",
-          1223,
+          1250,
           "checker",
           "Pattern match failed, no pattern matched the value.",
           {
             value: $,
-            start: 33302,
-            end: 33345,
-            pattern_start: 33313,
-            pattern_end: 33318
+            start: 34168,
+            end: 34211,
+            pattern_start: 34179,
+            pattern_end: 34184
           }
         )
       }
