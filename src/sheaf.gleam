@@ -22,6 +22,7 @@ import sheaf/graph
 import sheaf/model
 import sheaf/printer
 import sheaf/program.{type Program}
+import sheaf/sequents
 
 @external(javascript, "./sheaf/ffi.mjs", "read_file")
 fn read_file(p: String) -> Result(String, Nil)
@@ -58,6 +59,7 @@ pub fn main() {
     ["graph", file, "-o", out, ..] -> cmd_graph(file, out)
     ["graph", file, ..] -> cmd_graph(file, "graph.svg")
     ["fmt", file, ..rest] -> cmd_fmt(file, rest)
+    ["sequents", file, ..] -> cmd_sequents(file)
     ["bundle", dir, "-o", out, ..] -> cmd_bundle(dir, Some(out))
     ["bundle", dir, ..] -> cmd_bundle(dir, None)
     ["print", file, type_name, "--json", json, ..] ->
@@ -85,6 +87,7 @@ const usage =
   sheaf run FILE.sheaf TYPE --text \"...\"     the same, with the text inline (\\n for newlines)
   sheaf graph FILE.sheaf -o OUT.svg          the data-flow graph of a file, as SVG
   sheaf fmt FILE.sheaf [--write | --check]   the file in canonical spacing
+  sheaf sequents FILE.sheaf                  the file's theory as geometric sequents
   sheaf print FILE.sheaf                     the file's code, in canonical form
   sheaf print FILE.sheaf TYPE                a type's code
   sheaf print FILE.sheaf TYPE DATA           data's values, in canonical form (DATA: a text or JSON)
@@ -541,6 +544,33 @@ fn cmd_graph(file: String, out: String) -> Int {
           1
         }
       }
+    }
+  }
+}
+
+/// Print a file's theory as geometric sequents (docs/geometric.md).
+fn cmd_sequents(file: String) -> Int {
+  // language.sheaf is already loaded as the prelude: print its own theory
+  let loaded = case abs(file) == prelude_path() {
+    True ->
+      case start(False) {
+        Ok(p) ->
+          Ok(#(
+            program.Program(..p, main_file: Some(program.prelude_name)),
+            p.report,
+          ))
+        Error(e) -> Error(e)
+      }
+    False -> load_file(file)
+  }
+  case loaded {
+    Error(e) -> {
+      io.println("error: " <> e)
+      1
+    }
+    Ok(#(p, _)) -> {
+      io.println(sequents.file(p, option.unwrap(p.main_file, file)))
+      0
     }
   }
 }

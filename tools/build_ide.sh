@@ -18,5 +18,5 @@ function add(dir) {
 add("priv"); add("examples");
 fs.writeFileSync("dist/files.json", JSON.stringify(out));
 '
-node tools/bundle.mjs build/dev/javascript/sheaf/sheaf/ide.mjs tools/ide.html dist/workspace.html dist/files.json
+node tools/bundle.mjs build/dev/javascript/etale/sheaf/ide.mjs tools/ide.html dist/workspace.html dist/files.json
 rm dist/files.json

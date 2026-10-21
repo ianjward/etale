@@ -1,0 +1,21 @@
+# Each declaration below falls outside geometric logic or would let the
+# prover claim something false; `check` explains each (docs/geometric.md).
+
+# 1. A divisor that may be zero. 'mod' divides, so it needs a guard: a
+#    positive number written out.
+Wrap_By_Field {}
+  hour {Integer} val = 0..23
+  m {Integer} val = 0..3
+  later {Integer} val = hour + 5 & mod = m
+
+# 2. A divisor that is not positive.
+Wrap_Negative {}
+  hour {Integer} val = 0..23
+  later {Integer} val = hour + 5 & mod = -3
+
+# 3. A claim about wrapped arithmetic. 'later' is not 'hour + 5': at hour 20
+#    it is 1. The prover bounds a wrapped field by [0, m) and cannot prove it.
+Clock {}
+  hour {Integer} val = 0..23
+  later {Integer} val = hour + 5 & mod = 24
+  ahead {Fact} later >= hour
