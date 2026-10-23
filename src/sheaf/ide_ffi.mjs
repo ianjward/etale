@@ -273,8 +273,44 @@ function esc(s) {
   return String(s).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch]);
 }
 
+// One line of code, coloured: comments, strings, numbers, and the type names
+// in `known` (links in explore mode). Comments and strings are never linked.
+function line_html(line, known) {
+  let out = "", k = 0;
+  while (k < line.length) {
+    const ch = line[k];
+    if (ch === "#" && (k === 0 || line[k - 1] === " ")) {
+      out += `<span class="cm">${esc(line.slice(k))}</span>`;
+      break;
+    }
+    if (ch === '"') {
+      let e = k + 1;
+      while (e < line.length && line[e] !== '"') e += line[e] === "\\" ? 2 : 1;
+      out += `<span class="str">${esc(line.slice(k, e + 1))}</span>`;
+      k = e + 1;
+      continue;
+    }
+    const m = /^[A-Za-z_][A-Za-z0-9_]*/.exec(line.slice(k));
+    if (m && (k === 0 || !/[A-Za-z0-9_]/.test(line[k - 1]))) {
+      const w = m[0];
+      if (/^[A-Z]/.test(w) && known.has(w)) out += `<span class="ty" data-type="${esc(w)}">${esc(w)}</span>`;
+      else out += esc(w);
+      k += w.length;
+      continue;
+    }
+    const n = /^\d+(\.\d+)?/.exec(line.slice(k));
+    if (n && (k === 0 || !/[A-Za-z0-9_]/.test(line[k - 1]))) {
+      out += `<span class="num">${esc(n[0])}</span>`;
+      k += n[0].length;
+      continue;
+    }
+    out += esc(ch);
+    k += 1;
+  }
+  return out;
+}
+
 // Explore mode: the file as read-only text with its type names as links.
-// Comments and strings are coloured and never linked.
 function explore_html(body, links, mark, notes) {
   const byLine = new Map();
   for (const [n, cls, label] of notes || []) {
@@ -286,43 +322,61 @@ function explore_html(body, links, mark, notes) {
   const known = new Set(links);
   const lines = body.split("\n");
   return lines.map((line, i) => {
-    let out = "", k = 0, inStr = false;
-    while (k < line.length) {
-      const ch = line[k];
-      if (!inStr && ch === "#" && (k === 0 || line[k - 1] === " ")) {
-        out += `<span class="cm">${esc(line.slice(k))}</span>`;
-        k = line.length;
-        break;
-      }
-      if (ch === '"') {
-        let e = k + 1;
-        while (e < line.length && line[e] !== '"') e += line[e] === "\\" ? 2 : 1;
-        out += `<span class="str">${esc(line.slice(k, e + 1))}</span>`;
-        k = e + 1;
-        continue;
-      }
-      const m = /^[A-Za-z_][A-Za-z0-9_]*/.exec(line.slice(k));
-      if (m && (k === 0 || !/[A-Za-z0-9_]/.test(line[k - 1]))) {
-        const w = m[0];
-        if (/^[A-Z]/.test(w) && known.has(w)) out += `<span class="ty" data-type="${esc(w)}">${esc(w)}</span>`;
-        else out += esc(w);
-        k += w.length;
-        continue;
-      }
-      const n = /^\d+(\.\d+)?/.exec(line.slice(k));
-      if (n && (k === 0 || !/[A-Za-z0-9_]/.test(line[k - 1]))) {
-        out += `<span class="num">${esc(n[0])}</span>`;
-        k += n[0].length;
-        continue;
-      }
-      out += esc(ch);
-      k += 1;
-    }
     const note = byLine.get(i + 1);
     const cls = (i + 1 === mark ? " hl" : "") + (note ? " " + note[0].join(" ") : "");
     const chip = note && note[1] ? `<span class="back" data-cmd="back" title="Go back (Alt+←)">${esc(note[1])}</span>` : "";
-    return `<span class="ln${cls}">${out}${chip}</span>`;
+    return `<span class="ln${cls}">${line_html(line, known)}${chip}</span>`;
   }).join("");
+}
+
+// Edit mode keeps explore mode's colours. The textarea still does all the
+// editing (caret, selection, undo, input methods are the browser's own), but
+// its text is transparent: the layer under it (.ink) draws the same text,
+// coloured line by line as explore mode colours it, and moves with the
+// textarea's scroll. Typing repaints only the lines that changed. Each line
+// ends in its newline, so the layer is laid out as the textarea's text is: one
+// block of lines. At a fractional zoom the two may still round a line to
+// pixels differently, by less than a pixel.
+function paint_ink(el) {
+  const ta = el.querySelector("textarea");
+  const page = el.querySelector(".ink > div");
+  const text = ta.value;
+  if (el._inkText === text) return;
+  const lines = text.split("\n");
+  const old = el._inkLines;
+  const known = el._inkKnown || new Set();
+  const html = (from, to) => lines.slice(from, to).map((l) => `<span class="ln">${line_html(l, known)}\n</span>`).join("");
+  const kids = page.children;
+  if (el._inkText == null || !old || kids.length !== old.length) {
+    page.innerHTML = html(0, lines.length);
+  } else {
+    // the lines before and after the change are kept as they are
+    const n = Math.min(lines.length, old.length);
+    let a = 0, b = 0;
+    while (a < n && lines[a] === old[a]) a++;
+    while (b < n - a && lines[lines.length - 1 - b] === old[old.length - 1 - b]) b++;
+    if (a < old.length - b) {
+      const r = document.createRange();
+      r.setStartBefore(kids[a]);
+      r.setEndAfter(kids[old.length - b - 1]);
+      r.deleteContents();
+    }
+    const added = html(a, lines.length - b);
+    if (added) {
+      if (kids[a]) kids[a].insertAdjacentHTML("beforebegin", added);
+      else page.insertAdjacentHTML("beforeend", added);
+    }
+  }
+  el._inkText = text;
+  el._inkLines = lines;
+}
+function sync_ink(el) {
+  const ta = el.querySelector("textarea");
+  const at = `translate(${-ta.scrollLeft}px, ${-ta.scrollTop}px)`;
+  if (el._inkAt !== at) {
+    el._inkAt = at;
+    el.querySelector(".ink > div").style.transform = at;
+  }
 }
 
 // A pane is 820px wide: 12px padding and a 2px border each side leave 792px,
@@ -355,19 +409,22 @@ export function panel(c, id, kind, x, y, w, h, title, body, status, state, opaci
   if (!el) {
     el = document.createElement("section");
     el.className = "panel " + kind;
-    el.innerHTML = `<header data-drag="${esc(id)}"><span class="t"></span><span class="s"></span><span class="b"></span></header><textarea spellcheck="false" autocomplete="off" autocapitalize="off" wrap="off"></textarea><pre class="explore" tabindex="-1"></pre><div class="find" hidden><label class="sr" for="find-${esc(id)}">Find in this file</label><input id="find-${esc(id)}" placeholder="Find in this file" autocomplete="off" spellcheck="false"><span class="fc">0/0</span><button type="button" data-d="-1" title="Previous (Shift+Enter)" aria-label="Previous match">↑</button><button type="button" data-d="1" title="Next (Enter)" aria-label="Next match">↓</button><button type="button" data-x title="Close (Esc)" aria-label="Close find">×</button></div>`;
+    el.innerHTML = `<header data-drag="${esc(id)}"><span class="t"></span><span class="s"></span><span class="b"></span></header><div class="edit"><div class="ink" aria-hidden="true"><div></div></div><textarea spellcheck="false" autocomplete="off" autocapitalize="off" wrap="off"></textarea></div><pre class="explore" tabindex="-1"></pre><div class="find" hidden><label class="sr" for="find-${esc(id)}">Find in this file</label><input id="find-${esc(id)}" placeholder="Find in this file" autocomplete="off" spellcheck="false"><span class="fc">0/0</span><button type="button" data-d="-1" title="Previous (Shift+Enter)" aria-label="Previous match">↑</button><button type="button" data-d="1" title="Next (Enter)" aria-label="Next match">↓</button><button type="button" data-x title="Close (Esc)" aria-label="Close find">×</button></div>`;
     const ta = el.querySelector("textarea");
     const pre = el.querySelector("pre");
     ta.value = body;
     let timer = null;
     const flush = () => { clearTimeout(timer); pending.delete(id); model = app.edit(model, id, ta.value); };
     ta.addEventListener("input", () => {
+      // the colours follow every key, before anything else
+      if (el._inked) paint_ink(el);
       // the outline turns yellow at the first key, not after the pause
       if (kind !== "probe") model = app.command(model, "dirty:" + id);
       clearTimeout(timer);
       pending.set(id, flush);
       timer = setTimeout(flush, 180);
     });
+    ta.addEventListener("scroll", () => { if (el._inked) sync_ink(el); });
     ta.addEventListener("keydown", (e) => {
       if (e.key === "Tab") {
         e.preventDefault();
@@ -469,6 +526,7 @@ export function panel(c, id, kind, x, y, w, h, title, body, status, state, opaci
   }
   if (el.dataset.leaving) { delete el.dataset.leaving; el.style.pointerEvents = ""; }
   const ta = el.querySelector("textarea");
+  const box = el.querySelector(".edit");
   const pre = el.querySelector("pre");
   if (document.activeElement !== ta && ta.value !== body) ta.value = body;
   if (ta.readOnly !== readonly) ta.readOnly = readonly;
@@ -478,6 +536,7 @@ export function panel(c, id, kind, x, y, w, h, title, body, status, state, opaci
   if (el.dataset.mode !== mode) {
     el.dataset.mode = mode;
     if (editing) {
+      box.hidden = false;
       ta.hidden = false;
       pre.hidden = true;
       if (el.dataset.caret !== undefined) {
@@ -493,6 +552,7 @@ export function panel(c, id, kind, x, y, w, h, title, body, status, state, opaci
       pre.scrollLeft = ta.scrollLeft;
       if (document.activeElement === ta) ta.blur();
       ta.hidden = true;
+      box.hidden = true;
       pre.hidden = false;
     }
   }
@@ -538,6 +598,24 @@ export function panel(c, id, kind, x, y, w, h, title, body, status, state, opaci
       ta.scrollTop = top;
       pre.scrollTop = top;
     }
+  }
+  // a file being edited keeps its colours; a probe's text stays plain
+  const inked = editing && kind !== "probe";
+  if (el._inked !== inked) {
+    el._inked = inked;
+    box.classList.toggle("inked", inked);
+  }
+  if (inked) {
+    const names = links.toArray();
+    const lk = names.slice().sort().join(" ");
+    if (el._inkLinks !== lk) {
+      // a type newly known (or gone) recolours the whole text
+      el._inkLinks = lk;
+      el._inkKnown = new Set(names);
+      el._inkText = null;
+    }
+    paint_ink(el);
+    sync_ink(el);
   }
   const op = String(opacity);
   if (el.dataset.born) {
