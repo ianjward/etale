@@ -1,4 +1,4 @@
-/* Shared by the landing page and the playground: the workspace's own palette. */
+/* The landing page's palette: the workspace's own. */
 :root {
   --bg: #e6ebf0; --bar: #f6f8fa; --ink: #18212c; --muted: #5d6b7a; --stroke: #cfd7df;
   --panel: #fbfcfd; --head: #eef2f6; --accent: #2b59c3; --accent-ink: #fbfcfd;
