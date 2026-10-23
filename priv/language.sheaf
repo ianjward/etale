@@ -1,20 +1,127 @@
 # ==========================================================================
-# language.sheaf - The Formal Self-Bootstrapping Core Logic Specification (v3)
+# This file defines the syntax of the language Etale.
+# Why Etale: https://ianjward.github.io/etale/
 #
-# Sheaf is named for sheaves, where geometric logic lives: many small typed
-# texts, each checked on its own, that glue together into one whole.
-# ==========================================================================
+# How Etale works
 #
-# This file defines the complete syntax of the language in the language
-# itself. The whole file, comments included, is a File (end of Step 7).
-# Each rule is explained directly above the declaration that defines it.
+# In logic, every construction is built only from:
+#   =          equality of texts and numbers        {"TRUE"}, val = 5
+#   and        conjunction                          records, positions, &, ranges
+#   or         disjunction                          |
+#   exists     there is a part of the text          each stored field and position
+#   or over n  infinite disjunction                 lists of any length, {Line 0..}
+# There is no 'not', '!=', 'else' or 'forall'. The comparisons and 'unique' hide a 'not',
+# but only over things that can always be decided.
 #
-# How to read the declarations:
-# - There is no separate lexer. Every separator is a literal in some
-#   declaration, so the declarations are also the whitespace rules.
-# - A text inhabits a type when some way of matching it succeeds.
-# - A source file must match File in exactly one way. An ambiguous file
-#   is rejected like an unparseable one.
+# Every construction is one or more lines, which together state one or more sequents of
+# geometric logic. Each line has the form:
+#   label {shape} constraints
+#
+# Example:
+#   Rectangle {}
+#     length {Decimal}
+#     width {Decimal}
+#   Square {Rectangle} length = width
+#
+# label:
+#   a type        capitalized snake case, not indented          Order_Line
+#   a field       lowercase snake case, indented 2 spaces       line_total
+#   a position    a number and a dot, indented 2 spaces         1.
+#   a case        a bar, indented 4 spaces                      |
+#
+# {shape}:
+#   a value
+#     {"text"}            exactly this text
+#     {5}                 exactly this number
+#
+#   a disjunction
+#     {A | B | "c" | 5}   one of these: types, texts or numbers
+#                         It takes no count: to repeat one, name it, then count the name.
+#
+#   a type, with an optional count
+#     {Digit}             one Digit (the same as {Digit 1})
+#     {Digit 2}           two Digits
+#     {Digit 1..4}        one to four Digits (a disjunction: 1 or 2 or 3 or 4 of them)
+#     {Digit 0..}         zero or more Digits (an infinite disjunction)
+#                         A count that allows more than one makes a list. A list is read
+#                         only through .qty or .sum (see constraints). An empty list
+#                         folds to 0. A record may hold itself only as a list from 0
+#                         (children {Node 0..}), and the empty list is where it stops.
+#
+#   a conjunction
+#     {A & B}             both, for exactly the same characters
+#                         Type names only: to use a text, name it first, C {"c"}, then {A & C}.
+#
+#   a mapping (fields only)
+#     {a -> Type}         worked out by cases on one field
+#     {a & b -> Type}     worked out by cases on two fields
+#
+#   a rule or a claim (fields only)
+#     {True}              a rule: the constraints must hold, or the text is refused
+#     {Fact}              a claim: one comparison, proved for every text, or the file is
+#                         refused. With no comparison, {Fact} is a plain TRUE or FALSE.
+#
+#   a record
+#     {}                  its fields, in order, on the lines below
+#
+# constraints:
+#   each starts with a path, which names a value from inside a record:
+#     val                   the value of this line itself
+#     total                 a field declared above, in the same record
+#     customer.limit        a field of that field's record
+#     lines.qty             how many items a list has
+#     lines.amount.sum      the total of a field over a list's items
+#     lines.Big_Line.qty    how many items are also a Big_Line (a filter)
+#     Order.customer        a field of the Order this record sits inside
+#
+#   comparisons             = < <= > >=, and no others; a path on the left
+#     total >= 0            numbers take all five
+#     code = "A1"           texts and TRUE/FALSE take = only
+#     val = 1..12           a range: 1 <= val and val <= 12
+#     val = 0 | 10..100     a choice of values
+#
+#   joined by & or |        never both on one line
+#     a > 0 & b > 0
+#     a = 1 | b = 1
+#
+#   a computed value
+#     val = lines.amount.sum
+#
+#   arithmetic              + - * on numbers, one kind per expression
+#     a + b + c             allowed
+#     a + b * c             refused: there is no precedence, so give b * c its own field
+#     There is no division. Compare products instead, naming the left side first:
+#       tenfold {Money} val = paid * 10
+#       enough {True} tenfold >= total * 3
+#     Integers never overflow and decimals are exact: + and - keep the larger number of
+#     places, and * adds them. mod (below) makes arithmetic wrap.
+#
+#   no two items equal
+#     unique                on a field of a list's items: no two items share its value.
+#                           Its opposite, two equal items, is positive and always decidable.
+#
+#   properties              describe the line, not the text:
+#     places = 2            decimal places (numbers only)
+#     mod = 7               arithmetic wraps at 7 (numbers only)
+#     cost <= lines.qty     a promise that the work to check a text grows no faster than
+#                           its number of lines. The checker works out the cost of every
+#                           type; a written promise it cannot keep is an error.
+#     print = 1             Etale can also write a value back out as text. When the value
+#                           does not fix how many items a list has, such as spaces between
+#                           words, print says how many to write: Gap {Space 1..} print = 1.
+#   There are no other properties. With qty, sum and val, they are reserved names.
+#
+#   defaults, when nothing is written:
+#     count                 1
+#     places                inferred from the numbers on the line
+#     print                 the fewest items the count allows
+#     cost                  worked out and reported
+#
+# Braces never nest, constraints are optional, and a line uses only labels declared above
+# it, with three exceptions:
+#   1. a record may hold itself as a field, as a list from 0 (Step 3)
+#   2. a path may start with a record this one sits inside (Step 3)
+#   3. labels may come from other files in scope (Step 10)
 # ==========================================================================
 
 
