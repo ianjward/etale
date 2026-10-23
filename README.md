@@ -31,15 +31,12 @@ gleam test                                        # Run test suite
 ## The Demo Site
 
 The `site/` directory contains a static site deployed to GitHub Pages via CI/CD on every push to `main`:
-* **index.html**: General project overview and examples.
+* **index.html**: What Etale is for, its guarantees, and the workspace embedded in the page.
 * **workspace.html**: The prebuilt canvas IDE (`dist/workspace.html`).
-* **playground.html**: An in-browser IDE that runs the Gleam compiler via WebAssembly. It builds your changes in a web worker (~1 second) and updates the live workspace. Edits persist locally in the browser.
 
 ### Local Site Setup
 ```sh
-V=1.19.2; mkdir -p wasm
-curl -fsSL https://github.com | tar xz -C wasm
-./tools/build_ide.sh && node tools/build_site.mjs wasm && node tools/check_wasm.mjs wasm
+./tools/build_ide.sh && node tools/build_site.mjs
 python3 -m http.server -d _site          # Open http://localhost:8000
 ```
 

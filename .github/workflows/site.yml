@@ -1,6 +1,5 @@
-# Tests Sheaf, builds the workspace and the demo site, and publishes the site
-# to GitHub Pages. The playground ships the Gleam compiler's own WebAssembly
-# build, pinned to the same version that builds the site.
+# Tests Etale, builds the workspace and the demo site, and publishes the site
+# to GitHub Pages.
 name: Test and publish the site
 
 on:
@@ -29,20 +28,17 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Install Gleam and its WebAssembly build
+      - name: Install Gleam
         run: |
           base=https://github.com/gleam-lang/gleam/releases/download/v$GLEAM_VERSION
-          mkdir -p "$HOME/.gleam/bin" wasm
+          mkdir -p "$HOME/.gleam/bin"
           curl -fsSL "$base/gleam-v$GLEAM_VERSION-x86_64-unknown-linux-musl.tar.gz" | tar xz -C "$HOME/.gleam/bin"
-          curl -fsSL "$base/gleam-v$GLEAM_VERSION-browser.tar.gz" | tar xz -C wasm
           echo "$HOME/.gleam/bin" >> "$GITHUB_PATH"
       - run: gleam --version
       - run: gleam test
       - run: node bin/sheaf.mjs bootstrap
       - run: sh tools/build_ide.sh
-      - run: node tools/build_site.mjs wasm
-      - name: The playground's compiler builds Sheaf too
-        run: node tools/check_wasm.mjs wasm
+      - run: node tools/build_site.mjs
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
