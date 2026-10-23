@@ -67,6 +67,17 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); c
   background: transparent; color: var(--code); font: var(--code-size, 13.2px)/17px var(--font-code);
   tab-size: 2; white-space: pre; overflow-x: hidden; overflow-y: auto; }
 .panel.probe textarea { font-size: 13px; }
+/* edit mode keeps the colours: the textarea's text is transparent over .ink, the same text coloured,
+   which follows the textarea's scroll; the textarea still draws the caret and the selection */
+.panel .edit { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; }
+.panel .edit textarea { position: relative; }
+.panel .ink { position: absolute; inset: 0; overflow: hidden; pointer-events: none; padding: 10px 12px;
+  font: var(--code-size, 13.2px)/17px var(--font-code); color: var(--code); white-space: pre; tab-size: 2; }
+.panel .edit:not(.inked) .ink { display: none; }
+.panel .edit.inked textarea, .panel .ink { font-kerning: none; font-variant-ligatures: none; }
+.panel .edit.inked textarea { color: transparent; -webkit-text-fill-color: transparent; caret-color: var(--code); }
+.panel .edit.inked textarea::selection { color: transparent; -webkit-text-fill-color: transparent;
+  background: color-mix(in srgb, var(--accent) 28%, transparent); }
 /* file states: the outline says where a file stands */
 .panel { transition: opacity .3s ease, border-color .2s ease; border-width: 2px; }
 @media (prefers-reduced-motion: reduce) { .panel { transition: none; } }
@@ -97,10 +108,10 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); c
 .panel pre.explore .ln.hl { background: color-mix(in srgb, var(--accent) 8%, transparent); border-radius: 3px; }
 .panel pre.explore .ln.sel { background: color-mix(in srgb, var(--accent) 24%, transparent); border-radius: 3px;
   box-shadow: inset 3px 0 0 var(--accent); }
-.panel pre.explore .cm { color: var(--muted); font-style: italic; }
-.panel pre.explore .str { color: var(--good); }
-.panel pre.explore .num { color: var(--st-affected); }
-.panel pre.explore .ty { color: var(--accent); border-radius: 3px; }
+.panel pre.explore .cm, .panel .ink .cm { color: var(--muted); font-style: italic; }
+.panel pre.explore .str, .panel .ink .str { color: var(--good); }
+.panel pre.explore .num, .panel .ink .num { color: var(--st-affected); }
+.panel pre.explore .ty, .panel .ink .ty { color: var(--accent); border-radius: 3px; }
 .panel pre.explore .ty:hover { cursor: pointer; text-decoration: underline; text-underline-offset: 2px;
   background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .panel.editing { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
