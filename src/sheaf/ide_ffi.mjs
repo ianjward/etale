@@ -6,6 +6,8 @@ import { toList } from "../gleam.mjs";
 let app = null;
 let model = null;
 let ctx = null;
+// panes typed in whose text is still waiting out the pause: id -> flush
+const pending = new Map();
 
 export function start(application, files) {
   app = application;
@@ -150,6 +152,9 @@ function wire(canvas) {
     }
   });
   window.addEventListener("resize", () => { resize(); model = app.resize(model, ctx.w, ctx.h); });
+  // leaving or reloading the page: text still waiting out the typing pause
+  // reaches the model, so a new file is saved with its last keys
+  window.addEventListener("pagehide", () => { for (const f of [...pending.values()]) f(); });
   window.__ide = { command: (name) => { model = app.command(model, name); } };
 }
 
@@ -355,12 +360,13 @@ export function panel(c, id, kind, x, y, w, h, title, body, status, state, opaci
     const pre = el.querySelector("pre");
     ta.value = body;
     let timer = null;
-    const flush = () => { clearTimeout(timer); model = app.edit(model, id, ta.value); };
+    const flush = () => { clearTimeout(timer); pending.delete(id); model = app.edit(model, id, ta.value); };
     ta.addEventListener("input", () => {
       // the outline turns yellow at the first key, not after the pause
       if (kind !== "probe") model = app.command(model, "dirty:" + id);
       clearTimeout(timer);
-      timer = setTimeout(() => { model = app.edit(model, id, ta.value); }, 180);
+      pending.set(id, flush);
+      timer = setTimeout(flush, 180);
     });
     ta.addEventListener("keydown", (e) => {
       if (e.key === "Tab") {
@@ -869,6 +875,37 @@ export function set_mode(c, view, auto, levels, focused, probes_on) {
 
 export function cursor(c, kind) {
   if (c.canvas.style.cursor !== kind) c.canvas.style.cursor = kind;
+  return undefined;
+}
+
+// ---------------------------------------------------------------- storage
+
+// Files made with New are kept in the browser's storage as [path, text]
+// pairs, in the order they were made, so a reload brings them back. Storage
+// may be missing or refuse (a private window, a full quota, the claude.ai
+// artifact, Node): then nothing is kept and nothing breaks.
+const CREATED_KEY = "sheaf.workspace.created.v1";
+let warned = false;
+
+export function load_created() {
+  try {
+    const raw = globalThis.localStorage?.getItem(CREATED_KEY);
+    const data = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(data)) return toList([]);
+    const ok = data.filter((e) => Array.isArray(e) && typeof e[0] === "string" && typeof e[1] === "string");
+    return toList(ok.map((e) => [e[0], e[1]]));
+  } catch (e) {
+    return toList([]);
+  }
+}
+
+export function save_created(items) {
+  try {
+    globalThis.localStorage?.setItem(CREATED_KEY, JSON.stringify(items.toArray()));
+  } catch (e) {
+    if (!warned) console.warn("New files cannot be kept: browser storage refused them", e);
+    warned = true;
+  }
   return undefined;
 }
 
