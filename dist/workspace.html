@@ -197,7 +197,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); c
 <body>
 <form id="newfile" hidden autocomplete="off">
   <label for="newname">New file</label>
-  <div class="row"><input id="newname" spellcheck="false" placeholder="folder/name.sheaf"><button type="submit">Create</button></div>
+  <div class="row"><input id="newname" spellcheck="false" placeholder="folder/name.sheaf"><button type="button" id="newgo">Create</button></div>
   <p>A file in the working file's folder can use that folder's types. Enter creates it, Esc cancels.</p>
 </form>
 <script>
@@ -216,13 +216,18 @@ function openNewFile() {
 }
 document.addEventListener("DOMContentLoaded", () => {
   const f = document.getElementById("newfile"), i = document.getElementById("newname");
-  f.addEventListener("submit", (e) => {
-    e.preventDefault();
+  const create = () => {
     const v = i.value.trim();
     if (!v) return;
     f.hidden = true;
     __ide.command("new:" + v);
-  });
+  };
+  // Create and Enter call it directly, not through the form's submit: a
+  // sandboxed frame (a claude.ai preview or artifact) blocks form submission,
+  // submit event and all, so the button would do nothing there
+  document.getElementById("newgo").addEventListener("click", create);
+  i.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); create(); } });
+  f.addEventListener("submit", (e) => e.preventDefault());
   f.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); f.hidden = true; } });
   document.addEventListener("mousedown", (e) => {
     if (!f.hidden && !f.contains(e.target) && e.target.id !== "newbtn") f.hidden = true;
