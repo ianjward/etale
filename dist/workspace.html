@@ -197,7 +197,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); c
 <body>
 <form id="newfile" hidden autocomplete="off">
   <label for="newname">New file</label>
-  <div class="row"><input id="newname" spellcheck="false" placeholder="folder/name.sheaf"><button type="submit">Create</button></div>
+  <div class="row"><input id="newname" spellcheck="false" placeholder="folder/name.sheaf"><button type="button" id="newgo">Create</button></div>
   <p>A file in the working file's folder can use that folder's types. Enter creates it, Esc cancels.</p>
 </form>
 <script>
@@ -216,13 +216,18 @@ function openNewFile() {
 }
 document.addEventListener("DOMContentLoaded", () => {
   const f = document.getElementById("newfile"), i = document.getElementById("newname");
-  f.addEventListener("submit", (e) => {
-    e.preventDefault();
+  const create = () => {
     const v = i.value.trim();
     if (!v) return;
     f.hidden = true;
     __ide.command("new:" + v);
-  });
+  };
+  // Create and Enter call it directly, not through the form's submit: a
+  // sandboxed frame (a claude.ai preview or artifact) blocks form submission,
+  // submit event and all, so the button would do nothing there
+  document.getElementById("newgo").addEventListener("click", create);
+  i.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); create(); } });
+  f.addEventListener("submit", (e) => e.preventDefault());
   f.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); f.hidden = true; } });
   document.addEventListener("mousedown", (e) => {
     if (!f.hidden && !f.contains(e.target) && e.target.id !== "newbtn") f.hidden = true;
@@ -297,7 +302,7 @@ const $graph = __load("sheaf/graph.mjs");
 const { DataWire, TypeWire } = __load("sheaf/graph.mjs");
 const $model = __load("sheaf/model.mjs");
 const $program = __load("sheaf/program.mjs");
-const { start: ffi_start, clear, world, screen, rect, curve, circle, arrow, text, dots, panel, set_results, card, info, status, set_files, set_theme, download, set_mode, sin, cos, cursor, exp, atan2, now, files: files_global } = __load("sheaf/ide_ffi.mjs");
+const { start: ffi_start, clear, world, screen, rect, curve, circle, arrow, text, dots, panel, set_results, card, info, status, set_files, set_theme, download, set_mode, sin, cos, cursor, exp, atan2, now, load_created, save_created, files: files_global } = __load("sheaf/ide_ffi.mjs");
 
 class App extends $CustomType {
   constructor(init, frame, down, move, up, wheel, key, edit, command, resize, view) {
@@ -7959,9 +7964,19 @@ function switch_to(m, path) {
   }
 }
 
-function free_path(loop$m, loop$stem, loop$n) {
+/**
+ * Keep the files made with New, text and all, so a reload brings them back.
+ * 
+ * @ignore
+ */
+function save_new_files(m) {
+  save_created($list.map(m.created, (p) => { return [p, file_text(m, p)]; }));
+  return m;
+}
+
+function free_path(loop$files, loop$stem, loop$n) {
   while (true) {
-    let m = loop$m;
+    let files = loop$files;
     let stem = loop$stem;
     let n = loop$n;
     let _block;
@@ -7971,9 +7986,9 @@ function free_path(loop$m, loop$stem, loop$n) {
       _block = ((stem + "_") + $int.to_string(n)) + ".sheaf";
     }
     let path = _block;
-    let $ = $dict.has_key(m.files, path);
+    let $ = $dict.has_key(files, path);
     if ($) {
-      loop$m = m;
+      loop$files = files;
       loop$stem = stem;
       loop$n = n + 1;
     } else {
@@ -8024,14 +8039,15 @@ function new_file(m, name) {
     }
     let folder = _block$3;
     let stem = (folder + "/") + base;
-    let path = free_path(m, stem, 1);
+    let path = free_path(m.files, stem, 1);
     let title = $string.replace(base, "-", "_");
     let text$1 = ((((("# " + base) + ".sheaf: a new file. Types from the other files in ") + $program.display_path(
       folder,
     )) + "/\n# and the core library can be used here.\n") + $string.capitalise(
       title,
     )) + " {}\n  text {Line_Text}\n  nl {Newline}\n";
-    let m$1 = new Model(
+    let _block$4;
+    let _pipe$3 = new Model(
       $dict.insert(m.files, path, text$1),
       m.base,
       m.boot_ms,
@@ -8097,6 +8113,8 @@ function new_file(m, name) {
       $list.append(m.created, listPrepend(path, $List$Empty$const)),
       m.closed,
     );
+    _block$4 = save_new_files(_pipe$3);
+    let m$1 = _block$4;
     let m$2 = switch_to(m$1, path);
     return new Model(
       m$2.files,
@@ -10415,6 +10433,20 @@ function command(m, name) {
   }
 }
 
+/**
+ * After a file's text changes: if it was made with New, save it.
+ * 
+ * @ignore
+ */
+function keep_if_new(m, path) {
+  let $ = $list.contains(m.created, path);
+  if ($) {
+    return save_new_files(m);
+  } else {
+    return m;
+  }
+}
+
 function edit(m, id, body) {
   let m$1 = new Model(
     m.files,
@@ -10483,7 +10515,8 @@ function edit(m, id, body) {
     m.closed,
   );
   if (id === "code") {
-    let m$2 = new Model(
+    let _block;
+    let _pipe = new Model(
       $dict.insert(m$1.files, m$1.main, body),
       m$1.base,
       m$1.boot_ms,
@@ -10549,16 +10582,19 @@ function edit(m, id, body) {
       m$1.created,
       m$1.closed,
     );
+    _block = keep_if_new(_pipe, m$1.main);
+    let m$2 = _block;
     let $ = m$2.autocompile;
     if ($) {
-      let _pipe = rebuild(m$2);
-      return place(_pipe);
+      let _pipe$1 = rebuild(m$2);
+      return place(_pipe$1);
     } else {
       return place(m$2);
     }
   } else if (id.startsWith("f:")) {
     let path = id.slice(2);
-    let m$2 = new Model(
+    let _block;
+    let _pipe = new Model(
       $dict.insert(m$1.files, path, body),
       m$1.base,
       m$1.boot_ms,
@@ -10624,11 +10660,13 @@ function edit(m, id, body) {
       m$1.created,
       m$1.closed,
     );
+    _block = keep_if_new(_pipe, path);
+    let m$2 = _block;
     let $ = m$2.autocompile;
     if ($) {
-      let _pipe = compile(m$2, path);
-      let _pipe$1 = compile(_pipe, m$2.main);
-      return place(_pipe$1);
+      let _pipe$1 = compile(m$2, path);
+      let _pipe$2 = compile(_pipe$1, m$2.main);
+      return place(_pipe$2);
     } else {
       return place(m$2);
     }
@@ -12669,22 +12707,60 @@ function open(m, path) {
   );
 }
 
+/**
+ * Bring back the files made with New in an earlier visit. They join the
+ * file menu marked "(new)"; the page still opens on the orders example. A
+ * stored path the page now ships itself keeps its text under a numbered name.
+ * 
+ * @ignore
+ */
+function restore_created(files, stored) {
+  let $ = $list.fold(
+    stored,
+    [files, $List$Empty$const],
+    (acc, f) => {
+      let files$1 = acc[0];
+      let created = acc[1];
+      let path = f[0];
+      let text$1 = f[1];
+      let $1 = ($string.starts_with(path, "/") && $string.ends_with(
+        path,
+        ".sheaf",
+      )) && !$string.contains(path, "/../");
+      if ($1) {
+        let path$1 = free_path(files$1, $string.drop_end(path, 6), 1);
+        return [
+          $dict.insert(files$1, path$1, text$1),
+          listPrepend(path$1, created),
+        ];
+      } else {
+        return acc;
+      }
+    },
+  );
+  let files$1 = $[0];
+  let created = $[1];
+  return [files$1, $list.reverse(created)];
+}
+
 function init(w, h, dark, reduced, files) {
-  let files$1 = $dict.from_list(files);
+  let $ = restore_created($dict.from_list(files), load_created());
+  let files$1 = $[0];
+  let created = $[1];
   let t0 = now();
   let _block;
-  let $ = $dict.get(files$1, "/priv/language.sheaf");
-  if ($ instanceof Ok) {
-    let text$1 = $[0];
-    let $1 = $program.new$(
+  let $1 = $dict.get(files$1, "/priv/language.sheaf");
+  if ($1 instanceof Ok) {
+    let text$1 = $1[0];
+    let $2 = $program.new$(
       text$1,
       $program.memory_fs($dict.new$(), "/", "/", ""),
       true,
     );
-    if ($1 instanceof Ok) {
-      _block = $1;
+    if ($2 instanceof Ok) {
+      _block = $2;
     } else {
-      let e = $1[0];
+      let e = $2[0];
       _block = new Error($model.error_text(e));
     }
   } else {
@@ -12755,7 +12831,7 @@ function init(w, h, dark, reduced, files) {
     "",
     $List$Empty$const,
     false,
-    $List$Empty$const,
+    created,
     $List$Empty$const,
   );
   let _pipe = open(m, "/examples/orders/orders.sheaf");
@@ -40119,7 +40195,7 @@ function decls(entries) {
 Object.assign(__exports, {}, {"properties": properties, "max_line": max_line, "as_file_text": as_file_text, "read": read, "decls": decls});
 };
 __defs["sheaf/ide_ffi.mjs"] = function(__exports){
-Object.assign(__exports, {"start": start, "clear": clear, "world": world, "screen": screen, "rect": rect, "curve": curve, "circle": circle, "arrow": arrow, "text": text, "measure": measure, "dots": dots, "panel": panel, "set_results": set_results, "card": card, "info": info, "status": status, "set_files": set_files, "set_theme": set_theme, "download": download, "set_mode": set_mode, "cursor": cursor});
+Object.assign(__exports, {"start": start, "clear": clear, "world": world, "screen": screen, "rect": rect, "curve": curve, "circle": circle, "arrow": arrow, "text": text, "measure": measure, "dots": dots, "panel": panel, "set_results": set_results, "card": card, "info": info, "status": status, "set_files": set_files, "set_theme": set_theme, "download": download, "set_mode": set_mode, "cursor": cursor, "load_created": load_created, "save_created": save_created});
 // Browser runtime for the workspace. Gleam owns all state and decides what to
 // draw; this file only owns the canvas, the DOM panels that hold editable text,
 // and the event wiring. Every frame is requestAnimationFrame-driven.
@@ -40128,6 +40204,8 @@ const { toList } = __load("gleam.mjs");
 let app = null;
 let model = null;
 let ctx = null;
+// panes typed in whose text is still waiting out the pause: id -> flush
+const pending = new Map();
 
 function start(application, files) {
   app = application;
@@ -40272,6 +40350,9 @@ function wire(canvas) {
     }
   });
   window.addEventListener("resize", () => { resize(); model = app.resize(model, ctx.w, ctx.h); });
+  // leaving or reloading the page: text still waiting out the typing pause
+  // reaches the model, so a new file is saved with its last keys
+  window.addEventListener("pagehide", () => { for (const f of [...pending.values()]) f(); });
   window.__ide = { command: (name) => { model = app.command(model, name); } };
 }
 
@@ -40477,12 +40558,13 @@ function panel(c, id, kind, x, y, w, h, title, body, status, state, opacity, but
     const pre = el.querySelector("pre");
     ta.value = body;
     let timer = null;
-    const flush = () => { clearTimeout(timer); model = app.edit(model, id, ta.value); };
+    const flush = () => { clearTimeout(timer); pending.delete(id); model = app.edit(model, id, ta.value); };
     ta.addEventListener("input", () => {
       // the outline turns yellow at the first key, not after the pause
       if (kind !== "probe") model = app.command(model, "dirty:" + id);
       clearTimeout(timer);
-      timer = setTimeout(() => { model = app.edit(model, id, ta.value); }, 180);
+      pending.set(id, flush);
+      timer = setTimeout(flush, 180);
     });
     ta.addEventListener("keydown", (e) => {
       if (e.key === "Tab") {
@@ -40994,6 +41076,37 @@ function cursor(c, kind) {
   return undefined;
 }
 
+// ---------------------------------------------------------------- storage
+
+// Files made with New are kept in the browser's storage as [path, text]
+// pairs, in the order they were made, so a reload brings them back. Storage
+// may be missing or refuse (a private window, a full quota, the claude.ai
+// artifact, Node): then nothing is kept and nothing breaks.
+const CREATED_KEY = "sheaf.workspace.created.v1";
+let warned = false;
+
+function load_created() {
+  try {
+    const raw = globalThis.localStorage?.getItem(CREATED_KEY);
+    const data = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(data)) return toList([]);
+    const ok = data.filter((e) => Array.isArray(e) && typeof e[0] === "string" && typeof e[1] === "string");
+    return toList(ok.map((e) => [e[0], e[1]]));
+  } catch (e) {
+    return toList([]);
+  }
+}
+
+function save_created(items) {
+  try {
+    globalThis.localStorage?.setItem(CREATED_KEY, JSON.stringify(items.toArray()));
+  } catch (e) {
+    if (!warned) console.warn("New files cannot be kept: browser storage refused them", e);
+    warned = true;
+  }
+  return undefined;
+}
+
 const files = () => globalThis.SHEAF_FILES ?? {};
 const sin = Math.sin;
 const cos = Math.cos;
@@ -41001,7 +41114,7 @@ const exp = Math.exp;
 const atan2 = Math.atan2;
 const now = () => performance.now();
 
-Object.assign(__exports, {}, {"start": start, "clear": clear, "world": world, "screen": screen, "rect": rect, "curve": curve, "circle": circle, "arrow": arrow, "text": text, "measure": measure, "dots": dots, "panel": panel, "set_results": set_results, "card": card, "info": info, "status": status, "set_files": set_files, "set_theme": set_theme, "download": download, "set_mode": set_mode, "cursor": cursor, "files": files, "sin": sin, "cos": cos, "exp": exp, "atan2": atan2, "now": now});
+Object.assign(__exports, {}, {"start": start, "clear": clear, "world": world, "screen": screen, "rect": rect, "curve": curve, "circle": circle, "arrow": arrow, "text": text, "measure": measure, "dots": dots, "panel": panel, "set_results": set_results, "card": card, "info": info, "status": status, "set_files": set_files, "set_theme": set_theme, "download": download, "set_mode": set_mode, "cursor": cursor, "load_created": load_created, "save_created": save_created, "files": files, "sin": sin, "cos": cos, "exp": exp, "atan2": atan2, "now": now});
 };
 window.__sheaf = __load("sheaf/ide.mjs");
 })();

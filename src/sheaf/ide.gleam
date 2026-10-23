@@ -219,6 +219,14 @@ fn atan2(y: Float, x: Float) -> Float
 @external(javascript, "./ide_ffi.mjs", "now")
 fn now() -> Float
 
+/// Files made with New in an earlier visit, as (path, text), oldest first;
+/// none when the browser keeps no storage.
+@external(javascript, "./ide_ffi.mjs", "load_created")
+fn load_created() -> List(#(String, String))
+
+@external(javascript, "./ide_ffi.mjs", "save_created")
+fn save_created(files: List(#(String, String))) -> Nil
+
 /// The browser entry point: window.SHEAF_FILES holds language.sheaf, the
 /// standard library and the examples as an in-memory folder.
 pub fn main() -> Nil {
@@ -384,7 +392,8 @@ pub type Model {
     hits: List(Hit),
     /// Whether probes are shown (off until asked for).
     probes_on: Bool,
-    /// Files made with New, listed in the file menu after the examples.
+    /// Files made with New, listed in the file menu after the examples, and
+    /// kept in browser storage so a reload brings them back.
     created: List(String),
     /// Files whose pane was closed: kept off the canvas until opened again.
     closed: List(String),
@@ -471,7 +480,7 @@ fn init(
   reduced: Bool,
   files: List(#(String, String)),
 ) -> Model {
-  let files = dict.from_list(files)
+  let #(files, created) = restore_created(dict.from_list(files), load_created())
   let t0 = now()
   let base = case dict.get(files, "/priv/language.sheaf") {
     Ok(text) ->
@@ -548,10 +557,50 @@ fn init(
       "",
       [],
       False,
-      [],
+      created,
       [],
     )
   open(m, "/examples/orders/orders.sheaf") |> fit(False)
+}
+
+/// Bring back the files made with New in an earlier visit. They join the
+/// file menu marked "(new)"; the page still opens on the orders example. A
+/// stored path the page now ships itself keeps its text under a numbered name.
+fn restore_created(
+  files: Dict(String, String),
+  stored: List(#(String, String)),
+) -> #(Dict(String, String), List(String)) {
+  let #(files, created) =
+    list.fold(stored, #(files, []), fn(acc, f) {
+      let #(files, created) = acc
+      let #(path, text) = f
+      case
+        string.starts_with(path, "/")
+        && string.ends_with(path, ".sheaf")
+        && !string.contains(path, "/../")
+      {
+        False -> acc
+        True -> {
+          let path = free_path(files, string.drop_end(path, 6), 1)
+          #(dict.insert(files, path, text), [path, ..created])
+        }
+      }
+    })
+  #(files, list.reverse(created))
+}
+
+/// Keep the files made with New, text and all, so a reload brings them back.
+fn save_new_files(m: Model) -> Model {
+  save_created(list.map(m.created, fn(p) { #(p, file_text(m, p)) }))
+  m
+}
+
+/// After a file's text changes: if it was made with New, save it.
+fn keep_if_new(m: Model, path: String) -> Model {
+  case list.contains(m.created, path) {
+    True -> save_new_files(m)
+    False -> m
+  }
 }
 
 fn open(m: Model, path: String) -> Model {
@@ -692,7 +741,7 @@ fn new_file(m: Model, name: String) -> Model {
         _ -> "/" <> string.join(list.reverse(dirs), "/")
       }
       let stem = folder <> "/" <> base
-      let path = free_path(m, stem, 1)
+      let path = free_path(m.files, stem, 1)
       let title = string.replace(base, "-", "_")
       let text =
         "# "
@@ -708,19 +757,20 @@ fn new_file(m: Model, name: String) -> Model {
           files: dict.insert(m.files, path, text),
           created: list.append(m.created, [path]),
         )
+        |> save_new_files
       let m = switch_to(m, path)
       Model(..m, editing: ["code", ..list.filter(m.editing, fn(e) { e != "code" })])
     }
   }
 }
 
-fn free_path(m: Model, stem: String, n: Int) -> String {
+fn free_path(files: Dict(String, String), stem: String, n: Int) -> String {
   let path = case n {
     1 -> stem <> ".sheaf"
     _ -> stem <> "_" <> int.to_string(n) <> ".sheaf"
   }
-  case dict.has_key(m.files, path) {
-    True -> free_path(m, stem, n + 1)
+  case dict.has_key(files, path) {
+    True -> free_path(files, stem, n + 1)
     False -> path
   }
 }
@@ -2552,14 +2602,18 @@ fn edit(m: Model, id: String, body: String) -> Model {
   let m = Model(..m, dirty: list.filter(m.dirty, fn(d) { d != id_path(m, id) }))
   case id {
     "code" -> {
-      let m = Model(..m, files: dict.insert(m.files, m.main, body))
+      let m =
+        Model(..m, files: dict.insert(m.files, m.main, body))
+        |> keep_if_new(m.main)
       case m.autocompile {
         True -> rebuild(m) |> place
         False -> place(m)
       }
     }
     "f:" <> path -> {
-      let m = Model(..m, files: dict.insert(m.files, path, body))
+      let m =
+        Model(..m, files: dict.insert(m.files, path, body))
+        |> keep_if_new(path)
       case m.autocompile {
         True -> compile(m, path) |> compile(m.main) |> place
         False -> place(m)
