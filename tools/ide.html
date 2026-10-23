@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Sheaf Workspace</title>
+<title>Etale Workspace</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;600&display=swap">
@@ -51,6 +51,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); c
 #bar button:focus-visible, #bar select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 #bar .grow { flex: 1; }
 #status { color: var(--muted); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#bar > #status { flex: 0 1 auto; min-width: 0; }
 #stage { position: fixed; top: calc(50px + env(safe-area-inset-top, 0px)); left: 0; right: 0; bottom: 0; overflow: hidden; touch-action: none; }
 #canvas { display: block; }
 #world-dom { position: absolute; inset: 0; pointer-events: none; }
@@ -191,6 +192,9 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); c
 #bar .rings { display: inline-flex; align-items: center; gap: 4px; padding: 0 4px; border-left: 1px solid var(--stroke); }
 #lvn { font-size: 12.5px; color: var(--muted); min-width: 4.2em; text-align: center; font-variant-numeric: tabular-nums; }
 #status { flex: 0 1 auto; min-width: 0; }
+/* Narrower windows, such as the workspace embedded in the site: keep the bar to one screen width. */
+@media (max-width: 1420px) { .extra, #status { display: none; } #bar { gap: 8px; } #bar select { min-width: 0; max-width: 170px; }
+  #bar .search { min-width: 120px; } }
 @media (max-width: 760px) { #status, #hint, .wide { display: none; } #bar { gap: 6px; } #bar select { flex: 1 1 auto; min-width: 0; max-width: 200px; } #info { max-height: 45%; top: auto; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); } }
 </style>
 </head>
@@ -235,7 +239,7 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 </script>
 <div id="bar">
-  <h1>Sheaf</h1>
+  <h1>Etale</h1>
   <label for="file" style="position:absolute;left:-9999px">Example</label>
   <select id="file" onchange="__ide.command('open:' + this.value)"></select>
   <button id="newbtn" onclick="openNewFile()" title="Make a new .sheaf file (N)">New</button>
@@ -255,8 +259,8 @@ document.addEventListener("DOMContentLoaded", () => {
   <button id="allbtn" onclick="__ide.command('unfocus')" title="Show every type again (Esc)" hidden>All types</button>
   <button class="wide toggle" id="probes" aria-pressed="false" onclick="__ide.command('probes')" title="Show or hide probes: sample texts checked live against a type">Probes</button>
   <button class="wide" onclick="__ide.command('probe')" title="Check a text against the selected type, or the type on the clicked line (P)">Add probe</button>
-  <button class="wide" onclick="__ide.command('svg')" title="Save the data-flow graph as SVG">Export SVG</button>
-  <button class="wide" onclick="__ide.command('theme')" title="Switch between light and dark">Theme</button>
+  <button class="wide extra" onclick="__ide.command('svg')" title="Save the data-flow graph as SVG">Export SVG</button>
+  <button class="wide extra" onclick="__ide.command('theme')" title="Switch between light and dark">Theme</button>
   <span class="search" role="search">
     <label for="search" class="sr">Search the project</label>
     <input id="search" type="search" placeholder="Search types, fields, text  ·  Ctrl+K" autocomplete="off" spellcheck="false" aria-controls="results">
