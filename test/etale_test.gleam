@@ -347,7 +347,7 @@ fn libraries_clean() -> Outcome {
       "priv/stdlib/logic.sheaf", "priv/stdlib/bits.sheaf",
       "priv/stdlib/dates.sheaf", "priv/stdlib/text.sheaf",
       "examples/orders/orders.sheaf", "examples/proofs/proofs.sheaf",
-      "examples/meeting/meeting.sheaf",
+      "examples/meeting/meeting.sheaf", "examples/xor/xor.sheaf",
     ],
     fn(f) {
       let #(_, rep) = load(f)
@@ -818,6 +818,61 @@ fn context_paths() -> Outcome {
   ])
 }
 
+const filter_field_src =
+  "Element {Integer} val = 0..9
+  1. {Digit}
+
+Mul {}
+  left {Element}
+  right {Element}
+  out {Element}
+
+Small {Mul} out <= 5
+Tiny {Small} out <= 2
+
+Holder {}
+  m {Small}
+  half {True} m.out <= 4
+  ms {Tiny 0..}
+  total {Integer} val = ms.out.sum
+"
+
+/// A field typed by a filter holds values of the filter's record, so a path
+/// reaches the record's fields through it; a filter that reaches a record
+/// around it is decided once the text is read (examples/xor).
+fn filter_typed_fields() -> Outcome {
+  let assert Ok(#(p, rep)) = source(filter_field_src)
+  let good = program.check(p, "Holder", "123112221")
+  let half = program.check(p, "Holder", "125")
+  let #(x, xrep) = load("examples/xor/xor.sheaf")
+  let run = fn(name) {
+    let assert Ok(text) = read_file("examples/xor/" <> name <> ".txt")
+    program.check(x, "Assoc", text)
+  }
+  let refused_by = fn(o: program.Outcome, what) {
+    !o.ok && list.any(o.failures, fn(f) { string.contains(f, what) })
+  }
+  all([
+    expect(check.errors(rep) == [], "fields through a filter: " <> msgs(rep)),
+    expect(good.ok, "a value of the filter is a record"),
+    expect(num(get(p, good.value, "total")) == "3", "sum through a filter"),
+    expect(
+      refused_by(half, "Holder.half"),
+      "a rule through a filter-typed field",
+    ),
+    expect(check.errors(xrep) == [], "examples/xor: " <> msgs(xrep)),
+    expect(run("xor").ok, "products that fit their filters"),
+    expect(
+      refused_by(run("xor_bc"), "Assoc.bc is not Bc"),
+      "a filter reaching the record around it",
+    ),
+    expect(
+      refused_by(run("xor_ab_c"), "Assoc.ab_c is not Ab_C"),
+      "a filter reaching a field of a sibling",
+    ),
+  ])
+}
+
 fn review_readings() -> Outcome {
   let #(t, trep) = load("examples/temperature/temperature.sheaf")
   let reading = program.check(t, "Reading", "oslo -12")
@@ -951,6 +1006,7 @@ pub fn main() {
     #("lists and filters", lists_and_filters),
     #("review readings", review_readings),
     #("context paths", context_paths),
+    #("filter-typed fields", filter_typed_fields),
   ]
   let failed =
     list.fold(tests, 0, fn(failed, t) {
