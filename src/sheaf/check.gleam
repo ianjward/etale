@@ -711,19 +711,20 @@ fn check_path_inner(
             Some(_), None -> walk(c, d, f, p, line, d)
           }
         _ -> {
-          // a refinement of a record is a filter over the record's fields
+          // a refinement of a record is a filter over the record's fields;
+          // so is a refinement of such a filter
           let base = case d.items {
-            [TypeItem(b)] -> dict.get(c.decls, b)
-            _ -> Error(Nil)
+            [TypeItem(b)] -> model.record_of(c.decls, b)
+            _ -> None
           }
           case base {
-            Ok(bd) ->
-              case bd.kind, model.field(bd, head) {
-                model.Record, Some(_) -> walk(c, d, f, p, line, bd)
-                _, _ ->
+            Some(bd) ->
+              case model.field(bd, head) {
+                Some(_) -> walk(c, d, f, p, line, bd)
+                None ->
                   err(c, d, line, "'" <> head <> "' is not a field here", where)
               }
-            Error(_) ->
+            None ->
               err(c, d, line, "'" <> head <> "' is not a field here", where)
           }
         }
@@ -801,7 +802,17 @@ fn walk(
               }
               #(rec, fld, Opt, True)
             }
-            False ->
+            False -> {
+              let no_fields = fn() {
+                err(
+                  c,
+                  d,
+                  line,
+                  "'" <> string.join(list.take(p, i), ".") <> "' has no fields",
+                  where,
+                )
+                #(None, None, NotSeq, True)
+              }
               case rec, i > 0 && is_upper_start(step) {
                 // a filter: the items that inhabit a refinement of the item type
                 Some(rd), True -> {
@@ -850,51 +861,16 @@ fn walk(
                     False, True -> #(rec, fld, state, False)
                   }
                 }
-                Some(rd), False if rd.kind == model.Record ->
-                  case model.field(rd, step) {
-                    None -> {
-                      err(
-                        c,
-                        d,
-                        line,
-                        "'" <> rd.name <> "' has no field '" <> step <> "'",
-                        where,
-                      )
-                      #(None, None, NotSeq, True)
-                    }
-                    Some(fl) -> {
-                      let state = case model.qty(fl) {
-                        None -> state
-                        Some(#(_, hi)) ->
-                          case hi, state {
-                            Some(h), NotSeq ->
-                              case decimal.le(h.value, decimal.from_int(1)) {
-                                True -> Opt
-                                False -> InSeq
-                              }
-                            _, _ -> InSeq
-                          }
-                      }
-                      let next = case model.base(fl) {
-                        TypeItem(t) -> option.from_result(dict.get(c.decls, t))
-                        _ -> None
-                      }
-                      #(next, Some(fl), state, False)
-                    }
+                // a field of a record, or of the record under a filter
+                Some(rd), False ->
+                  case model.record_of(c.decls, rd.name) {
+                    None -> no_fields()
+                    Some(rr) ->
+                      walk_field(c, d, line, where, rd, rr, step, state)
                   }
-                _, _ -> {
-                  err(
-                    c,
-                    d,
-                    line,
-                    "'"
-                      <> string.join(list.take(p, i), ".")
-                      <> "' has no fields",
-                    where,
-                  )
-                  #(None, None, NotSeq, True)
-                }
+                _, _ -> no_fields()
               }
+            }
           }
       }
     })
@@ -910,6 +886,51 @@ fn walk(
         where,
       )
     False -> Nil
+  }
+}
+
+/// One field step of a path: the field of record 'rr', reached through a
+/// value of type 'rd' (the record itself, or a filter of it).
+fn walk_field(
+  c: Ctx,
+  d: Decl,
+  line: Int,
+  where: String,
+  rd: Decl,
+  rr: Decl,
+  step: String,
+  state: WalkState,
+) -> #(Option(Decl), Option(Field), WalkState, Bool) {
+  case model.field(rr, step) {
+    None -> {
+      err(
+        c,
+        d,
+        line,
+        "'" <> rd.name <> "' has no field '" <> step <> "'",
+        where,
+      )
+      #(None, None, NotSeq, True)
+    }
+    Some(fl) -> {
+      let state = case model.qty(fl) {
+        None -> state
+        Some(#(_, hi)) ->
+          case hi, state {
+            Some(h), NotSeq ->
+              case decimal.le(h.value, decimal.from_int(1)) {
+                True -> Opt
+                False -> InSeq
+              }
+            _, _ -> InSeq
+          }
+      }
+      let next = case model.base(fl) {
+        TypeItem(t) -> option.from_result(dict.get(c.decls, t))
+        _ -> None
+      }
+      #(next, Some(fl), state, False)
+    }
   }
 }
 
@@ -1048,9 +1069,9 @@ fn field_kind(c: Ctx, fl: Field, rest: List(String)) -> Kind {
             False ->
               case fl.items {
                 [TypeItem(t)] ->
-                  case dict.get(c.decls, t) {
-                    Ok(dd) if dd.kind == model.Record -> NotNumber("a record")
-                    _ -> NotNumber(model.items_text(fl.items))
+                  case model.record_of(c.decls, t) {
+                    Some(_) -> NotNumber("a record")
+                    None -> NotNumber(model.items_text(fl.items))
                   }
                 _ -> NotNumber(model.items_text(fl.items))
               }
@@ -1059,13 +1080,13 @@ fn field_kind(c: Ctx, fl: Field, rest: List(String)) -> Kind {
     [next, ..more] ->
       case fl.items {
         [TypeItem(t)] ->
-          case dict.get(c.decls, t) {
-            Ok(dd) ->
+          case model.record_of(c.decls, t) {
+            Some(dd) ->
               case model.field(dd, next) {
                 Some(f2) -> field_kind(c, f2, more)
                 None -> Unknown
               }
-            Error(_) -> Unknown
+            None -> Unknown
           }
         _ -> Unknown
       }
@@ -1146,8 +1167,8 @@ fn check_numbers(c: Ctx, d: Decl, f: Field) -> Nil {
 fn check_refine_numbers(c: Ctx, d: Decl) -> Nil {
   case d.kind, d.items {
     model.Refine, [TypeItem(b)] ->
-      case dict.get(c.decls, b) {
-        Ok(bd) if bd.kind == model.Record ->
+      case model.record_of(c.decls, b) {
+        Some(bd) ->
           list.each(model.plains(d.preds), fn(cl) {
             let assert Plain(path, op, v) = cl
             let kinds = case op {
@@ -2081,7 +2102,7 @@ fn atom_bounds(c: Ctx, d: Decl, atom: String, claim: Field) -> #(B, B) {
             False -> qlo
           }
           let item = case model.base(fl) {
-            TypeItem(t) -> option.from_result(dict.get(c.decls, t))
+            TypeItem(t) -> model.record_of(c.decls, t)
             _ -> None
           }
           let inner = case item, parts {
@@ -2318,14 +2339,13 @@ fn cost_path(
             False, None -> Some(name <> ".qty")
           }
           let item = case model.base(fl) {
-            TypeItem(t) -> option.from_result(dict.get(c.decls, t))
+            TypeItem(t) -> model.record_of(c.decls, t)
             _ -> None
           }
           let per_item = case item {
             Some(it) ->
               case
-                it.kind == model.Record
-                && !list.contains(model.folds, second)
+                !list.contains(model.folds, second)
                 && !recursive
                 && !list.contains(seen, it.name)
               {
