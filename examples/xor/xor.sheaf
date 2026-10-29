@@ -1,0 +1,37 @@
+# An operation as a mapping in one record, reached from other records through filters.
+# Mul is exclusive or on 0 and 1: its text is the two inputs, and out is computed. Ab is the
+# Mul whose inputs are the a and b of the Assoc around it, so 'ab.out' is a times b. A filter
+# that reaches a record around it is decided once the whole text is read.
+#
+# An Assoc is eleven digits, with no newline at the end: a, b and c, then the inputs of ab, bc,
+# (ab)c and a(bc). Exclusive or is associative, so every text whose products fit their filters
+# is accepted (xor.txt); a product that does not fit is refused, naming its filter
+# (xor_bc.txt, xor_ab_c.txt).
+Element {Integer} val = 0..1
+  1. {Digit}
+
+Bit {0 | 1}
+
+Mul {}
+  left {Element}
+  right {Element}
+  out {left & right -> Bit}
+    | {0} left = 0 & right = 0
+    | {1} left = 0 & right = 1
+    | {1} left = 1 & right = 0
+    | {0} left = 1 & right = 1
+
+Ab {Mul} left = Assoc.a & right = Assoc.b
+Bc {Mul} left = Assoc.b & right = Assoc.c
+Ab_C {Mul} left = Assoc.ab.out & right = Assoc.c
+A_Bc {Mul} left = Assoc.a & right = Assoc.bc.out
+
+Assoc {}
+  a {Element}
+  b {Element}
+  c {Element}
+  ab {Ab}
+  bc {Bc}
+  ab_c {Ab_C}
+  a_bc {A_Bc}
+  same {True} ab_c.out = a_bc.out

@@ -466,13 +466,95 @@ fn settle_loop(ev: Ev, v: Val) -> Nil {
       let inner = Ev(..ev, ctx: [r, ..ev.ctx])
       list.each(r.decl.fields, fn(f) {
         case model.is_stored(f) {
-          True -> settle_loop(inner, get(inner, r, f.name))
+          True -> {
+            let fv = get(inner, r, f.name)
+            settle_filters(inner, r, f, fv)
+            settle_loop(inner, fv)
+          }
           False -> Nil
         }
       })
     }
     VSeqv(xs, _, _) -> list.each(xs, fn(x) { settle_loop(ev, x) })
     _ -> Nil
+  }
+}
+
+/// A field typed by a filter whose predicates reach a record around it,
+/// 'bc {Bc}' with 'Bc {Mul} left = Assoc.b', could not be decided while the
+/// text was read. Now every record knows the records around it: a value that
+/// is not one is refused, naming the field and the filter. Filters that reach
+/// nothing around them were already decided while reading.
+fn settle_filters(ev: Ev, r: Rec, f: Field, fv: Val) -> Nil {
+  let filters = case model.base(f) {
+    TypeItem(t) -> outer_filters(ev, t, [])
+    _ -> []
+  }
+  case filters {
+    [] -> Nil
+    _ -> {
+      let values = case fv {
+        VSeqv(xs, _, _) -> xs
+        x -> [x]
+      }
+      list.each(values, fn(x) {
+        case x {
+          VRecord(xr) ->
+            list.each(filters, fn(d) {
+              case eval_block(ev, Some(xr), d.preds, x) {
+                No | Inv ->
+                  fail(
+                    r,
+                    f.name
+                      <> " is not "
+                      <> d.name
+                      <> ": "
+                      <> model.block_text(d.preds),
+                  )
+                _ -> Nil
+              }
+            })
+          _ -> Nil
+        }
+      })
+    }
+  }
+}
+
+/// The filters on the way from a type down to its record whose predicates
+/// reach a record around this one (a path that starts with a type name).
+fn outer_filters(ev: Ev, name: String, seen: List(String)) -> List(Decl) {
+  case list.contains(seen, name), dict.get(ev.decls, name) {
+    False, Ok(d) ->
+      case d.kind, d.items {
+        model.Refine, [TypeItem(b)] -> {
+          let below = outer_filters(ev, b, [name, ..seen])
+          case reaches_around(d.preds) {
+            True -> [d, ..below]
+            False -> below
+          }
+        }
+        _, _ -> []
+      }
+    _, _ -> []
+  }
+}
+
+fn reaches_around(b: Block) -> Bool {
+  list.any(model.plains(b), fn(cl) {
+    case cl {
+      Plain(p, _, v) -> outer_path(VPath(p)) || outer_path(v)
+      _ -> False
+    }
+  })
+}
+
+fn outer_path(v: Value) -> Bool {
+  case v {
+    VPath([first, _, ..]) -> !is_lower_start(first)
+    VArith(_, ts) -> list.any(ts, outer_path)
+    VMulti(vs) -> list.any(vs, outer_path)
+    _ -> False
   }
 }
 

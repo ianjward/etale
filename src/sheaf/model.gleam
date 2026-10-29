@@ -355,6 +355,30 @@ pub fn field(d: Decl, name: String) -> Option(Field) {
   list.find(d.fields, fn(f) { f.name == name }) |> option.from_result
 }
 
+/// The record whose values a type holds: the record itself, or the record
+/// under a refinement (a filter) or under an intersection's first type. So a
+/// field typed 'Small', with 'Small {Mul} out <= 5', has Mul's fields.
+pub fn record_of(decls: Dict(String, Decl), name: String) -> Option(Decl) {
+  record_of_loop(decls, name, [])
+}
+
+fn record_of_loop(
+  decls: Dict(String, Decl),
+  name: String,
+  seen: List(String),
+) -> Option(Decl) {
+  case list.contains(seen, name), dict.get(decls, name) {
+    False, Ok(d) ->
+      case d.kind, d.items {
+        Record, _ -> Some(d)
+        Refine, [TypeItem(b)] | Intersection, [TypeItem(b), ..] ->
+          record_of_loop(decls, b, [name, ..seen])
+        _, _ -> None
+      }
+    _, _ -> None
+  }
+}
+
 pub fn is_stored(f: Field) -> Bool {
   f.role == Stored
 }
