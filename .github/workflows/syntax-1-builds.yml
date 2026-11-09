@@ -1,0 +1,52 @@
+# Temporary, for the syntax-1 build only: compiles main and this branch and
+# keeps both builds as an artifact, so their outputs can be compared in a
+# session without Gleam. Removed before review.
+name: syntax-1 builds (temporary)
+
+on:
+  push:
+    branches: [syntax-1]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: syntax-1-builds
+  cancel-in-progress: true
+
+env:
+  GLEAM_VERSION: "1.19.2"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: after
+      - uses: actions/checkout@v4
+        with:
+          ref: a2b213dafd96e996aabcfc2745418689bc2fb362
+          path: before
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Gleam
+        run: |
+          base=https://github.com/gleam-lang/gleam/releases/download/v$GLEAM_VERSION
+          mkdir -p "$HOME/.gleam/bin"
+          curl -fsSL "$base/gleam-v$GLEAM_VERSION-x86_64-unknown-linux-musl.tar.gz" | tar xz -C "$HOME/.gleam/bin"
+          echo "$HOME/.gleam/bin" >> "$GITHUB_PATH"
+      - name: Build main
+        run: cd before && gleam build --target javascript
+      - name: Build this branch
+        run: cd after && { gleam build --target javascript > ../after-build.log 2>&1; echo "exit $?" >> ../after-build.log; cat ../after-build.log; }
+      - name: Test this branch
+        run: cd after && { gleam test > ../after-test.log 2>&1; echo "exit $?" >> ../after-test.log; tail -60 ../after-test.log; }
+      - name: Pack
+        run: tar czf builds.tgz before/build/dev/javascript after/build/dev/javascript after-build.log after-test.log
+      - uses: actions/upload-artifact@v4
+        with:
+          name: builds
+          path: builds.tgz
+          retention-days: 3
