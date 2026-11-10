@@ -1,5 +1,5 @@
 # Every pattern of the language in one small file: a weather log.
-# A Log text: "ST1 -5 TRUE 07 2.5\n-3 snow\n12 sun\n+1+2"
+# A Log text: "ST1 -5 TRUE 07 2.5 04\n-3 snow\n12 sun\n+1+2"
 
 Code {Text}                              # a layout: numbered positions
   1. {Uppercase 2}
@@ -46,12 +46,15 @@ Log {}
   hour {Integer} value = 0 | 6..23
   s4 {Spaces}
   rain {Decimal} places = 1 & value = 0.0..
+  s5 {Spaces}
+  sensors {Digit 2}                      # exactly two digits
   nl {Newline}
   readings {Reading 1..}
   tally {Tally}
   colds (readings.Cold_Reading.count) {Integer} value = 0.. & cost <= readings.count
   limit (5) {Integer}
   room (limit - colds) {Integer}
+  weighted (colds * 2) {Integer}
   later (hour + 5) {Integer} modulo = 24
   warn (alarm & colds) {True | False}
     {True} if alarm = True & colds >= 1
