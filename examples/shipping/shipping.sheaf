@@ -1,0 +1,38 @@
+# Orders with shipping, written in the field-line forms of 9 November:
+# a calculation or a mapping's inputs go in parentheses before the type,
+# what must hold goes after it, and each case says 'if'.
+# Check:  node bin/sheaf.mjs check examples/shipping/shipping.sheaf
+
+Shipping {"free" | "flat" | "bulk"}
+
+# One order line, e.g. "ABC-0001 x3 @ 19.99".
+Line {}
+  sku {Text}
+  times {" x"}
+  units {Integer} value = 1..1000
+  at {" @ "}
+  price {Decimal} places = 2 & value >= 0.00
+  end {Newline}
+  total (units * price) {Decimal} places = 2
+  big (total) {True | False}
+    {True} if total >= 500.00
+    {False} if total < 500.00
+  shipping (big & units) {Shipping}
+    {"free"} if big = True
+    {"flat"} if big = False & units = 1..9
+    {"bulk"} if big = False & units = 10..1000
+
+# A line worth 500.00 or more: a type, so it has no parentheses.
+Big_Line {Line} total >= 500.00
+
+# An order: a header line, then one or more lines.
+Order {}
+  head {"order "}
+  number {Natural}
+  nl {Newline}
+  lines {Line 1..}
+  total (lines.total.sum) {Decimal} cost <= lines.count
+  big_total (lines.Big_Line.total.sum) {Decimal} places = 2
+  not_all_big {True} lines.Big_Line.count <= lines.count
+
+Big_Order {Order} total >= 1000.00

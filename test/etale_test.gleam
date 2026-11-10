@@ -162,12 +162,12 @@ fn syntax_errors() -> Outcome {
     expect(result_is_error(source("Bad {\"a\" | }\n")), "bad union"),
     expect(
       result_is_error(source(
-        "Thing {}\n  a {Integer}\n  b {Integer} val = 1 & a = 2 | a = 3\n",
+        "Thing {}\n  a {Integer}\n  b {Integer} value = 1 & a = 2 | a = 3\n",
       )),
       "& mixed with |",
     ),
     expect(
-      result_is_error(source("Two {\"a\" | \"b\"} val = \"a\"\n")),
+      result_is_error(source("Two {\"a\" | \"b\"} value = \"a\"\n")),
       "predicates on a union",
     ),
     expect(
@@ -224,6 +224,7 @@ fn mistakes() -> Outcome {
       "do not cover", "not disjoint", "cannot prove", "at most one factor",
       "rounding never happens", "cost promise broken",
       "not a number, so it cannot be multiplied", "must always sit inside",
+      "a claim is one comparison",
     ],
     fn(needle) { expect(string.contains(text, needle), needle) },
   )
@@ -234,8 +235,8 @@ fn geometric_mistakes() -> Outcome {
   let #(_, rep) = load("examples/mistakes/geometric.sheaf")
   let text = msgs(rep)
   let wrapped =
-    "Clock {}\n  hour {Integer} val = 0..23\n"
-    <> "  later {Integer} val = hour + 5 & mod = 24\n  in_day {Fact} later <= 23\n"
+    "Clock {}\n  hour {Integer} value = 0..23\n"
+    <> "  later (hour + 5) {Integer} modulo = 24\n  in_day {Claim} later <= 23\n"
   let assert Ok(#(_, ok)) = source(wrapped)
   let assert Ok(#(table, _)) =
     source(
@@ -245,7 +246,7 @@ fn geometric_mistakes() -> Outcome {
     expect(
       list.length(string.split(text, "needs a positive number written out"))
         == 3,
-      "mod needs a positive written divisor",
+      "modulo needs a positive written divisor",
     ),
     expect(
       string.contains(text, "cannot prove later >= hour"),
@@ -280,7 +281,7 @@ fn sequents_print() -> Outcome {
       book,
       "Its_Customer(t) ⊣⊢ Customer(t) ∧ t.code = around(t, Order).customer",
     ),
-    has(book, "around(t, Book).customers.Its_Customer.qty = 1"),
+    has(book, "around(t, Book).customers.Its_Customer.count = 1"),
     has(book, "t.code = u.code ⊢ t = u"),
     expect(
       !string.contains(orders <> book, "¬")
@@ -294,10 +295,10 @@ fn sequents_print() -> Outcome {
 fn mapping_outputs_and_inputs() -> Outcome {
   let assert Ok(#(_, r1)) =
     source(
-      "Two {\"x\" | \"y\"}\nM {}\n  a {Fact}\n  out {a -> Two}\n    | {\"x\"} a = True\n    | {\"x\"} a = False\n",
+      "Two {\"x\" | \"y\"}\nM {}\n  a {Fact}\n  out (a) {Two}\n    {\"x\"} if a = True\n    {\"x\"} if a = False\n",
     )
   let assert Ok(#(_, r2)) =
-    source("M {}\n  t {Text}\n  out {t -> Fact}\n    | {True} t = \"a\"\n")
+    source("M {}\n  t {Text}\n  out (t) {Fact}\n    {True} if t = \"a\"\n")
   all([
     expect(
       string.contains(msgs(r1), "no case produces"),
@@ -324,7 +325,7 @@ fn claims_and_costs() -> Outcome {
     ),
     expect(check.errors(rep) == [], "proofs clean"),
     expect(
-      list.key_find(orders.costs, "Order") == Ok("O(lines.qty)"),
+      list.key_find(orders.costs, "Order") == Ok("O(lines.count)"),
       "Order is linear",
     ),
     expect(
@@ -420,7 +421,7 @@ fn recursion_mapping_bytes() -> Outcome {
       "far parcel",
     ),
     expect(
-      num(get(q, program.check(q, "Byte", "01000001").value, "value")) == "65",
+      num(get(q, program.check(q, "Byte", "01000001").value, "number")) == "65",
       "byte value",
     ),
     expect(
@@ -563,20 +564,21 @@ const loose_src =
   "Zone {\"A\"|\"B\"}
 Tier {\"light\" |   \"heavy\" | \"far\"}
 Parcel {}
-  weight  {Integer}   val = 0..50
+  weight  {Integer}   value = 0..50
   space   {\" \"}
   zone    {Zone}
-  spare  {Integer}   val = 0..9
-  more    {Integer}   val = weight +  spare+1
+  spare  {Integer}   value = 0..9
+  more    (weight +  spare+1)   {Integer}
   check   {True}      spare  >=  0 & weight <= 50
-  tier    {weight&zone->Tier}
-    | {\"light\"}   weight = 0..5   &  zone = \"A\"
-    | {\"heavy\"} weight = 6..50&zone = \"A\"
-    | {\"far\"}     zone = \"B\"   
+  tier    (weight&zone)   {Tier}
+    {\"light\"}   if   weight = 0..5   &  zone = \"A\"
+    {\"heavy\"} if weight = 6..50&zone = \"A\"
+    {\"far\"}     if zone = \"B\"   
 "
 
-/// Spaces around & | -> + - * are free; comparisons need a space on each
-/// side; settings take none; lines are at most 100 characters, without tabs.
+/// Spaces around & | + - * and the comparisons are free; a name, its
+/// parentheses, its type and 'if' are separated by spaces; lines are at most
+/// 100 characters, without tabs.
 fn spacing() -> Outcome {
   let assert Ok(#(p, rep)) = source(loose_src)
   let parcel = program.check(p, "Parcel", "7 A4")
@@ -585,23 +587,23 @@ fn spacing() -> Outcome {
     expect(num(get(p, parcel.value, "more")) == "12", "loose arithmetic"),
     expect(num(get(p, parcel.value, "tier")) == "heavy", "loose mapping"),
     expect(
-      is_ok(source("X {}\n  x {Integer} val=1..2 & places=0\n")),
+      is_ok(source("X {}\n  x {Integer} value=1..2 & places=0\n")),
       "comparisons take any spacing",
     ),
     expect(
-      result_is_error(source("X {}\n  x {Digit} qty = 2\n")),
-      "qty is no longer a setting",
+      result_is_error(source("X {}\n  x {Digit} count = 2\n")),
+      "a count goes in the braces, not after them",
     ),
     expect(
       result_is_error(source("X {\"a\" | \"b\" 2}\n")),
       "a count goes after a single item",
     ),
     expect(
-      result_is_error(source("X {}\n  n {Integer} val = 1 & cost = 1\n")),
+      result_is_error(source("X {}\n  n (1) {Integer} cost = 1\n")),
       "cost is written as a promise, cost <= ...",
     ),
     expect(
-      result_is_error(source("X {}\n  x {Integer}\tval = 1\n")),
+      result_is_error(source("X {}\n  x {Integer}\tvalue = 1\n")),
       "tabs are rejected",
     ),
     expect(
@@ -658,7 +660,7 @@ fn printing() -> Outcome {
     )
   let base = base(False)
   let loose =
-    "X {}\n  a  {Integer}   val = 0..9   \n  b {Integer} val = a*2 # twice\n"
+    "X {}\n  a  {Integer}   value = 0..9   \n  b (a*2)   {Integer} # twice\n"
   all([
     expect(order == Ok("order 1042\nABC-0001 x3 @ 19.90\n"), "order prints"),
     expect(leap == Ok("2024-02-29"), "dates pad their digits"),
@@ -668,7 +670,7 @@ fn printing() -> Outcome {
     expect(
       printer.format(base, loose, "x.sheaf")
         == Ok(
-        "X {}\n  a {Integer} val = 0..9\n  b {Integer} val = a * 2 # twice\n",
+        "X {}\n  a {Integer} value = 0..9\n  b (a * 2) {Integer} # twice\n",
       ),
       "fmt: canonical spacing, comments kept",
     ),
@@ -700,13 +702,13 @@ fn printing() -> Outcome {
 const filter_src =
   "Item {}
   d {Digit}
-  w {Integer} val = 0..9
+  w {Integer} value = 0..9
 Heavy {Item} w >= 5
 Box {}
   items {Item 1..}
-  heavy {Integer} val = items.Heavy.qty
-  hw {Integer} val = items.Heavy.w.sum
-  ok {Fact} hw >= 0
+  heavy (items.Heavy.count) {Integer}
+  hw (items.Heavy.w.sum) {Integer}
+  ok {Claim} hw >= 0
 "
 
 /// {Type n} makes a list (no count means one); a type-named step filters it;
@@ -737,11 +739,11 @@ fn lists_and_filters() -> Outcome {
       "orders: big total",
     ),
     expect(
-      refused(filter_src <> "  bad {Integer} val = items.Heavy\n"),
+      refused(filter_src <> "  bad (items.Heavy) {Integer}\n"),
       "a list outside a fold is refused",
     ),
     expect(
-      refused("X {}\n  a {Digit}\n  b {Integer} val = a.qty\n"),
+      refused("X {}\n  a {Digit}\n  b (a.count) {Integer}\n"),
       "one value is not a list",
     ),
   ])
@@ -760,13 +762,13 @@ fn context_paths() -> Outcome {
     "Item {}\n  n {Integer}\n  nl {Newline}\n\n"
     <> "Big {Item} n > Box.limit\n\n"
     <> "Box {}\n  limit {Integer}\n  nl {Newline}\n  items {Item 0..}\n"
-    <> "  bigs {Integer} val = items.Big.qty\n"
+    <> "  bigs (items.Big.count) {Integer}\n"
   let assert Ok(#(bp, brep)) = source(lib)
   let box = program.check(bp, "Box", "5\n3\n7\n9\n")
   let assert Ok(#(_, escaped)) =
     source(
       lib
-      <> "\nShelf {}\n  items {Item 0..}\n  bigs {Integer} val = items.Big.qty\n",
+      <> "\nShelf {}\n  items {Item 0..}\n  bigs (items.Big.count) {Integer}\n",
     )
   let assert Ok(#(_, text_cmp)) =
     source(
@@ -774,12 +776,12 @@ fn context_paths() -> Outcome {
       |> string.replace("limit {Integer}", "limit {Natural}"),
     )
   let assert Ok(#(_, not_rec)) =
-    source("Two {\"2\"}\nR {}\n  a {Integer} val = Two.x\n")
+    source("Two {\"2\"}\nR {}\n  a (Two.x) {Integer}\n")
   let assert Ok(#(_, promised)) =
     source(
       "C {}\n  k {Natural}\n  nl {Newline}\n\nMine {C} k = O.k\n\n"
       <> "O {}\n  k {Natural}\n  nl {Newline}\n"
-      <> "  n {Integer} val = B.cs.Mine.qty & cost <= B.cs.qty\n\n"
+      <> "  n (B.cs.Mine.count) {Integer} cost <= B.cs.count\n\n"
       <> "B {}\n  cs {C 0..}\n  os {O 0..}\n",
     )
   all([
@@ -812,14 +814,14 @@ fn context_paths() -> Outcome {
       "cost names the outer list: " <> msgs(promised),
     ),
     expect(
-      list.contains(rep.costs, #("Order", "O(Book.customers.qty)")),
+      list.contains(rep.costs, #("Order", "O(Book.customers.count)")),
       "cost of a lookup",
     ),
   ])
 }
 
 const filter_field_src =
-  "Element {Integer} val = 0..9
+  "Element {Integer} value = 0..9
   1. {Digit}
 
 Mul {}
@@ -834,7 +836,7 @@ Holder {}
   m {Small}
   half {True} m.out <= 4
   ms {Tiny 0..}
-  total {Integer} val = ms.out.sum
+  total (ms.out.sum) {Integer}
 "
 
 /// A field typed by a filter holds values of the filter's record, so a path
@@ -896,18 +898,18 @@ fn review_readings() -> Outcome {
     expect(program.check(m, "Money", "19.90").ok, "two places fit"),
     expect(refused("X {}\n  a {Integer}\n  ok {True}\n"), "bare {True}"),
     expect(
-      result_is_error(source("X {}\n  v {Integer} val = 5..5\n")),
+      result_is_error(source("X {}\n  v {Integer} value = 5..5\n")),
       "a range spans more than one value",
     ),
     expect(
-      case source("X {}\n  v {5}\n  w {Integer} val = 5\n") {
+      case source("X {}\n  v {5}\n  w (5) {Integer}\n") {
         Ok(#(p, _)) -> {
           let x = program.check(p, "X", "5")
           x.ok && num(get(p, x.value, "w")) == "5"
         }
         Error(_) -> False
       },
-      "a fixed value is a literal; val = 5 computes",
+      "a fixed value is a literal; (5) computes",
     ),
   ])
 }
@@ -915,12 +917,12 @@ fn review_readings() -> Outcome {
 const tree_src =
   "Node {}
   open {\"(\"}
-  w {Integer} val = 0..9
+  w {Integer} value = 0..9
   kids {Node 0..}
   close {\")\"}
-  nodes {Integer} val = kids.qty + kids.nodes.sum
-  weight {Integer} val = w + kids.weight.sum
-  ok {Fact} weight >= 0
+  nodes (kids.count + kids.nodes.sum) {Integer}
+  weight (w + kids.weight.sum) {Integer}
+  ok {Claim} weight >= 0
 "
 
 const grid_src =
@@ -929,10 +931,10 @@ const grid_src =
 Row {}
   cells {Cell 0..}
   end {\";\"}
-  n {Integer} val = cells.qty
+  n (cells.count) {Integer}
 Grid {}
   rows {Row 0..}
-  total {Integer} val = rows.n.sum & cost <= rows.cells.qty + rows.qty
+  total (rows.n.sum) {Integer} cost <= rows.cells.count + rows.count
 "
 
 fn timed(f: fn() -> a) -> #(a, Float) {
@@ -968,7 +970,8 @@ fn speed() -> Outcome {
     ),
     expect(check.errors(grep) == [], "nested fold costs the flattened size"),
     expect(
-      list.key_find(grep.costs, "Grid") == Ok("O(rows.cells.qty + rows.qty)"),
+      list.key_find(grep.costs, "Grid")
+        == Ok("O(rows.cells.count + rows.count)"),
       "grid cost is a sum",
     ),
   ])

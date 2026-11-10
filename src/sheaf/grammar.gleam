@@ -164,7 +164,7 @@ fn alt(st: St, name: Option(String), ids: List(Int)) -> #(Int, St) {
   }
 }
 
-pub fn qty_bounds(
+pub fn count_bounds(
   q: Option(#(Option(model.Num), Option(model.Num))),
 ) -> #(Int, Option(Int)) {
   case q {
@@ -241,9 +241,9 @@ fn compile_decl(
         model.Refine -> {
           let b = model.decl_base(d)
           let #(base, st) = item(decls, st, b)
-          let #(m, st) = case model.qty_of(d.preds) {
+          let #(m, st) = case model.count_of(d.preds) {
             Some(_) -> {
-              let #(lo, hi) = qty_bounds(model.qty_of(d.preds))
+              let #(lo, hi) = count_bounds(model.count_of(d.preds))
               put(st, Seq(Some(name), base, lo, hi, elem_decl(decls, b)))
             }
             None ->
@@ -266,9 +266,9 @@ fn compile_decl(
             list.fold(d.positions, #([], st), fn(acc, p) {
               let #(parts, st) = acc
               let #(pm, st) = items(decls, st, p.items, None)
-              let #(pm, st) = case model.qty_of(p.preds) {
+              let #(pm, st) = case model.count_of(p.preds) {
                 Some(_) -> {
-                  let #(lo, hi) = qty_bounds(model.qty_of(p.preds))
+                  let #(lo, hi) = count_bounds(model.count_of(p.preds))
                   put(st, Seq(None, pm, lo, hi, None))
                 }
                 None -> #(pm, st)
@@ -306,9 +306,9 @@ fn compile_decl(
                 False -> #(parts, st)
                 True -> {
                   let #(fm, st) = items(decls, st, f.items, None)
-                  let #(fm, st) = case model.qty(f) {
+                  let #(fm, st) = case model.count(f) {
                     Some(_) -> {
-                      let #(lo, hi) = qty_bounds(model.qty(f))
+                      let #(lo, hi) = count_bounds(model.count(f))
                       put(
                         st,
                         Seq(None, fm, lo, hi, elem_decl(decls, model.base(f))),

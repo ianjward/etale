@@ -7,4 +7,4 @@ Order {}
   on {Date}
   nl {Newline}
   items {Order_Line 1..}
-  total {Decimal} val = items.item.price.sum & places = 2
+  total (items.item.price.sum) {Decimal} places = 2

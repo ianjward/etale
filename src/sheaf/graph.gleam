@@ -94,20 +94,10 @@ fn rows_of(d: Decl) -> List(Row) {
   case d.kind {
     model.Record ->
       list.map(d.fields, fn(f) {
-        let base = case f.mapping {
-          Some(m) -> "{" <> model.mapping_text(m) <> "}"
-          None -> model.box_text(f.items, f.preds)
-        }
+        let base = model.field_base_text(f)
         let preds = preds_text(f.preds)
         let detail = case f.mapping {
-          Some(m) ->
-            list.map(m.cases, fn(c) {
-              "| {"
-              <> model.item_text(c.output)
-              <> "} "
-              <> model.block_text(c.preds)
-            })
-            |> string.join("\n")
+          Some(m) -> list.map(m.cases, model.case_text) |> string.join("\n")
           None -> ""
         }
         Row(
@@ -172,8 +162,8 @@ fn row_types(d: Decl) -> List(#(String, List(#(String, String)))) {
   let tag = fn(ts: List(String), kind: String) {
     list.map(ts, fn(t) { #(t, kind) })
   }
-  let in_preds = fn(b: model.Block) {
-    list.flat_map(block_paths(b), fn(p) {
+  let in_paths = fn(paths: List(List(String))) {
+    list.flat_map(paths, fn(p) {
       case p {
         [head, _, ..rest] -> {
           let reach = case is_type(head) {
@@ -188,6 +178,7 @@ fn row_types(d: Decl) -> List(#(String, List(#(String, String)))) {
       }
     })
   }
+  let in_preds = fn(b: model.Block) { in_paths(block_paths(b)) }
   case d.kind {
     model.Record ->
       list.map(d.fields, fn(f) {
@@ -199,7 +190,14 @@ fn row_types(d: Decl) -> List(#(String, List(#(String, String)))) {
           Some(m) -> list.flat_map(m.cases, fn(c) { in_preds(c.preds) })
           None -> []
         }
-        #(f.name, list.flatten([own, in_preds(f.preds), cases]) |> list.unique)
+        let calc = case f.calculation {
+          Some(v) -> in_paths(value_paths(v))
+          None -> []
+        }
+        #(
+          f.name,
+          list.flatten([own, calc, in_preds(f.preds), cases]) |> list.unique,
+        )
       })
     model.Union ->
       list.map(d.items, fn(i) {
@@ -335,7 +333,7 @@ pub fn build(p: Program, file: String) -> Graph {
           list.flat_map(d.fields, fn(f) {
             let deps = case f.mapping {
               Some(m) -> m.inputs
-              None -> evaluate.deps(f.preds)
+              None -> evaluate.field_deps(f)
             }
             list.filter_map(deps, fn(dep) {
               case model.field(d, dep) {

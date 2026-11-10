@@ -29,4 +29,4 @@ Text_Line {}
 
 Paragraph {}
   lines {Text_Line 1..}
-  line_count {Integer} val = lines.qty
+  line_count (lines.count) {Integer}

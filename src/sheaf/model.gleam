@@ -8,9 +8,11 @@ import gleam/option.{type Option, None, Some}
 import gleam/string
 import sheaf/decimal.{type Decimal}
 
-pub const folds = ["qty", "sum"]
+pub const folds = ["count", "sum"]
 
-pub const reserved = ["qty", "sum", "val", "places", "mod", "cost", "print"]
+pub const reserved = [
+  "count", "sum", "value", "places", "modulo", "cost", "print",
+]
 
 pub const builtin_numeric = ["Integer", "Decimal"]
 
@@ -103,6 +105,9 @@ pub type Field {
     name: String,
     items: List(Item),
     preds: Block,
+    /// The calculation in parentheses before the type: '(units * price)'.
+    calculation: Option(Value),
+    /// The inputs in parentheses before the type, with the cases below.
     mapping: Option(Mapping),
     line: Int,
     comment: String,
@@ -185,7 +190,7 @@ fn opt_num(n: Option(Num)) -> String {
 pub fn clause_text(c: Clause) -> String {
   case c {
     Plain(p, op, v) -> string.join(p, ".") <> " " <> op <> " " <> value_text(v)
-    Setting("qty", v) -> "count " <> value_text(v)
+    Setting("count", v) -> "count " <> value_text(v)
     Setting("cost", v) -> "cost <= " <> value_text(v)
     Setting(k, v) -> k <> " = " <> value_text(v)
     Flag(n) -> n
@@ -202,7 +207,7 @@ pub fn block_text(b: Block) -> String {
   b.clauses
   |> list.filter(fn(c) {
     case c {
-      Setting("qty", _) -> False
+      Setting("count", _) -> False
       _ -> True
     }
   })
@@ -213,16 +218,27 @@ pub fn block_text(b: Block) -> String {
 /// A base in braces with its count, as written: {Digit 2}, {Line 1..}.
 pub fn box_text(items: List(Item), b: Block) -> String {
   let inner = list.map(items, item_text) |> string.join(" | ")
-  case setting(b, "qty") {
+  case setting(b, "count") {
     Some(v) -> "{" <> inner <> " " <> value_text(v) <> "}"
     None -> "{" <> inner <> "}"
   }
 }
 
-pub fn mapping_text(m: Mapping) -> String {
-  string.join(m.inputs, " & ")
-  <> " -> "
-  <> { list.map(m.outputs, item_text) |> string.join(" | ") }
+/// What a field's line holds between its name and its predicates, as
+/// written: '(units * price) {Decimal}', '(big & units) {Shipping}' or
+/// '{Line 1..}'.
+pub fn field_base_text(f: Field) -> String {
+  case f.mapping, f.calculation {
+    Some(m), _ ->
+      "(" <> string.join(m.inputs, " & ") <> ") {" <> items_text(m.outputs) <> "}"
+    None, Some(v) -> "(" <> value_text(v) <> ") " <> box_text(f.items, f.preds)
+    None, None -> box_text(f.items, f.preds)
+  }
+}
+
+/// A case as written, without its indent: '{True} if total >= 500.00'.
+pub fn case_text(c: Case) -> String {
+  "{" <> item_text(c.output) <> "} if " <> block_text(c.preds)
 }
 
 pub fn kind_text(k: Kind) -> String {
@@ -289,65 +305,43 @@ pub fn decl_base(d: Decl) -> Item {
   first
 }
 
-/// A list's count as a range: {Digit 2} is 2..2. Kept as the 'qty' setting.
-pub fn qty(f: Field) -> Option(#(Option(Num), Option(Num))) {
-  qty_of(f.preds)
+/// A list's count as a range: {Digit 2} is 2..2. Kept as the 'count'
+/// setting.
+pub fn count(f: Field) -> Option(#(Option(Num), Option(Num))) {
+  count_of(f.preds)
 }
 
-pub fn qty_of(b: Block) -> Option(#(Option(Num), Option(Num))) {
-  case setting(b, "qty") {
+pub fn count_of(b: Block) -> Option(#(Option(Num), Option(Num))) {
+  case setting(b, "count") {
     Some(VNum(n)) -> Some(#(Some(n), Some(n)))
     Some(VRange(lo, hi)) -> Some(#(lo, hi))
     _ -> None
   }
 }
 
-/// The value of a 'val =' predicate that defines the field, if any.
+/// The calculation that defines the field, if it has one.
 pub fn definition(f: Field) -> Option(Value) {
-  list.find_map(f.preds.clauses, fn(c) {
-    case c {
-      Plain(["val"], "=", v) ->
-        case v {
-          VRange(..) | VMulti(..) -> Error(Nil)
-          _ -> Ok(v)
-        }
-      _ -> Error(Nil)
-    }
-  })
-  |> option.from_result
+  f.calculation
 }
 
-/// The plain predicates that constrain the field (all but its definition).
+/// The plain predicates that constrain the field: everything after its
+/// type that is not a property. A calculation is never among them.
 pub fn constraints(f: Field) -> List(Clause) {
-  let def = definition(f)
-  let #(_, out) =
-    list.fold(plains(f.preds), #(False, []), fn(acc, c) {
-      let #(skipped, out) = acc
-      case c, def, skipped {
-        Plain(["val"], "=", v), Some(dv), False if v == dv -> #(True, out)
-        _, _, _ -> #(skipped, [c, ..out])
-      }
-    })
-  list.reverse(out)
+  plains(f.preds)
 }
 
 /// Stored fields contribute text; the others are computed (Step 3).
 pub fn classify(f: Field) -> Role {
-  case f.mapping {
-    Some(_) -> MappingRole
-    None -> {
-      let ps = plains(f.preds)
-      case f.items, ps, settings(f.preds) {
-        [TypeItem("True")], [], _ -> Constant
-        [TypeItem("True")], _, _ -> Rule
-        [TypeItem("Fact")], [Plain(path, _, _)], [] if path != ["val"] -> Claim
-        _, _, _ ->
-          case definition(f) {
-            Some(_) -> Computed
-            None -> Stored
-          }
+  case f.mapping, f.calculation {
+    Some(_), _ -> MappingRole
+    None, Some(_) -> Computed
+    None, None ->
+      case f.items, plains(f.preds) {
+        [TypeItem("True")], [] -> Constant
+        [TypeItem("True")], _ -> Rule
+        [TypeItem("Claim")], _ -> Claim
+        _, _ -> Stored
       }
-    }
   }
 }
 
@@ -441,7 +435,11 @@ pub fn references(d: Decl) -> List(String) {
           )
         None -> []
       }
-      list.flatten([from_items(f.items), block_refs(f.preds), m])
+      let calc = case f.calculation {
+        Some(v) -> value_refs(v)
+        None -> []
+      }
+      list.flatten([from_items(f.items), calc, block_refs(f.preds), m])
     }),
   ])
   |> list.unique

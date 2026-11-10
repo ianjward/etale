@@ -1,7 +1,7 @@
 //// Static checks: everything the spec decides against declarations, never data.
 ////
 ////   order     a type resolves only to a type declared strictly above it; the
-////             one exception is a recursive field whose qty starts at 0
+////             one exception is a recursive field whose count starts at 0
 ////   fields    reserved names, fields named only above, folds end paths
 ////   recursion a product reads at most one factor through a recursive field
 ////   mappings  one or two inputs; box cases; coverage, disjointness, and every
@@ -155,10 +155,18 @@ fn decl_paths(d: Decl) -> List(List(String)) {
     block_paths(d.preds),
     list.flat_map(d.positions, fn(p) { block_paths(p.preds) }),
     list.flat_map(d.fields, fn(f) {
-      list.append(block_paths(f.preds), case f.mapping {
-        Some(m) -> list.flat_map(m.cases, fn(cs) { block_paths(cs.preds) })
+      let calc = case f.calculation {
+        Some(v) -> rhs_paths(v)
         None -> []
-      })
+      }
+      list.flatten([
+        calc,
+        block_paths(f.preds),
+        case f.mapping {
+          Some(m) -> list.flat_map(m.cases, fn(cs) { block_paths(cs.preds) })
+          None -> []
+        },
+      ])
     }),
   ])
 }
@@ -266,7 +274,7 @@ fn type_ok(
             line,
             "'"
               <> d.name
-              <> "' refers to itself; only a record field may, as a sequence whose qty starts at 0",
+              <> "' refers to itself; only a record field may, as a sequence whose count starts at 0",
             d.name,
           )
         _, _, True -> {
@@ -350,33 +358,34 @@ fn check_settings(
 ) -> Nil {
   list.each(model.settings(b), fn(s) {
     let #(k, v) = s
-    case { k == "places" || k == "mod" } && !numeric {
+    case { k == "places" || k == "modulo" } && !numeric {
       True ->
         err(c, d, line, "'" <> k <> "=' applies only to numeric values", d.name)
       False -> Nil
     }
-    // 'mod' divides, so its divisor must be known to be positive: a written
-    // number above 0 (docs/geometric.md, partial operations need a guard).
+    // 'modulo' divides, so its divisor must be known to be positive: a
+    // written number above 0 (docs/geometric.md, partial operations need a
+    // guard).
     case k, v {
-      "mod", VNum(n) ->
+      "modulo", VNum(n) ->
         case decimal.compare(n.value, decimal.zero()) == order.Gt {
           True -> Nil
-          False -> err(c, d, line, mod_message(), d.name)
+          False -> err(c, d, line, modulo_message(), d.name)
         }
-      "mod", _ -> err(c, d, line, mod_message(), d.name)
+      "modulo", _ -> err(c, d, line, modulo_message(), d.name)
       _, _ -> Nil
     }
   })
 }
 
-fn mod_message() -> String {
-  "'mod =' needs a positive number written out, e.g. mod = 7: "
+fn modulo_message() -> String {
+  "'modulo =' needs a positive number written out, e.g. modulo = 7: "
   <> "a zero, negative or computed divisor has no guard"
 }
 
-/// The written divisor of a field's 'mod', when it has one.
-fn mod_of(f: Field) -> Option(Decimal) {
-  case model.setting(f.preds, "mod") {
+/// The written divisor of a field's 'modulo', when it has one.
+fn modulo_of(f: Field) -> Option(Decimal) {
+  case model.setting(f.preds, "modulo") {
     Some(VNum(n)) -> Some(n.value)
     _ -> None
   }
@@ -387,7 +396,7 @@ fn digit_capacity(d: Decl) -> Option(Int) {
     case list.all(p.items, fn(i) { is_str(i) }) {
       True -> Ok(n)
       False ->
-        case model.setting(p.preds, "qty") {
+        case model.setting(p.preds, "count") {
           None -> Ok(n + 1)
           Some(VNum(q)) -> Ok(n + decimal.to_int(q.value))
           Some(VRange(_, Some(h))) -> Ok(n + decimal.to_int(h.value))
@@ -413,7 +422,7 @@ fn pow10_minus1(n: Int) -> Decimal {
   }
 }
 
-/// The 'val' range must fit what the layout holds.
+/// The value's range must fit what the layout holds.
 fn check_conversion(c: Ctx, d: Decl) -> Nil {
   case digit_capacity(d) {
     None -> Nil
@@ -421,14 +430,14 @@ fn check_conversion(c: Ctx, d: Decl) -> Nil {
       let cap = pow10_minus1(n)
       list.each(model.plains(d.preds), fn(cl) {
         case cl {
-          Plain(["val"], _, VRange(_, Some(h))) ->
+          Plain(["value"], _, VRange(_, Some(h))) ->
             case decimal.lt(cap, h.value) {
               True ->
                 err(
                   c,
                   d,
                   d.line,
-                  "the val range does not fit what the layout holds (at most "
+                  "the value range does not fit what the layout holds (at most "
                     <> decimal.to_string(cap)
                     <> ")",
                   d.name,
@@ -487,7 +496,7 @@ fn check_record(c: Ctx, d: Decl) -> Nil {
         TypeItem(n) -> {
           let rec_ok =
             n == d.name
-            && case model.qty(f) {
+            && case model.count(f) {
               Some(#(Some(lo), _)) -> decimal.is_zero(lo.value)
               _ -> False
             }
@@ -508,7 +517,7 @@ fn check_record(c: Ctx, d: Decl) -> Nil {
     })
     let numeric = evaluate.items_numeric(c.ev, f.items)
     check_settings(c, d, f.preds, f.line, numeric)
-    case f.role != model.Stored && option.is_some(model.qty(f)) {
+    case f.role != model.Stored && option.is_some(model.count(f)) {
       True ->
         err(
           c,
@@ -529,6 +538,10 @@ fn check_record(c: Ctx, d: Decl) -> Nil {
           where,
         )
       False -> Nil
+    }
+    case f.calculation {
+      Some(v) -> check_value_paths(c, d, f, v, f.line, seen)
+      None -> Nil
     }
     list.each(f.preds.clauses, fn(cl) {
       case cl {
@@ -551,7 +564,7 @@ fn check_record(c: Ctx, d: Decl) -> Nil {
             _, _ -> Nil
           }
         }
-        Setting(k, v) if k == "qty" || k == "mod" || k == "places" ->
+        Setting(k, v) if k == "count" || k == "modulo" || k == "places" ->
           check_value_paths(c, d, f, v, f.line, seen)
         _ -> Nil
       }
@@ -562,7 +575,20 @@ fn check_record(c: Ctx, d: Decl) -> Nil {
     }
     check_numbers(c, d, f)
     case f.role {
-      model.Claim -> prove_claim(c, d, f)
+      model.Claim ->
+        case claim_shape(f) {
+          True -> prove_claim(c, d, f)
+          False ->
+            err(
+              c,
+              d,
+              f.line,
+              "a claim is one comparison and nothing else, e.g. "
+                <> f.name
+                <> " {Claim} total >= 0",
+              where,
+            )
+        }
       model.Computed -> {
         check_places(c, d, f)
         check_recursive_products(c, d, f)
@@ -572,6 +598,14 @@ fn check_record(c: Ctx, d: Decl) -> Nil {
     list.append(seen, [f.name])
   })
   cost_record(c, d)
+}
+
+/// A claim is one comparison, with no properties and nothing else.
+fn claim_shape(f: Field) -> Bool {
+  case f.preds.clauses {
+    [Plain(p, _, _)] -> p != ["value"]
+    _ -> False
+  }
 }
 
 fn is_fact(i: Item) -> Bool {
@@ -619,7 +653,7 @@ fn check_path(
       }
     _, _ -> Error(Nil)
   }
-  case head == "val", outer {
+  case head == "value", outer {
     True, _ -> Nil
     // the nearest record of that type around this one (Step 3, Context)
     _, Ok(Ok(u)) -> walk(c, d, f, list.drop(p, 1), line, u)
@@ -651,7 +685,7 @@ fn check_path_inner(
   where: String,
   head: String,
 ) -> Nil {
-  case head == "val", is_upper_start(head) {
+  case head == "value", is_upper_start(head) {
     True, _ -> Nil
     _, True -> {
       let i = idx(c, head)
@@ -882,7 +916,7 @@ fn walk(
         d,
         line,
         string.join(p, ".")
-          <> " is a list: end the path in .qty or .sum (a list appears only inside a fold)",
+          <> " is a list: end the path in .count or .sum (a list appears only inside a fold)",
         where,
       )
     False -> Nil
@@ -913,7 +947,7 @@ fn walk_field(
       #(None, None, NotSeq, True)
     }
     Some(fl) -> {
-      let state = case model.qty(fl) {
+      let state = case model.count(fl) {
         None -> state
         Some(#(_, hi)) ->
           case hi, state {
@@ -990,7 +1024,7 @@ fn places(c: Ctx, d: Decl, v: Value, seen: List(String)) -> Option(Int) {
     VPath(parts) -> {
       let last = list.last(parts) |> option.from_result
       case last {
-        Some("qty") -> Some(0)
+        Some("count") -> Some(0)
         _ ->
           case parts {
             [name] ->
@@ -1036,10 +1070,10 @@ type Kind {
 /// a field is a number when its type is numeric.
 fn path_kind(c: Ctx, d: Decl, parts: List(String)) -> Kind {
   case list.last(parts) {
-    Ok("qty") | Ok("sum") -> Number
+    Ok("count") | Ok("sum") -> Number
     _ ->
       case parts {
-        ["val", ..] -> Unknown
+        ["value", ..] -> Unknown
         [head, ..rest] ->
           case model.field(d, head), rest, dict.get(c.decls, head) {
             None, [_, ..], Ok(u) if u.kind == model.Record ->
@@ -1133,6 +1167,10 @@ fn check_numbers(c: Ctx, d: Decl, f: Field) -> Nil {
       _ -> Nil
     }
   }
+  case f.calculation {
+    Some(v) -> in_arith(v)
+    None -> Nil
+  }
   list.each(model.plains(f.preds), fn(cl) {
     let assert Plain(path, op, v) = cl
     in_arith(v)
@@ -1141,10 +1179,10 @@ fn check_numbers(c: Ctx, d: Decl, f: Field) -> Nil {
         list.each(
           list.append(
             case path {
-              ["val"] ->
+              ["value"] ->
                 case evaluate.items_numeric(c.ev, f.items) {
                   True -> []
-                  False -> [#("val", NotNumber(model.items_text(f.items)))]
+                  False -> [#("value", NotNumber(model.items_text(f.items)))]
                 }
               _ -> [#(string.join(path, "."), path_kind(c, d, path))]
             },
@@ -1322,12 +1360,11 @@ fn d0() -> B {
 }
 
 fn field_bounds(c: Ctx, fl: Field) -> #(B, B) {
-  let def = model.definition(fl)
   let #(lo, hi) =
     list.fold(model.plains(fl.preds), #(NegInf, PosInf), fn(acc, cl) {
       let #(lo, hi) = acc
       case cl {
-        Plain(["val"], op, v) ->
+        Plain(["value"], op, v) ->
           case v, op {
             VRange(l, h), "=" -> #(
               case l {
@@ -1341,11 +1378,7 @@ fn field_bounds(c: Ctx, fl: Field) -> #(B, B) {
             )
             VNum(n), ">=" | VNum(n), ">" -> #(bmax(lo, Fin(n.value)), hi)
             VNum(n), "<=" | VNum(n), "<" -> #(lo, bmin(hi, Fin(n.value)))
-            VNum(n), "=" ->
-              case def == Some(v) {
-                True -> acc
-                False -> #(bmax(lo, Fin(n.value)), bmin(hi, Fin(n.value)))
-              }
+            VNum(n), "=" -> #(bmax(lo, Fin(n.value)), bmin(hi, Fin(n.value)))
             _, _ -> acc
           }
         _ -> acc
@@ -1353,7 +1386,7 @@ fn field_bounds(c: Ctx, fl: Field) -> #(B, B) {
     })
   let #(tl, th) = type_bounds(c, model.base(fl), [])
   let #(lo, hi) = #(bmax(lo, tl), bmin(hi, th))
-  case mod_of(fl) {
+  case modulo_of(fl) {
     Some(m) -> {
       let top = case integer_type(c, model.base(fl)) && decimal.is_integral(m) {
         True -> decimal.sub(m, decimal.from_int(1))
@@ -1394,7 +1427,7 @@ fn type_bounds(c: Ctx, it: Item, seen: List(String)) -> #(B, B) {
                   #(NegInf, PosInf),
                   fn(acc, cl) {
                     case cl {
-                      Plain(["val"], "=", VRange(l, h)) -> #(
+                      Plain(["value"], "=", VRange(l, h)) -> #(
                         case l {
                           Some(n) -> Fin(n.value)
                           None -> acc.0
@@ -1470,7 +1503,7 @@ type Point {
 }
 
 fn domain(c: Ctx, fl: Field) -> Option(Domain) {
-  case model.qty(fl), fl.mapping {
+  case model.count(fl), fl.mapping {
     Some(_), _ -> None
     None, Some(m) -> option.map(evaluate.finite_values(c.ev, m.outputs), Finite)
     None, None ->
@@ -2028,9 +2061,13 @@ fn expand(d: Decl, v: Value, depth: Int) -> Option(Poly) {
       case model.field(d, head), parts {
         None, _ -> None
         Some(fl), [_] ->
-          // a field that wraps ('mod =') is not its definition: it stays an
-          // atom, bounded by field_bounds to [0, m)
-          case fl.role, model.definition(fl), model.setting(fl.preds, "mod") {
+          // a field that wraps ('modulo =') is not its calculation: it stays
+          // an atom, bounded by field_bounds to [0, m)
+          case
+            fl.role,
+            model.definition(fl),
+            model.setting(fl.preds, "modulo")
+          {
             model.Computed, Some(def), None -> expand(d, def, depth + 1)
             _, _, _ -> Some(dict.from_list([#([head], decimal.from_int(1))]))
           }
@@ -2084,7 +2121,7 @@ fn atom_bounds(c: Ctx, d: Decl, atom: String, claim: Field) -> #(B, B) {
             True -> Some(last)
             False -> None
           }
-          let #(qlo, qhi) = case model.qty(fl) {
+          let #(qlo, qhi) = case model.count(fl) {
             Some(#(l, h)) -> #(
               case l {
                 Some(n) -> Fin(n.value)
@@ -2110,8 +2147,7 @@ fn atom_bounds(c: Ctx, d: Decl, atom: String, claim: Field) -> #(B, B) {
             _, _ -> None
           }
           case fold, item, inner {
-            Some("qty"), _, _ -> #(qlo, qhi)
-            Some("count"), _, _ -> #(d0(), qhi)
+            Some("count"), _, _ -> #(qlo, qhi)
             Some("sum"), Some(it), Some(inn) -> {
               // Induction through a fold: on a recursive field, each item's
               // value of the claimed field may be assumed to satisfy the claim.
@@ -2320,7 +2356,7 @@ fn cost_path(
     cost_path(c, u, rest, head <> ".", [head, ..seen])
   })
   case
-    head == "val" || is_upper_start(head) || d.kind != model.Record,
+    head == "value" || is_upper_start(head) || d.kind != model.Record,
     model.field(d, head),
     rest
   {
@@ -2328,7 +2364,7 @@ fn cost_path(
     _, None, _ -> unit()
     _, _, [] -> unit()
     _, Some(fl), [second, ..] ->
-      case model.qty(fl) {
+      case model.count(fl) {
         None -> unit()
         Some(#(_, hi)) -> {
           let name = prefix <> head
@@ -2336,7 +2372,7 @@ fn cost_path(
           let var = case recursive, hi {
             True, _ -> Some("nodes(" <> name <> ")")
             False, Some(_) -> None
-            False, None -> Some(name <> ".qty")
+            False, None -> Some(name <> ".count")
           }
           let item = case model.base(fl) {
             TypeItem(t) -> model.record_of(c.decls, t)
@@ -2369,7 +2405,7 @@ fn cost_path(
 }
 
 /// A path into a record around this one costs what walking it from there
-/// costs, named from there: 'Book.customers.qty'.
+/// costs, named from there: 'Book.customers.count'.
 fn cost_outer(
   outer: Option(Decl),
   inner: fn(Decl) -> CPoly,
@@ -2384,7 +2420,7 @@ fn cost_outer(
 /// The cost of visiting every item once: the per-item cost times the number
 /// of items, except for per-item terms that are themselves sizes of the item's
 /// own sequences. Summed over the items, those add up to the flattened size
-/// (rows.cells.qty already counts every cell of every row), so they are not
+/// (rows.cells.count already counts every cell of every row), so they are not
 /// multiplied again (Step 5: a path through two sequences flattens them).
 fn fold_over(per_item: CPoly, name: String, var: Option(String)) -> CPoly {
   dict.fold(per_item, dict.new(), fn(acc, m, k) {
@@ -2405,8 +2441,18 @@ fn cost_field(
   prefix: String,
   seen: List(String),
 ) -> CPoly {
+  // a calculation costs what a predicate on the line's own value costs:
+  // one step, one read of the value, and the expression
+  let first = case f.calculation {
+    Some(v) ->
+      unit()
+      |> cadd(unit())
+      |> cadd(unit())
+      |> cadd(cost_value(c, d, v, prefix, seen))
+    None -> unit()
+  }
   let acc =
-    list.fold(f.preds.clauses, unit(), fn(acc, cl) {
+    list.fold(f.preds.clauses, first, fn(acc, cl) {
       case cl {
         Plain(p, _, v) ->
           acc
@@ -2462,10 +2508,10 @@ pub fn cost_text(cp: CPoly) -> String {
   }
 }
 
-/// A size named in a cost promise: a list's count (lines.qty), or a field that
-/// counts the nodes of a recursive value, written 'n {Integer} val = 1 +
-/// kids.n.sum' (or '1 + rest.n' for a list of at most one), which stands for
-/// the nodes of that recursive field.
+/// A size named in a cost promise: a list's count (lines.count), or a field
+/// that counts the nodes of a recursive value, written
+/// 'n (1 + kids.n.sum) {Integer}' (or '1 + rest.n' for a list of at most
+/// one), which stands for the nodes of that recursive field.
 fn promise_var(d: Decl, p: List(String)) -> String {
   let counted = case p {
     [f] ->

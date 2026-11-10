@@ -324,7 +324,7 @@ pub fn verify_file(
                       let assert Ok(line) = node.kid(node.inner(bi), "line")
                       let line = node.inner(line)
                       let line = case line.t {
-                        Some("Mapped_Field") -> {
+                        Some("Map_Field") -> {
                           let assert Ok(h) = node.kid(line, "head")
                           node.inner(h)
                         }

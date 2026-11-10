@@ -6,10 +6,11 @@
 //// sequent the checker proved, marked [claim]. Only = ∧ ∨ ∃ ⊢ appear, with
 //// ≤ < ≥ > on numbers (decidable, so their complements are positive too).
 ////
-//// Paths are kept as written, after the text they start from: 't.lines.qty'.
+//// Paths are kept as written, after the text they start from: 't.lines.count'.
 //// A path that starts with a type name starts from the nearest record of
-//// that type around t: 'around(t, Order).customer'. '.qty', '.sum' and type
-//// filters are the folds of docs/geometric.md, defined by recursion on lists.
+//// that type around t: 'around(t, Order).customer'. '.count', '.sum' and
+//// type filters are the folds of docs/geometric.md, defined by recursion on
+//// lists.
 
 import gleam/int
 import gleam/list
@@ -72,7 +73,7 @@ fn layout(p: Program, d: Decl, me: String) -> List(String) {
     })
   let numeric = evaluate.is_numeric(p.ev, d.name)
   let self = case numeric {
-    True -> "t.val"
+    True -> "t.value"
     False -> "t"
   }
   let def =
@@ -95,7 +96,7 @@ fn layout(p: Program, d: Decl, me: String) -> List(String) {
         Ok(pos) -> "sign(p" <> int.to_string(pos.number) <> ") * " <> number
         Error(_) -> number
       }
-      [def, me <> " ⊢ t.val = " <> value]
+      [def, me <> " ⊢ t.value = " <> value]
     }
   }
 }
@@ -153,8 +154,8 @@ fn record(d: Decl, me: String) -> List(String) {
 fn computed(f: Field, me: String) -> String {
   let assert Some(def) = model.definition(f)
   let e = value(def, "t")
-  let e = case model.setting(f.preds, "mod") {
-    Some(m) -> paren(e) <> " mod " <> value(m, "t")
+  let e = case model.setting(f.preds, "modulo") {
+    Some(m) -> paren(e) <> " modulo " <> value(m, "t")
     None -> e
   }
   me <> " ⊢ t." <> f.name <> " = " <> e
@@ -228,12 +229,12 @@ fn block_parts(b: Block, self: String) -> List(String) {
   }
 }
 
-/// 'self' is what 'val' stands for on this line.
+/// 'self' is what 'value' stands for on this line.
 fn clause(c: Clause, self: String) -> String {
   case c {
     Plain(path, op, v) -> compare(path_term(path, self), op, v, self)
     Setting("places", v) -> "places(" <> self <> ") ≤ " <> value(v, self)
-    // the count goes on the box; mod on the definition; cost and print say
+    // the count goes on the box; modulo on the calculation; cost and print say
     // how checking and printing go, so they are not formulas (META)
     Setting(_, _) -> ""
     // unique is a sequent of its own, between two rows (see record)
@@ -282,12 +283,12 @@ fn value(v: Value, self: String) -> String {
   }
 }
 
-/// 'val' is the line's own value; a field path starts from t; a path that
+/// 'value' is the line's own value; a field path starts from t; a path that
 /// starts with a type name starts from the record of that type around t,
 /// or, with nothing after it, is that type's one value (True).
 fn path_term(parts: List(String), self: String) -> String {
   case parts {
-    ["val", ..rest] -> string.join([self, ..rest], ".")
+    ["value", ..rest] -> string.join([self, ..rest], ".")
     ["True"] -> "TRUE"
     ["False"] -> "FALSE"
     [head, ..rest] ->
@@ -309,7 +310,7 @@ fn is_type(s: String) -> Bool {
 /// The base of a line, applied to x: 'T(x)', 'x = "a"', or with a count
 /// 'T{1..}(x)', a list of that many texts of T, one after another.
 fn box(items: List(Item), b: Block, x: String) -> String {
-  let count = case model.setting(b, "qty") {
+  let count = case model.setting(b, "count") {
     Some(v) -> Some(model.value_text(v))
     None -> None
   }

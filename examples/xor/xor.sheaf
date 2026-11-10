@@ -7,7 +7,7 @@
 # (ab)c and a(bc). Exclusive or is associative, so every text whose products fit their filters
 # is accepted (xor.txt); a product that does not fit is refused, naming its filter
 # (xor_bc.txt, xor_ab_c.txt).
-Element {Integer} val = 0..1
+Element {Integer} value = 0..1
   1. {Digit}
 
 Bit {0 | 1}
@@ -15,11 +15,11 @@ Bit {0 | 1}
 Mul {}
   left {Element}
   right {Element}
-  out {left & right -> Bit}
-    | {0} left = 0 & right = 0
-    | {1} left = 0 & right = 1
-    | {1} left = 1 & right = 0
-    | {0} left = 1 & right = 1
+  out (left & right) {Bit}
+    {0} if left = 0 & right = 0
+    {1} if left = 0 & right = 1
+    {1} if left = 1 & right = 0
+    {0} if left = 1 & right = 1
 
 Ab {Mul} left = Assoc.a & right = Assoc.b
 Bc {Mul} left = Assoc.b & right = Assoc.c

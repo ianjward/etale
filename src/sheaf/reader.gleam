@@ -63,7 +63,7 @@ fn skip_spaces(sc: Scan) -> Scan {
   }
 }
 
-/// An operator that any number of spaces may surround: & | -> + - *
+/// An operator that any number of spaces may surround: & | + - *
 fn sym(sc: Scan, op: String) -> Option(Scan) {
   let sc2 = skip_spaces(sc)
   case at(sc2, op) {
@@ -342,12 +342,9 @@ fn arith(sc: Scan, first: Value) -> R(Value) {
   }
 }
 
-/// An arithmetic operator follows. '-' must not be the arrow '->'.
+/// An arithmetic operator follows.
 fn arith_op(sc: Scan, op: String) -> Bool {
-  case sym(sc, op) {
-    None -> False
-    Some(_) -> !{ op == "-" && at(skip_spaces(sc), "->") }
-  }
+  option.is_some(sym(sc, op))
 }
 
 fn arith_terms(sc: Scan, op: String, acc: List(Value)) -> R(List(Value)) {
@@ -371,9 +368,9 @@ fn op(sc: Scan) -> Option(#(String, Scan)) {
 
 // ---------------------------------------------------------------- predicates
 
-/// The reserved properties of a line, compared like fields: places, mod and
-/// print take '=', cost takes '<=' (a promise of at most that cost).
-pub const properties = ["places", "mod", "print", "cost"]
+/// The reserved properties of a line, compared like fields: places, modulo
+/// and print take '=', cost takes '<=' (a promise of at most that cost).
+pub const properties = ["places", "modulo", "print", "cost"]
 
 fn clause(sc: Scan) -> R(Clause) {
   let #(word, after) = take_while(sc, is_name_char)
@@ -390,7 +387,7 @@ fn clause(sc: Scan) -> R(Clause) {
         Some(#(o, sc3)) -> {
           use #(v, sc4) <- result.try(value(sc3))
           case p, o {
-            ["qty"], _ ->
+            ["count"], _ ->
               err(
                 sc,
                 "a list's count goes in its braces, e.g. {Digit 2} or {Line 1..}",
@@ -541,7 +538,6 @@ type Box {
   /// '{Item n}': a list of n items (Step 3).
   CountBox(Item, Value)
   InterBox(List(Item))
-  MapBox(inputs: List(String), outputs: List(Item))
 }
 
 fn box(sc: Scan) -> R(Box) {
@@ -549,18 +545,13 @@ fn box(sc: Scan) -> R(Box) {
     True -> Ok(#(EmptyBox, adv(sc, 2)))
     False -> {
       use sc <- result.try(eat(sc, "{"))
-      case mapping_head(sc) {
-        Some(#(inputs, sc2)) -> {
-          use #(outs, sc3) <- result.try(items(sc2))
-          case list.length(inputs) == 2 && list.length(outs) > 1 {
-            True -> err(sc, "a two-input mapping has a single output item")
-            False -> {
-              use sc4 <- result.try(eat(sc3, "}"))
-              Ok(#(MapBox(inputs, outs), sc4))
-            }
-          }
-        }
-        None -> {
+      case is_lower(peek(sc)) {
+        True ->
+          err(
+            sc,
+            "braces hold a type, not a field: a mapping's inputs go in parentheses before its type, e.g. big (total) {Fact}",
+          )
+        False -> {
           use #(its, sc2) <- result.try(items(sc))
           let counted = case gap(sc2) {
             Some(sc3) -> starts_number(sc3) || at(sc3, "..")
@@ -592,7 +583,7 @@ fn box(sc: Scan) -> R(Box) {
 }
 
 /// A counted box reads as a single item plus its count, kept as the
-/// internal qty setting.
+/// internal count setting.
 fn uncount(bx: Box) -> #(Box, Option(Value)) {
   case bx {
     CountBox(one, c) -> #(ItemsBox([one]), Some(c))
@@ -607,8 +598,9 @@ fn with_count(
 ) -> Result(Block, MapError) {
   case count, b {
     None, _ -> Ok(b)
-    Some(c), Block(AndConn, cs) -> Ok(Block(AndConn, [Setting("qty", c), ..cs]))
-    Some(c), Block(OrConn, []) -> Ok(Block(AndConn, [Setting("qty", c)]))
+    Some(c), Block(AndConn, cs) ->
+      Ok(Block(AndConn, [Setting("count", c), ..cs]))
+    Some(c), Block(OrConn, []) -> Ok(Block(AndConn, [Setting("count", c)]))
     Some(_), _ ->
       err(
         sc,
@@ -631,28 +623,68 @@ fn box_rest(sc2: Scan, its: List(Item)) -> R(Box) {
   }
 }
 
-fn mapping_head(sc: Scan) -> Option(#(List(String), Scan)) {
-  case field_name(sc, "") {
-    Error(_) -> None
-    Ok(#(a, sc2)) ->
-      case sym(sc2, "->") {
-        Some(sc3) -> Some(#([a], sc3))
-        None ->
-          case sym(sc2, "&") {
-            None -> None
-            Some(sc3) ->
-              case field_name(sc3, "") {
-                Ok(#(b, sc4)) ->
-                  case sym(sc4, "->") {
-                    Some(sc5) -> Some(#([a, b], sc5))
-                    None -> None
-                  }
-                Error(_) -> None
-              }
-          }
-      }
+/// '(units * price)': a calculation, the value of the field it is on. It
+/// is one expression: no range, no comparison, no parentheses inside.
+fn calculation(sc: Scan) -> R(Value) {
+  use sc <- result.try(eat(sc, "("))
+  use #(v, sc) <- result.try(case peek(sc) {
+    "\"" -> result.map(string_lit(sc), fn(r) { #(VStr(r.0), r.1) })
+    _ -> {
+      use #(first, sc) <- result.try(term(sc))
+      arith(sc, first)
+    }
+  })
+  case at(sc, ")"), has_sym(sc, "&") {
+    True, _ -> Ok(#(v, adv(sc, 1)))
+    False, True ->
+      err(
+        sc,
+        "inputs joined by & belong to a mapping, whose cases follow on the next lines, four spaces in: {True} if a = 1",
+      )
+    False, False ->
+      err(
+        sc,
+        "a calculation is one expression of + - or *, e.g. (units * price); what must hold goes after the type",
+      )
   }
 }
+
+/// '(total)' or '(big & units)': the inputs a mapping's cases match on.
+fn inputs(sc: Scan) -> R(List(String)) {
+  let what = "a field name: a mapping's inputs are one field, or two joined by &"
+  use sc <- result.try(eat(sc, "("))
+  use #(a, sc) <- result.try(field_name(sc, what))
+  use #(names, sc) <- result.try(case sym(sc, "&") {
+    Some(sc2) -> {
+      use #(b, sc3) <- result.try(field_name(sc2, what))
+      Ok(#([a, b], sc3))
+    }
+    None -> Ok(#([a], sc))
+  })
+  case at(sc, ")"), has_sym(sc, "&") {
+    True, _ -> Ok(#(names, adv(sc, 1)))
+    False, True ->
+      err(
+        sc,
+        "a mapping has one or two inputs, never more; chain mappings for more",
+      )
+    False, False ->
+      err(
+        sc,
+        "a mapping's inputs are one field, or two joined by &, e.g. (big & units); what must hold goes in its cases",
+      )
+  }
+}
+
+/// One or more spaces between a field's parentheses and its type.
+fn gap_before_type(sc: Scan) -> Result(Scan, MapError) {
+  case gap(sc) {
+    Some(sc2) -> Ok(sc2)
+    None -> err(sc, "expected a space between the parentheses and the type")
+  }
+}
+
+const never_a_list = "a worked-out value is never a list, so its type takes no count"
 
 /// The rest of an intersection, ' & Type_Name' repeated.
 fn inter_rest(sc: Scan, acc: List(Item)) -> R(List(Item)) {
@@ -784,6 +816,14 @@ fn read_lines(
             "a type name (types start with an uppercase letter)",
           ))
           use sc <- result.try(spaces_then(sc))
+          use _ <- result.try(case peek(sc) {
+            "(" ->
+              err(
+                sc,
+                "a type has no value to work out, so it takes no parentheses; they come only before a field's type",
+              )
+            _ -> Ok(Nil)
+          })
           use #(bx, sc) <- result.try(box(sc))
           let #(bx, count) = uncount(bx)
           let docs = list.reverse(doc) |> string.join(" ")
@@ -798,7 +838,6 @@ fn read_lines(
               let d = Decl(..d, kind: model.Record, comment: c, fields: fields)
               read_lines(rest2, n2, file, [], [DeclEntry(d), ..acc])
             }
-            MapBox(..) -> err(sc, "a mapping is a field, not a top-level line")
             CountBox(..) -> err(sc, "internal: counted box")
             InterBox(its) -> {
               use #(c, _) <- result.try(line_end(sc))
@@ -904,7 +943,7 @@ fn record_body(
       case string.starts_with(s, "    "), string.starts_with(s, "  ") {
         True, _ ->
           Error(MapError(
-            "a case line ('    | ...') must follow a mapping field",
+            "a case line ('    {output} if ...') must follow a mapping's head line",
             file,
             k,
             1,
@@ -933,6 +972,10 @@ fn record_body(
   }
 }
 
+/// A field line (Step 7). Before the type, parentheses hold where a
+/// worked-out value comes from: its calculation, or, when cases follow
+/// four spaces in, the inputs they match on. After the type come only
+/// what must hold and properties.
 fn field_line(
   s: String,
   rest: List(String),
@@ -946,52 +989,96 @@ fn field_line(
     "a field name (fields start with a lowercase letter)",
   ))
   use sc <- result.try(spaces_then(sc))
-  use #(bx, sc) <- result.try(box(sc))
-  let #(bx, count) = uncount(bx)
-  let f = Field(name, [], model.empty, None, line, "", model.Stored)
-  case bx {
-    EmptyBox -> err(sc, "a field needs a base")
-    InterBox(_) -> err(sc, "an intersection is a top-level line")
-    MapBox(inputs, outs) -> {
-      use #(c, _) <- result.try(line_end(sc))
-      use #(cases, rest2, n2) <- result.try(
-        read_cases(rest, line + 1, file, []),
-      )
-      case cases {
-        [] ->
-          Error(MapError(
-            "mapping field '" <> name <> "' needs at least one case line",
-            file,
-            line,
-            1,
-          ))
-        _ -> {
-          let f =
-            Field(
-              ..f,
-              items: outs,
-              comment: c,
-              mapping: Some(Mapping(inputs, outs, cases)),
-            )
-          Ok(#(Field(..f, role: model.classify(f)), rest2, n2))
+  let f = Field(name, [], model.empty, None, None, line, "", model.Stored)
+  case peek(sc), cases_follow(rest) {
+    "(", True -> mapping_field(f, sc, rest, line, file)
+    "(", False -> calculated_field(f, sc, rest, line)
+    _, _ -> {
+      use #(bx, sc) <- result.try(box(sc))
+      let #(bx, count) = uncount(bx)
+      case bx {
+        EmptyBox -> err(sc, "a field needs a base")
+        InterBox(_) -> err(sc, "an intersection is a top-level line")
+        CountBox(..) -> err(sc, "internal: counted box")
+        ItemsBox([one]) -> {
+          use #(#(b, c), _) <- result.try(tail(sc))
+          use b <- result.try(with_count(sc, b, count))
+          let f = Field(..f, items: [one], preds: b, comment: c)
+          Ok(#(Field(..f, role: model.classify(f)), rest, line + 1))
+        }
+        ItemsBox(its) -> {
+          use #(c, _) <- result.try(line_end(sc))
+          let f = Field(..f, items: its, comment: c)
+          Ok(#(Field(..f, role: model.classify(f)), rest, line + 1))
         }
       }
-    }
-    CountBox(..) -> err(sc, "internal: counted box")
-    ItemsBox([one]) -> {
-      use #(#(b, c), _) <- result.try(tail(sc))
-      use b <- result.try(with_count(sc, b, count))
-      let f = Field(..f, items: [one], preds: b, comment: c)
-      Ok(#(Field(..f, role: model.classify(f)), rest, line + 1))
-    }
-    ItemsBox(its) -> {
-      use #(c, _) <- result.try(line_end(sc))
-      let f = Field(..f, items: its, comment: c)
-      Ok(#(Field(..f, role: model.classify(f)), rest, line + 1))
     }
   }
 }
 
+/// The next line is a case: it starts four spaces in.
+fn cases_follow(lines: List(String)) -> Bool {
+  case lines {
+    [next, ..] -> string.starts_with(next, "    ")
+    [] -> False
+  }
+}
+
+/// 'total (units * price) {Decimal} places = 2': the calculation, a type
+/// of one item with no count, then optional predicates.
+fn calculated_field(
+  f: Field,
+  sc: Scan,
+  rest: List(String),
+  line: Int,
+) -> Result(#(Field, List(String), Int), MapError) {
+  use #(v, sc) <- result.try(calculation(sc))
+  use sc <- result.try(gap_before_type(sc))
+  use #(bx, sc) <- result.try(box(sc))
+  case bx {
+    ItemsBox([one]) -> {
+      use #(#(b, c), _) <- result.try(tail(sc))
+      let f =
+        Field(..f, items: [one], preds: b, calculation: Some(v), comment: c)
+      Ok(#(Field(..f, role: model.classify(f)), rest, line + 1))
+    }
+    CountBox(..) -> err(sc, never_a_list)
+    ItemsBox(_) ->
+      err(
+        sc,
+        "a calculation has one value, so its type is one item: a choice of values comes only from cases, each with its own predicates",
+      )
+    EmptyBox -> err(sc, "a field needs a base")
+    InterBox(_) -> err(sc, "an intersection is a top-level line")
+  }
+}
+
+/// 'big (total) {True | False}': the inputs, the type, and the cases on the
+/// lines below. The head line has no predicates: each case has its own.
+fn mapping_field(
+  f: Field,
+  sc: Scan,
+  rest: List(String),
+  line: Int,
+  file: String,
+) -> Result(#(Field, List(String), Int), MapError) {
+  use #(ins, sc) <- result.try(inputs(sc))
+  use sc <- result.try(gap_before_type(sc))
+  use #(bx, sc) <- result.try(box(sc))
+  use outs <- result.try(case bx {
+    ItemsBox(its) -> Ok(its)
+    CountBox(..) -> err(sc, never_a_list)
+    EmptyBox -> err(sc, "a mapping needs a type, e.g. {True | False}")
+    InterBox(_) -> err(sc, "an intersection is a top-level line")
+  })
+  use #(c, _) <- result.try(line_end(sc))
+  use #(cases, rest2, n2) <- result.try(read_cases(rest, line + 1, file, []))
+  let f =
+    Field(..f, items: outs, comment: c, mapping: Some(Mapping(ins, outs, cases)))
+  Ok(#(Field(..f, role: model.classify(f)), rest2, n2))
+}
+
+/// The cases of a mapping, four spaces in: '{output} if predicates'.
 fn read_cases(
   lines: List(String),
   n: Int,
@@ -1003,7 +1090,15 @@ fn read_cases(
       case string.starts_with(s, "    ") {
         True -> {
           let sc = Scan(s, 0, n, file)
-          use sc <- result.try(eat(sc, "    | "))
+          use sc <- result.try(eat(sc, "    "))
+          use _ <- result.try(case peek(sc) {
+            "|" ->
+              err(
+                sc,
+                "a case is its output, then if, then its predicates, e.g. {True} if total >= 500.00",
+              )
+            _ -> Ok(Nil)
+          })
           use #(bx, sc) <- result.try(box(sc))
           case bx {
             ItemsBox([out]) -> {
@@ -1011,6 +1106,7 @@ fn read_cases(
                 Some(sc) -> Ok(sc)
                 None -> err(sc, "expected a space after the case output")
               })
+              use sc <- result.try(if_word(sc))
               use #(b, sc) <- result.try(block(sc))
               use #(_, _) <- result.try(line_end(sc))
               read_cases(rest, n + 1, file, [Case(out, b, n), ..acc])
@@ -1022,6 +1118,19 @@ fn read_cases(
         False -> Ok(#(list.reverse(acc), lines, n))
       }
     [] -> Ok(#(list.reverse(acc), lines, n))
+  }
+}
+
+/// 'if' and the spaces after it, between a case's output and its predicates.
+fn if_word(sc: Scan) -> Result(Scan, MapError) {
+  case at(sc, "if"), gap(adv(sc, 2)) {
+    True, Some(sc2) -> Ok(sc2)
+    True, None -> err(adv(sc, 2), "expected a space after 'if'")
+    False, _ ->
+      err(
+        sc,
+        "a case says if before its predicates, e.g. {True} if total >= 500.00",
+      )
   }
 }
 

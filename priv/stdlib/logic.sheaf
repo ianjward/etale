@@ -3,31 +3,31 @@
 
 Not_Gate {}
   x {Fact}
-  out {x -> Fact}
-    | {False} x = True
-    | {True} x = False
+  out (x) {Fact}
+    {False} if x = True
+    {True} if x = False
 
 Or_Gate {}
   left {Fact}
   right {Fact}
-  out {left & right -> Fact}
-    | {True} left = True
-    | {True} left = False & right = True
-    | {False} left = False & right = False
+  out (left & right) {Fact}
+    {True} if left = True
+    {True} if left = False & right = True
+    {False} if left = False & right = False
 
 Xor_Gate {}
   left {Fact}
   right {Fact}
-  out {left & right -> Fact}
-    | {False} left = True & right = True
-    | {True} left = True & right = False
-    | {True} left = False & right = True
-    | {False} left = False & right = False
+  out (left & right) {Fact}
+    {False} if left = True & right = True
+    {True} if left = True & right = False
+    {True} if left = False & right = True
+    {False} if left = False & right = False
 
 Implies_Gate {}
   left {Fact}
   right {Fact}
-  out {left & right -> Fact}
-    | {True} left = False
-    | {True} left = True & right = True
-    | {False} left = True & right = False
+  out (left & right) {Fact}
+    {True} if left = False
+    {True} if left = True & right = True
+    {False} if left = True & right = False

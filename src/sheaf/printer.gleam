@@ -162,9 +162,9 @@ fn print_decl(
     model.Union -> first_ok(p, d.items, v, at, d.name)
     model.Intersection -> print_item(p, model.decl_base(d), v, at)
     model.Refine ->
-      case model.qty_of(d.preds) {
+      case model.count_of(d.preds) {
         Some(_) -> {
-          let #(lo, hi) = grammar.qty_bounds(model.qty_of(d.preds))
+          let #(lo, hi) = grammar.count_bounds(model.count_of(d.preds))
           print_seq(p, model.decl_base(d), lo, hi, v, at)
         }
         None -> print_item(p, model.decl_base(d), v, at)
@@ -223,7 +223,7 @@ fn print_seq(
         }
       case fits {
         False ->
-          Error(at <> ": " <> int.to_string(n) <> " items do not fit the qty")
+          Error(at <> ": " <> int.to_string(n) <> " items do not fit the count")
         True ->
           list.index_map(xs, fn(x, i) {
             print_item(p, elem, x, at <> "[" <> int.to_string(i + 1) <> "]")
@@ -263,7 +263,7 @@ fn print_conversion(d: Decl, x: Decimal, at: String) -> Result(String, String) {
         <> " has no \"-\" position, so it cannot print a negative",
       )
     [dp], True, False -> {
-      let #(lo, hi) = grammar.qty_bounds(model.qty_of(dp.preds))
+      let #(lo, hi) = grammar.count_bounds(model.count_of(dp.preds))
       let digits = decimal.abs_digits(x)
       let digits = string.pad_start(digits, lo, "0")
       let fits = case hi {
@@ -304,7 +304,7 @@ fn print_conversion(d: Decl, x: Decimal, at: String) -> Result(String, String) {
 }
 
 fn default_position(pos: model.Position) -> Result(String, Nil) {
-  let #(lo, _) = grammar.qty_bounds(model.qty_of(pos.preds))
+  let #(lo, _) = grammar.count_bounds(model.count_of(pos.preds))
   case pos.items {
     [StrItem(s)] -> Ok(string.repeat(s, lo))
     _ -> Error(Nil)
@@ -358,9 +358,9 @@ fn print_field(
     _, _ -> Ok(v)
   }
   use v <- result.try(v)
-  case model.qty(f), f.items {
+  case model.count(f), f.items {
     Some(_), [one] -> {
-      let #(lo, hi) = grammar.qty_bounds(model.qty(f))
+      let #(lo, hi) = grammar.count_bounds(model.count(f))
       print_seq(p, one, lo, hi, v, at)
     }
     _, items -> first_ok(p, items, v, at, f.name)
@@ -372,7 +372,7 @@ fn print_field(
 /// The text of a part when the value says nothing about it: a literal, a type
 /// with one inhabitant, or a sequence of its print count (or fewest items).
 fn default_field(p: Program, f: Field) -> Option(String) {
-  case model.qty(f), f.items {
+  case model.count(f), f.items {
     Some(_), [one] -> {
       let n = print_count(f.preds)
       default_item(p, one, [])
@@ -386,7 +386,7 @@ fn default_field(p: Program, f: Field) -> Option(String) {
 fn print_count(preds: model.Block) -> Int {
   case model.setting(preds, "print") {
     Some(VNum(n)) -> decimal.to_int(n.value)
-    _ -> grammar.qty_bounds(model.qty_of(preds)).0
+    _ -> grammar.count_bounds(model.count_of(preds)).0
   }
 }
 
@@ -402,7 +402,7 @@ fn default_item(p: Program, it: Item, seen: List(String)) -> Option(String) {
           case d.kind, d.items {
             model.Union, [one] -> default_item(p, one, seen)
             model.Refine, [one] ->
-              case model.qty_of(d.preds) {
+              case model.count_of(d.preds) {
                 Some(_) ->
                   default_item(p, one, seen)
                   |> option.map(fn(t) { string.repeat(t, print_count(d.preds)) })
@@ -495,7 +495,7 @@ fn emit(p: Program, n: Node, text: String) -> String {
     Some(name) ->
       case decl(p, name) {
         Some(d) ->
-          case d.kind, model.setting(d.preds, "print"), model.qty_of(d.preds) {
+          case d.kind, model.setting(d.preds, "print"), model.count_of(d.preds) {
             model.Refine, Some(VNum(c)), Some(_) ->
               default_item(p, model.decl_base(d), [])
               |> option.map(fn(t) { string.repeat(t, decimal.to_int(c.value)) })

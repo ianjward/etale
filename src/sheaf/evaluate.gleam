@@ -647,7 +647,7 @@ fn field_value(ev: Ev, r: Rec, f: Field) -> Val {
         RRange(..) -> VInvalid
       }
       use <- later_first(v)
-      let v = case v, model.setting(f.preds, "mod") {
+      let v = case v, model.setting(f.preds, "modulo") {
         VNumber(x), Some(m) ->
           case eval_value(ev, Some(r), m, VInvalid) {
             RVal(VNumber(mv)) ->
@@ -676,7 +676,7 @@ fn stored_value(ev: Ev, r: Rec, f: Field) -> Val {
   case node.kid(r.node, f.name) {
     Error(_) -> VInvalid
     Ok(k) -> {
-      let hi = case model.qty(f) {
+      let hi = case model.count(f) {
         Some(#(_, Some(h))) -> Some(decimal.to_int(h.value))
         _ -> None
       }
@@ -715,7 +715,7 @@ fn stored_value(ev: Ev, r: Rec, f: Field) -> Val {
           VInvalid
         }
         None -> {
-          let violation = case v, model.base(f), model.qty(f) {
+          let violation = case v, model.base(f), model.count(f) {
             VInvalid, _, _ -> ""
             _, TypeItem(t), None -> type_violation(ev, t, v)
             _, _, _ -> ""
@@ -767,7 +767,7 @@ fn violation_loop(ev: Ev, name: String, v: Val, seen) -> String {
 }
 
 fn constrain(ev: Ev, r: Rec, f: Field, v: Val, role: String) -> Val {
-  let ds = deps(f.preds)
+  let ds = field_deps(f)
   case v {
     VLater -> VLater
     VInvalid -> {
@@ -800,14 +800,14 @@ fn constrain(ev: Ev, r: Rec, f: Field, v: Val, role: String) -> Val {
               role,
               "INVALID",
               ds,
-              "failed: " <> txt <> " with val = " <> show(v),
+              "failed: " <> txt <> " with value = " <> show(v),
             ),
           )
           VInvalid
         }
         Error(_), False -> {
           let detail = case role, model.definition(f) {
-            "computed", Some(d) -> "val = " <> model.value_text(d)
+            "computed", Some(d) -> "(" <> model.value_text(d) <> ")"
             _, _ -> ""
           }
           note(r, Trace(f.name, role, show(v), ds, detail))
@@ -1043,7 +1043,7 @@ fn result_all(xs: List(Result(a, Nil))) -> Result(List(a), Nil) {
 pub fn eval_path(ev: Ev, r: Option(Rec), parts: List(String), cur: Val) -> Val {
   let assert [head, ..steps] = parts
   let #(start, walk) = case head, r {
-    "val", _ -> #(cur, ev)
+    "value", _ -> #(cur, ev)
     _, Some(rec) ->
       case model.field(rec.decl, head) {
         Some(_) -> #(get(ev, rec, head), ev)
@@ -1192,7 +1192,7 @@ fn filter(
 fn fold(_ev: Ev, s: Val, kind: String) -> Val {
   let assert VSeqv(items, _, _) = s
   case kind {
-    "qty" -> VNumber(decimal.from_int(list.length(items)))
+    "count" -> VNumber(decimal.from_int(list.length(items)))
     "sum" ->
       list.try_fold(items, decimal.zero(), fn(acc, x) {
         case x {
@@ -1255,7 +1255,21 @@ fn compare(a: Val, op: String, b: Rhs) -> Bool {
 }
 
 pub fn deps(b: Block) -> List(String) {
-  list.fold(b.clauses, [], fn(acc, c) {
+  deps_from(b, [])
+}
+
+/// The fields a field reads: those in its calculation, then those in its
+/// predicates.
+pub fn field_deps(f: Field) -> List(String) {
+  let first = case f.calculation {
+    Some(v) -> add_dep([], v)
+    None -> []
+  }
+  deps_from(f.preds, first)
+}
+
+fn deps_from(b: Block, acc: List(String)) -> List(String) {
+  list.fold(b.clauses, acc, fn(acc, c) {
     case c {
       Plain(p, _, v) -> add_dep(add_dep(acc, VPath(p)), v)
       _ -> acc
@@ -1267,7 +1281,7 @@ fn add_dep(acc: List(String), v: Value) -> List(String) {
   case v {
     VPath([first, ..]) ->
       case
-        first != "val" && is_lower_start(first) && !list.contains(acc, first)
+        first != "value" && is_lower_start(first) && !list.contains(acc, first)
       {
         True -> list.append(acc, [first])
         False -> acc
