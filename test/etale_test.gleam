@@ -162,12 +162,12 @@ fn syntax_errors() -> Outcome {
     expect(result_is_error(source("Bad {\"a\" | }\n")), "bad union"),
     expect(
       result_is_error(source(
-        "Thing {}\n  a {Integer}\n  b {Integer} val = 1 & a = 2 | a = 3\n",
+        "Thing {}\n  a {Integer}\n  b {Integer} calc: 1, if: a = 2 | a = 3\n",
       )),
       "& mixed with |",
     ),
     expect(
-      result_is_error(source("Two {\"a\" | \"b\"} val = \"a\"\n")),
+      result_is_error(source("Two {\"a\" | \"b\"} calc: \"a\"\n")),
       "predicates on a union",
     ),
     expect(
@@ -222,7 +222,7 @@ fn mistakes() -> Outcome {
     [
       "used before it is declared", "is reserved", "declared below",
       "do not cover", "not disjoint", "cannot prove", "at most one factor",
-      "rounding never happens", "cost promise broken",
+      "rounding never happens",
       "not a number, so it cannot be multiplied", "must always sit inside",
     ],
     fn(needle) { expect(string.contains(text, needle), needle) },
@@ -234,18 +234,22 @@ fn geometric_mistakes() -> Outcome {
   let #(_, rep) = load("examples/mistakes/geometric.sheaf")
   let text = msgs(rep)
   let wrapped =
-    "Clock {}\n  hour {Integer} val = 0..23\n"
-    <> "  later {Integer} val = hour + 5 & mod = 24\n  in_day {Fact} later <= 23\n"
+    "Clock {}\n  hour {Integer} value: 0..23\n"
+    <> "  later {Integer} calc: hour + 5, mod: 24\n  in_day {Claim} if: later <= 23\n"
   let assert Ok(#(_, ok)) = source(wrapped)
   let assert Ok(#(table, _)) =
     source(
-      "Row {}\n  p {Decimal} unique\n  nl {Newline}\nTable {}\n  rows {Row 1..}\n",
+      "Row {}\n  p {Decimal} unique: True\n  text {Text}\n    1. {p}\n    2. {Newline}\nTable {}\n  rows {Row} qty: 1..\n",
     )
   all([
     expect(
-      list.length(string.split(text, "needs a positive number written out"))
-        == 3,
-      "mod needs a positive written divisor",
+      result_is_error(source(
+        "X {}\n  h {Integer}\n  later {Integer} calc: h + 5, mod: -3\n",
+      ))
+        && result_is_error(source(
+        "X {}\n  h {Integer}\n  m {Integer}\n  later {Integer} calc: h + 5, mod: m\n",
+      )),
+      "mod: takes a number written out in digits",
     ),
     expect(
       string.contains(text, "cannot prove later >= hour"),
@@ -294,10 +298,10 @@ fn sequents_print() -> Outcome {
 fn mapping_outputs_and_inputs() -> Outcome {
   let assert Ok(#(_, r1)) =
     source(
-      "Two {\"x\" | \"y\"}\nM {}\n  a {Fact}\n  out {a -> Two}\n    | {\"x\"} a = True\n    | {\"x\"} a = False\n",
+      "Two {\"x\" | \"y\"}\nM {}\n  a {Fact}\n  out {Two} from: a\n    {\"x\"} if: a = True\n    {\"x\"} if: a = False\n",
     )
   let assert Ok(#(_, r2)) =
-    source("M {}\n  t {Text}\n  out {t -> Fact}\n    | {True} t = \"a\"\n")
+    source("M {}\n  t {Text}\n  out {Fact} from: t\n    {True} if: t = \"a\"\n")
   all([
     expect(
       string.contains(msgs(r1), "no case produces"),
@@ -526,15 +530,15 @@ fn grids() -> Outcome {
 const spec_decls = 130
 
 const inter_src =
-  "Letters {Uppercase 3}
+  "Letters {Uppercase} qty: 3
 Code {Text}
   1. {Letters}
   2. {\"-\"}
-  3. {Digit 1..}
-Short_Text {Character 0..8}
+  3. {Digit} qty: 1..
+Short_Text {Character} qty: 0..8
 Short_Code {Code & Short_Text}
 Four {Integer}
-  1. {Digit 4}
+  1. {Digit} qty: 4
 Year {Four & Integer}
 "
 
@@ -563,16 +567,20 @@ const loose_src =
   "Zone {\"A\"|\"B\"}
 Tier {\"light\" |   \"heavy\" | \"far\"}
 Parcel {}
-  weight  {Integer}   val = 0..50
-  space   {\" \"}
-  zone    {Zone}
-  spare  {Integer}   val = 0..9
-  more    {Integer}   val = weight +  spare+1
-  check   {True}      spare  >=  0 & weight <= 50
-  tier    {weight&zone->Tier}
-    | {\"light\"}   weight = 0..5   &  zone = \"A\"
-    | {\"heavy\"} weight = 6..50&zone = \"A\"
-    | {\"far\"}     zone = \"B\"   
+  weight {Integer} value: 0..50
+  zone {Zone}
+  spare {Integer} value: 0..9
+  more {Integer} calc: weight +  spare+1
+  check {True} if: spare  >=  0 & weight <= 50
+  tier {Tier} from: weight & zone
+    {\"light\"} if: weight = 0..5   &  zone = \"A\"
+    {\"heavy\"} if: weight = 6..50&zone = \"A\"
+    {\"far\"} if: zone = \"B\"
+  text {Text}
+    1. {weight}
+    2. {\" \"}
+    3. {zone}
+    4. {spare}
 "
 
 /// Spaces around & | -> + - * are free; comparisons need a space on each
@@ -585,23 +593,23 @@ fn spacing() -> Outcome {
     expect(num(get(p, parcel.value, "more")) == "12", "loose arithmetic"),
     expect(num(get(p, parcel.value, "tier")) == "heavy", "loose mapping"),
     expect(
-      is_ok(source("X {}\n  x {Integer} val=1..2 & places=0\n")),
+      is_ok(source("X {}\n  x {Integer}\n  r {True} if: x=1..2 & x>=1\n")),
       "comparisons take any spacing",
     ),
     expect(
-      result_is_error(source("X {}\n  x {Digit} qty = 2\n")),
-      "qty is no longer a setting",
+      result_is_error(source("X {}\n  x {Digit 2}\n")),
+      "braces hold only a type: qty: is an item",
     ),
     expect(
-      result_is_error(source("X {\"a\" | \"b\" 2}\n")),
-      "a count goes after a single item",
+      result_is_error(source("X {\"a\" | \"b\"} qty: 2\n")),
+      "a union takes no items",
     ),
     expect(
-      result_is_error(source("X {}\n  n {Integer} val = 1 & cost = 1\n")),
-      "cost is written as a promise, cost <= ...",
+      result_is_error(source("X {}\n  n {Integer} calc: 1, cost: 1\n")),
+      "cost is not an item: the checker works out every cost",
     ),
     expect(
-      result_is_error(source("X {}\n  x {Integer}\tval = 1\n")),
+      result_is_error(source("X {}\n  x {Integer}\tvalue: 0..9\n")),
       "tabs are rejected",
     ),
     expect(
@@ -658,7 +666,7 @@ fn printing() -> Outcome {
     )
   let base = base(False)
   let loose =
-    "X {}\n  a  {Integer}   val = 0..9   \n  b {Integer} val = a*2 # twice\n"
+    "X {}\n  a  {Integer}   value:  0..9   \n  b {Integer} calc: a*2 # twice\n"
   all([
     expect(order == Ok("order 1042\nABC-0001 x3 @ 19.90\n"), "order prints"),
     expect(leap == Ok("2024-02-29"), "dates pad their digits"),
@@ -668,7 +676,7 @@ fn printing() -> Outcome {
     expect(
       printer.format(base, loose, "x.sheaf")
         == Ok(
-        "X {}\n  a {Integer} val = 0..9\n  b {Integer} val = a * 2 # twice\n",
+        "X {}\n  a {Integer} value: 0..9\n  b {Integer} calc: a * 2 # twice\n",
       ),
       "fmt: canonical spacing, comments kept",
     ),
@@ -688,7 +696,7 @@ fn printing() -> Outcome {
         })
       {
         Ok(code) ->
-          string.contains(code, "Big_Line {Line} line_total >= 500.00")
+          string.contains(code, "Big_Line {Line} if: line_total >= 500.00")
           && string.starts_with(code, "#")
         Error(_) -> False
       },
@@ -700,13 +708,13 @@ fn printing() -> Outcome {
 const filter_src =
   "Item {}
   d {Digit}
-  w {Integer} val = 0..9
-Heavy {Item} w >= 5
+  w {Integer} value: 0..9
+Heavy {Item} if: w >= 5
 Box {}
-  items {Item 1..}
-  heavy {Integer} val = items.Heavy.qty
-  hw {Integer} val = items.Heavy.w.sum
-  ok {Fact} hw >= 0
+  items {Item} qty: 1..
+  heavy {Integer} count: items, filter: Heavy
+  hw {Integer} sum: items.w, filter: Heavy
+  ok {Claim} if: hw >= 0
 "
 
 /// {Type n} makes a list (no count means one); a type-named step filters it;
@@ -737,11 +745,11 @@ fn lists_and_filters() -> Outcome {
       "orders: big total",
     ),
     expect(
-      refused(filter_src <> "  bad {Integer} val = items.Heavy\n"),
+      refused(filter_src <> "  bad {Integer} calc: items\n"),
       "a list outside a fold is refused",
     ),
     expect(
-      refused("X {}\n  a {Digit}\n  b {Integer} val = a.qty\n"),
+      refused("X {}\n  a {Digit}\n  b {Integer} count: a\n"),
       "one value is not a list",
     ),
   ])
@@ -757,16 +765,16 @@ fn context_paths() -> Outcome {
   let bad = program.check(p, "Book", unknown)
   let alone = program.check(p, "Order", "1041 C001\n")
   let lib =
-    "Item {}\n  n {Integer}\n  nl {Newline}\n\n"
-    <> "Big {Item} n > Box.limit\n\n"
-    <> "Box {}\n  limit {Integer}\n  nl {Newline}\n  items {Item 0..}\n"
-    <> "  bigs {Integer} val = items.Big.qty\n"
+    "Item {}\n  n {Integer}\n  text {Text}\n    1. {n}\n    2. {Newline}\n\n"
+    <> "Big {Item} if: n > Box.limit\n\n"
+    <> "Box {}\n  limit {Integer}\n  items {Item} qty: 0..\n  text {Text}\n    1. {limit}\n    2. {Newline}\n    3. {items}\n"
+    <> "  bigs {Integer} count: items, filter: Big\n"
   let assert Ok(#(bp, brep)) = source(lib)
   let box = program.check(bp, "Box", "5\n3\n7\n9\n")
   let assert Ok(#(_, escaped)) =
     source(
       lib
-      <> "\nShelf {}\n  items {Item 0..}\n  bigs {Integer} val = items.Big.qty\n",
+      <> "\nShelf {}\n  items {Item} qty: 0..\n  bigs {Integer} count: items, filter: Big\n",
     )
   let assert Ok(#(_, text_cmp)) =
     source(
@@ -774,13 +782,13 @@ fn context_paths() -> Outcome {
       |> string.replace("limit {Integer}", "limit {Natural}"),
     )
   let assert Ok(#(_, not_rec)) =
-    source("Two {\"2\"}\nR {}\n  a {Integer} val = Two.x\n")
+    source("Two {\"2\"}\nR {}\n  a {Integer} calc: Two.x\n")
   let assert Ok(#(_, promised)) =
     source(
-      "C {}\n  k {Natural}\n  nl {Newline}\n\nMine {C} k = O.k\n\n"
-      <> "O {}\n  k {Natural}\n  nl {Newline}\n"
-      <> "  n {Integer} val = B.cs.Mine.qty & cost <= B.cs.qty\n\n"
-      <> "B {}\n  cs {C 0..}\n  os {O 0..}\n",
+      "C {}\n  k {Natural}\n  text {Text}\n    1. {k}\n    2. {Newline}\n\nMine {C} if: k = O.k\n\n"
+      <> "O {}\n  k {Natural}\n  text {Text}\n    1. {k}\n    2. {Newline}\n"
+      <> "  n {Integer} count: B.cs, filter: Mine\n\n"
+      <> "B {}\n  cs {C} qty: 0..\n  os {O} qty: 0..\n",
     )
   all([
     expect(check.errors(rep) == [], "book checks clean: " <> msgs(rep)),
@@ -819,7 +827,7 @@ fn context_paths() -> Outcome {
 }
 
 const filter_field_src =
-  "Element {Integer} val = 0..9
+  "Element {Integer} value: 0..9
   1. {Digit}
 
 Mul {}
@@ -827,14 +835,14 @@ Mul {}
   right {Element}
   out {Element}
 
-Small {Mul} out <= 5
-Tiny {Small} out <= 2
+Small {Mul} if: out <= 5
+Tiny {Small} if: out <= 2
 
 Holder {}
   m {Small}
-  half {True} m.out <= 4
-  ms {Tiny 0..}
-  total {Integer} val = ms.out.sum
+  half {True} if: m.out <= 4
+  ms {Tiny} qty: 0..
+  total {Integer} sum: ms.out
 "
 
 /// A field typed by a filter holds values of the filter's record, so a path
@@ -896,43 +904,55 @@ fn review_readings() -> Outcome {
     expect(program.check(m, "Money", "19.90").ok, "two places fit"),
     expect(refused("X {}\n  a {Integer}\n  ok {True}\n"), "bare {True}"),
     expect(
-      result_is_error(source("X {}\n  v {Integer} val = 5..5\n")),
+      result_is_error(source("X {}\n  v {Integer} value: 5..5\n")),
       "a range spans more than one value",
     ),
     expect(
-      case source("X {}\n  v {5}\n  w {Integer} val = 5\n") {
+      case source("X {}\n  v {Digit}\n  w {Integer} calc: 5\n") {
         Ok(#(p, _)) -> {
-          let x = program.check(p, "X", "5")
+          let x = program.check(p, "X", "7")
           x.ok && num(get(p, x.value, "w")) == "5"
         }
         Error(_) -> False
       },
-      "a fixed value is a literal; val = 5 computes",
+      "calc: 5 computes a fixed value",
+    ),
+    expect(
+      result_is_error(source("X {}\n  v {5}\n")),
+      "a stored field with one possible text holds no data",
     ),
   ])
 }
 
 const tree_src =
   "Node {}
-  open {\"(\"}
-  w {Integer} val = 0..9
-  kids {Node 0..}
-  close {\")\"}
-  nodes {Integer} val = kids.qty + kids.nodes.sum
-  weight {Integer} val = w + kids.weight.sum
-  ok {Fact} weight >= 0
+  w {Integer} value: 0..9
+  kids {Node} qty: 0..
+  kid_count {Integer} count: kids
+  kid_nodes {Integer} sum: kids.nodes
+  nodes {Integer} calc: kid_count + kid_nodes
+  kid_weight {Integer} sum: kids.weight
+  weight {Integer} calc: w + kid_weight
+  ok {Claim} if: weight >= 0
+  text {Text}
+    1. {\"(\"}
+    2. {w}
+    3. {kids}
+    4. {\")\"}
 "
 
 const grid_src =
   "Cell {}
   d {Digit}
 Row {}
-  cells {Cell 0..}
-  end {\";\"}
-  n {Integer} val = cells.qty
+  cells {Cell} qty: 0..
+  n {Integer} count: cells
+  text {Text}
+    1. {cells}
+    2. {\";\"}
 Grid {}
-  rows {Row 0..}
-  total {Integer} val = rows.n.sum & cost <= rows.cells.qty + rows.qty
+  rows {Row} qty: 0..
+  total {Integer} sum: rows.n
 "
 
 fn timed(f: fn() -> a) -> #(a, Float) {

@@ -3,31 +3,41 @@
 # The window always has width at least 10, whatever the stored values are,
 # because their ranges do not overlap.
 Window {}
-  start {Integer} val = 0..10
-  dots {".."}
-  finish {Integer} val = 20..30
-  width {Integer} val = finish - start
-  wide_enough {Fact} width >= 10
+  start {Integer} value: 0..10
+  finish {Integer} value: 20..30
+  width {Integer} calc: finish - start
+  wide_enough {Claim} if: width >= 10
+  text {Text}
+    1. {start}
+    2. {".."}
+    3. {finish}
 
 # A chain of digits written "+3+4+5". Its total is never negative:
 # proved by induction, assuming the claim for the rest of the chain.
 Chain {}
-  plus {"+"}
-  x {Integer} val = 0..9
-  rest {Chain 0..1}
-  total {Integer} val = x + rest.total
-  links {Integer} val = rest.qty + rest.links
-  nonnegative {Fact} total >= 0
+  x {Integer} value: 0..9
+  rest {Chain} qty: 0..1
+  total {Integer} calc: x + rest.total
+  rest_count {Integer} count: rest
+  links {Integer} calc: rest_count + rest.links
+  nonnegative {Claim} if: total >= 0
+  text {Text}
+    1. {"+"}
+    2. {x}
+    3. {rest}
 
 # A two-input mapping: a table over a numeric range and a finite set.
 Zone {"A" | "B"}
 Tier {"light" | "heavy" | "far"}
 
 Parcel {}
-  weight {Integer} val = 0..50
-  space {" "}
+  weight {Integer} value: 0..50
   zone {Zone}
-  tier {weight & zone -> Tier}
-    | {"light"} weight = 0..5 & zone = "A"
-    | {"heavy"} weight = 6..50 & zone = "A"
-    | {"far"} zone = "B"
+  tier {Tier} from: weight & zone
+    {"light"} if: weight = 0..5 & zone = "A"
+    {"heavy"} if: weight = 6..50 & zone = "A"
+    {"far"} if: zone = "B"
+  text {Text}
+    1. {weight}
+    2. {" "}
+    3. {zone}

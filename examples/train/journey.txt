@@ -1,0 +1,6 @@
+R10 fast 10
+Oslo 08:45 +0
+Drammen 09:20 +4
+R2 slow 30
+Drammen 09:40 +12
+Kongsberg 10:30 +3

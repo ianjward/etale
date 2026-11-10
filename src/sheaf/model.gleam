@@ -10,7 +10,9 @@ import sheaf/decimal.{type Decimal}
 
 pub const folds = ["qty", "sum"]
 
-pub const reserved = ["qty", "sum", "val", "places", "mod", "cost", "print"]
+/// Names no field may take (the header of language.sheaf). Inside the model the
+/// line's own value is the path 'val', and folds end a path in qty or sum.
+pub const reserved = ["value", "text"]
 
 pub const builtin_numeric = ["Integer", "Decimal"]
 

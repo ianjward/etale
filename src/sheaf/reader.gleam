@@ -2,6 +2,13 @@
 //// grammar it declares is compiled (grammar.gleam), and every file, language.sheaf
 //// included, must then match File in exactly one way. The program cross-checks
 //// the two block by block, so the reader cannot silently disagree with the spec.
+////
+//// Lines have the form 'name {type} item: value, item: value' (the header of
+//// language.sheaf). The reader turns them into the model the checker knows:
+//// calc:, count:, sum: and value: become the line's own 'val' predicates, a
+//// fold becomes a path ending in qty or sum, qty: becomes the qty setting, and
+//// a record's text shape orders its stored fields, with each position that
+//// holds no field kept as a field named by its number and a dot ("2.").
 
 import gleam/int
 import gleam/list
@@ -257,17 +264,31 @@ fn item(sc: Scan) -> R(Item) {
 
 // ---------------------------------------------------------------- values
 
+/// A path has at most one dot (a field, or one field of that field). 'value'
+/// is the line's own value, kept in the model as 'val'.
 fn path(sc: Scan) -> R(List(String)) {
   use #(first, sc) <- result.try(any_name(sc))
+  let first = case first {
+    "value" -> "val"
+    _ -> first
+  }
   path_rest(sc, [first])
 }
 
 fn path_rest(sc: Scan, acc: List(String)) -> R(List(String)) {
   case at(sc, ".") && !at(sc, "..") {
-    True -> {
-      use #(n, sc) <- result.try(any_name(adv(sc, 1)))
-      path_rest(sc, [n, ..acc])
-    }
+    True ->
+      case acc {
+        [_, _, ..] ->
+          err(
+            sc,
+            "a path has at most one dot: to reach further, give the step its own field first",
+          )
+        _ -> {
+          use #(n, sc) <- result.try(any_name(adv(sc, 1)))
+          path_rest(sc, [n, ..acc])
+        }
+      }
     False -> Ok(#(list.reverse(acc), sc))
   }
 }
@@ -325,16 +346,18 @@ fn value(sc: Scan) -> R(Value) {
   }
 }
 
+const arith_ops = ["+", "-", "*"]
+
 fn arith(sc: Scan, first: Value) -> R(Value) {
-  case list.find(["+", "-", "*"], fn(op) { arith_op(sc, op) }) {
+  case list.find(arith_ops, fn(op) { has_sym(sc, op) }) {
     Error(_) -> Ok(#(first, sc))
     Ok(op) -> {
       use #(terms, sc) <- result.try(arith_terms(sc, op, [first]))
-      case list.find(["+", "-", "*"], fn(o) { o != op && arith_op(sc, o) }) {
+      case list.find(arith_ops, fn(o) { o != op && has_sym(sc, o) }) {
         Ok(_) ->
           err(
             sc,
-            "an expression uses one operator kind only (no precedence exists)",
+            "a calculation uses one operator kind only (there is no precedence): give the other part its own field",
           )
         Error(_) -> Ok(#(VArith(op, terms), sc))
       }
@@ -342,21 +365,43 @@ fn arith(sc: Scan, first: Value) -> R(Value) {
   }
 }
 
-/// An arithmetic operator follows. '-' must not be the arrow '->'.
-fn arith_op(sc: Scan, op: String) -> Bool {
-  case sym(sc, op) {
-    None -> False
-    Some(_) -> !{ op == "-" && at(skip_spaces(sc), "->") }
-  }
-}
-
 fn arith_terms(sc: Scan, op: String, acc: List(Value)) -> R(List(Value)) {
-  case arith_op(sc, op), sym(sc, op) {
-    True, Some(sc2) -> {
+  case sym(sc, op) {
+    Some(sc2) -> {
       use #(t, sc) <- result.try(term(sc2))
       arith_terms(sc, op, [t, ..acc])
     }
-    _, _ -> Ok(#(list.reverse(acc), sc))
+    None -> Ok(#(list.reverse(acc), sc))
+  }
+}
+
+/// What follows 'calc:': a term, a calculation with one operator kind, or a
+/// quotient of exactly two terms.
+fn calculation(sc: Scan) -> R(Value) {
+  use #(first, sc) <- result.try(term(sc))
+  case sym(sc, "/") {
+    Some(sc2) -> {
+      use #(second, sc3) <- result.try(term(sc2))
+      case list.any(["/", ..arith_ops], fn(o) { has_sym(sc3, o) }) {
+        True ->
+          err(
+            sc3,
+            "a quotient has exactly two terms: give it its own field to divide again or to add to it",
+          )
+        False -> Ok(#(VArith("/", [first, second]), sc3))
+      }
+    }
+    None -> {
+      use #(v, sc2) <- result.try(arith(sc, first))
+      case has_sym(sc2, "/") {
+        True ->
+          err(
+            sc2,
+            "'/' does not mix with + - or *: give the quotient its own field",
+          )
+        False -> Ok(#(v, sc2))
+      }
+    }
   }
 }
 
@@ -369,70 +414,38 @@ fn op(sc: Scan) -> Option(#(String, Scan)) {
   }
 }
 
-// ---------------------------------------------------------------- predicates
-
-/// The reserved properties of a line, compared like fields: places, mod and
-/// print take '=', cost takes '<=' (a promise of at most that cost).
-pub const properties = ["places", "mod", "print", "cost"]
+// ---------------------------------------------------------------- conditions
 
 fn clause(sc: Scan) -> R(Clause) {
-  let #(word, after) = take_while(sc, is_name_char)
-  case word {
-    "unique" -> Ok(#(Flag("unique"), after))
-    _ -> {
-      use #(p, sc2) <- result.try(path(sc))
-      case op(sc2) {
-        None ->
-          err(
-            sc,
-            "expected a predicate: 'field op value', a property like places = 2, or 'unique'",
-          )
-        Some(#(o, sc3)) -> {
-          use #(v, sc4) <- result.try(value(sc3))
-          case p, o {
-            ["qty"], _ ->
-              err(
-                sc,
-                "a list's count goes in its braces, e.g. {Digit 2} or {Line 1..}",
-              )
-            ["cost"], "<=" -> Ok(#(Setting("cost", v), sc4))
-            ["cost"], _ -> err(sc, "cost is a promise: write cost <= ...")
-            [k], "=" ->
-              case list.contains(properties, k) {
-                True ->
-                  case v {
-                    VStr(_) -> err(sc, k <> " takes a number")
-                    _ -> Ok(#(Setting(k, v), sc4))
-                  }
-                False -> Ok(#(Plain(p, o, v), sc4))
-              }
-            [k], _ ->
-              case list.contains(properties, k) {
-                True -> err(sc, k <> " is a property: write " <> k <> " = ...")
-                False -> Ok(#(Plain(p, o, v), sc4))
-              }
-            _, _ -> Ok(#(Plain(p, o, v), sc4))
-          }
-        }
-      }
+  use #(p, sc2) <- result.try(path(sc))
+  case op(sc2) {
+    None ->
+      err(
+        sc,
+        "expected a condition: a path, a comparison (= < <= > >=) and a value",
+      )
+    Some(#(o, sc3)) -> {
+      use #(v, sc4) <- result.try(value(sc3))
+      Ok(#(Plain(p, o, v), sc4))
     }
   }
 }
 
-fn looks_like_predicate(sc: Scan) -> Bool {
+fn looks_like_condition(sc: Scan) -> Bool {
   case path(sc) {
     Ok(#(_, sc2)) -> option.is_some(op(sc2))
     Error(_) -> False
   }
 }
 
+/// Conditions joined by '&' or by '|', never both on one line.
 fn block(sc: Scan) -> R(Block) {
   use #(first, sc) <- result.try(clause(sc))
   case has_sym(sc, "&"), has_sym(sc, "|") {
     True, _ -> {
       use #(cs, sc) <- result.try(and_rest(sc, [first]))
       case has_sym(sc, "|") {
-        True -> err(sc, "predicates use only '&' or only '|' on one line")
+        True -> err(sc, "conditions use only '&' or only '|' on one line")
         False -> Ok(#(Block(AndConn, cs), sc))
       }
     }
@@ -441,7 +454,7 @@ fn block(sc: Scan) -> R(Block) {
         Plain(p, o, v) -> {
           use #(preds, sc) <- result.try(or_rest(sc, p, o, [v], []))
           case has_sym(sc, "&") {
-            True -> err(sc, "predicates use only '&' or only '|' on one line")
+            True -> err(sc, "conditions use only '&' or only '|' on one line")
             False -> Ok(#(Block(OrConn, preds), sc))
           }
         }
@@ -478,7 +491,7 @@ fn or_rest(
   case sym(sc, "|") {
     None -> Ok(#(list.reverse([Plain(p, o, multi(vals)), ..acc]), sc))
     Some(sc) -> {
-      case looks_like_predicate(sc) {
+      case looks_like_condition(sc) {
         True -> {
           use #(c, sc2) <- result.try(clause(sc))
           case c {
@@ -517,19 +530,267 @@ fn line_end(sc: Scan) -> R(String) {
   }
 }
 
-/// Optional ' predicates', then the line end.
-fn tail(sc: Scan) -> R(#(Block, String)) {
+// ---------------------------------------------------------------- items
+
+/// One named item after a line's type: 'name: value'.
+type LineItem {
+  ICalc(Value)
+  ICount(List(String))
+  ISum(List(String))
+  IFilter(String)
+  IIf(Block)
+  IFrom(List(String))
+  IQty(Value)
+  IValue(Value)
+  IPlaces(Value)
+  IMod(Value)
+  IUnique(Bool)
+  IRound(String)
+}
+
+pub const item_names = [
+  "from", "calc", "count", "sum", "filter", "if", "qty", "value", "places",
+  "mod", "unique", "round",
+]
+
+/// The items of a line, joined by commas.
+fn line_items(
+  sc: Scan,
+  acc: List(#(String, LineItem)),
+) -> R(List(#(String, LineItem))) {
+  let #(word, after) = take_while(sc, is_lower_name_char)
+  case list.contains(item_names, word) && at(after, ":") {
+    False ->
+      err(
+        sc,
+        "expected an item, 'name: value', named one of "
+          <> string.join(item_names, " "),
+      )
+    True -> {
+      let sc2 = adv(after, 1)
+      use sc3 <- result.try(case gap(sc2) {
+        Some(s) -> Ok(s)
+        None -> err(sc2, "expected a space after '" <> word <> ":'")
+      })
+      use #(it, sc4) <- result.try(item_value(sc3, word))
+      let acc = [#(word, it), ..acc]
+      // a comma straight after the item, then one or more spaces
+      case at(sc4, ","), gap(adv(sc4, 1)) {
+        True, Some(sc5) -> line_items(sc5, acc)
+        True, None -> err(adv(sc4, 1), "expected a space after ','")
+        False, _ -> Ok(#(list.reverse(acc), sc4))
+      }
+    }
+  }
+}
+
+fn item_value(sc: Scan, word: String) -> R(LineItem) {
+  case word {
+    "calc" -> result.map(calculation(sc), fn(r) { #(ICalc(r.0), r.1) })
+    "count" -> result.map(path(sc), fn(r) { #(ICount(r.0), r.1) })
+    "sum" -> result.map(path(sc), fn(r) { #(ISum(r.0), r.1) })
+    "filter" ->
+      result.map(type_name(sc, "a type name (the filter's refinement)"), fn(r) {
+        #(IFilter(r.0), r.1)
+      })
+    "round" ->
+      result.map(type_name(sc, "a rounding rule's type name"), fn(r) {
+        #(IRound(r.0), r.1)
+      })
+    "if" -> result.map(block(sc), fn(r) { #(IIf(r.0), r.1) })
+    "from" -> {
+      use #(a, sc) <- result.try(field_name(sc, "an input field"))
+      case sym(sc, "&") {
+        Some(sc2) -> {
+          use #(b, sc3) <- result.try(field_name(sc2, "a second input field"))
+          case has_sym(sc3, "&") {
+            True -> err(sc3, "a mapping has one or two inputs")
+            False -> Ok(#(IFrom([a, b]), sc3))
+          }
+        }
+        None -> Ok(#(IFrom([a]), sc))
+      }
+    }
+    "qty" -> {
+      use #(v, sc2) <- result.try(value(sc))
+      case v {
+        VNum(_) | VRange(..) -> Ok(#(IQty(v), sc2))
+        _ -> err(sc, "qty: takes a number or a range, e.g. qty: 2 or qty: 1..")
+      }
+    }
+    "value" -> {
+      use #(v, sc2) <- result.try(value(sc))
+      choices(sc2, [v])
+    }
+    "places" -> result.map(natural(sc), fn(r) { #(IPlaces(VNum(r.0)), r.1) })
+    "mod" -> result.map(natural(sc), fn(r) { #(IMod(VNum(r.0)), r.1) })
+    _ -> {
+      let #(w, sc2) = take_while(sc, is_name_char)
+      case w {
+        "True" -> Ok(#(IUnique(True), sc2))
+        "False" -> Ok(#(IUnique(False), sc2))
+        _ -> err(sc, "unique: names True or False")
+      }
+    }
+  }
+}
+
+/// A natural number, written out: digits only.
+fn natural(sc: Scan) -> R(Num) {
+  let #(digits, sc2) = take_while(sc, is_digit)
+  case decimal.parse(digits) {
+    Ok(v) if digits != "" -> Ok(#(Num(v, digits), sc2))
+    _ -> err(sc, "expected a number written out in digits, e.g. 24")
+  }
+}
+
+/// 'value: 10 | 30 | 60': a choice of values.
+fn choices(sc: Scan, acc: List(Value)) -> R(LineItem) {
+  case sym(sc, "|") {
+    Some(sc2) -> {
+      use #(v, sc3) <- result.try(value(sc2))
+      choices(sc3, [v, ..acc])
+    }
+    None -> Ok(#(IValue(multi(acc)), sc))
+  }
+}
+
+/// Optional ' items', then the line end.
+fn line_tail(sc: Scan) -> R(#(List(#(String, LineItem)), String)) {
   let #(spaces, sc2) = take_while(sc, fn(c) { c == " " })
   case spaces != "" && peek(sc2) != "#" && !done(sc2) {
     True -> {
-      use #(b, sc3) <- result.try(block(sc2))
+      use #(its, sc3) <- result.try(line_items(sc2, []))
       use #(c, sc4) <- result.try(line_end(sc3))
-      Ok(#(#(b, c), sc4))
+      Ok(#(#(its, c), sc4))
     }
     False -> {
       use #(c, sc3) <- result.try(line_end(sc))
-      Ok(#(#(model.empty, c), sc3))
+      Ok(#(#([], c), sc3))
     }
+  }
+}
+
+fn first_duplicate(names: List(String)) -> Option(String) {
+  case names {
+    [] -> None
+    [n, ..rest] ->
+      case list.contains(rest, n) {
+        True -> Some(n)
+        False -> first_duplicate(rest)
+      }
+  }
+}
+
+fn ok_unless(cond: Bool, sc: Scan, msg: String) -> Result(Nil, MapError) {
+  case cond {
+    True -> err(sc, msg)
+    False -> Ok(Nil)
+  }
+}
+
+/// A line's items as the model's block: qty first, then the line's own
+/// value ('val'), then the other restrictions, then its conditions.
+fn assemble(sc: Scan, its: List(#(String, LineItem))) -> Result(Block, MapError) {
+  let names = list.map(its, fn(p) { p.0 })
+  let has = fn(n) { list.contains(names, n) }
+  use _ <- result.try(case first_duplicate(names) {
+    Some(n) -> err(sc, "the item '" <> n <> ":' appears twice on this line")
+    None -> Ok(Nil)
+  })
+  use _ <- result.try(ok_unless(
+    list.count(names, fn(n) {
+      list.contains(["calc", "count", "sum", "if"], n)
+    })
+      > 1,
+    sc,
+    "a line takes at most one of calc:, count:, sum: and if:",
+  ))
+  use _ <- result.try(ok_unless(
+    has("filter") && !has("count") && !has("sum"),
+    sc,
+    "filter: goes beside count: or sum:",
+  ))
+  use _ <- result.try(ok_unless(
+    has("round") && !has("calc"),
+    sc,
+    "round: goes beside calc:, to round its calculation",
+  ))
+  let filter =
+    list.find_map(its, fn(p) {
+      case p.1 {
+        IFilter(t) -> Ok([t])
+        _ -> Error(Nil)
+      }
+    })
+    |> result.unwrap([])
+  use clauses <- result.try(
+    list.try_map(its, fn(p) { item_clauses(sc, p.1, filter, has("round")) }),
+  )
+  let clauses = list.flatten(clauses)
+  let #(qty, rest) =
+    list.partition(clauses, fn(c) {
+      case c {
+        Setting("qty", _) -> True
+        _ -> False
+      }
+    })
+  let conditions =
+    list.find_map(its, fn(p) {
+      case p.1 {
+        IIf(b) -> Ok(b)
+        _ -> Error(Nil)
+      }
+    })
+  case conditions {
+    Ok(Block(OrConn, [_, _, ..] as ors)) ->
+      case qty, rest {
+        [], [] -> Ok(Block(OrConn, ors))
+        _, _ ->
+          err(
+            sc,
+            "conditions joined by '|' take no other items: name the choice as its own field",
+          )
+      }
+    Ok(b) -> Ok(Block(AndConn, list.flatten([qty, rest, b.clauses])))
+    Error(_) -> Ok(Block(AndConn, list.append(qty, rest)))
+  }
+}
+
+fn item_clauses(
+  sc: Scan,
+  it: LineItem,
+  filter: List(String),
+  rounded: Bool,
+) -> Result(List(Clause), MapError) {
+  case it {
+    ICalc(VArith("/", _)) ->
+      case rounded {
+        False ->
+          err(
+            sc,
+            "a quotient names its rounding rule, e.g. calc: total / 3, places: 2, round: Half_Even",
+          )
+        True ->
+          err(
+            sc,
+            "division is in the spec, but this build of the checker cannot divide yet",
+          )
+      }
+    ICalc(v) -> Ok([Plain(["val"], "=", v)])
+    ICount(p) ->
+      Ok([Plain(["val"], "=", VPath(list.flatten([p, filter, ["qty"]])))])
+    ISum([list_name, field]) ->
+      Ok([Plain(["val"], "=", VPath(list.flatten([[list_name], filter, [field, "sum"]])))])
+    ISum(_) ->
+      err(sc, "sum: names a list and one field of its items, e.g. sum: lines.amount")
+    IQty(v) -> Ok([Setting("qty", v)])
+    IValue(v) -> Ok([Plain(["val"], "=", v)])
+    IPlaces(v) -> Ok([Setting("places", v)])
+    IMod(v) -> Ok([Setting("mod", v)])
+    IUnique(True) -> Ok([Flag("unique")])
+    // round: is checked beside calc:; the checker does not round yet.
+    IUnique(False) | IRound(_) | IFilter(_) | IIf(_) | IFrom(_) -> Ok([])
   }
 }
 
@@ -538,119 +799,37 @@ fn tail(sc: Scan) -> R(#(Block, String)) {
 type Box {
   EmptyBox
   ItemsBox(List(Item))
-  /// '{Item n}': a list of n items (Step 3).
-  CountBox(Item, Value)
   InterBox(List(Item))
-  MapBox(inputs: List(String), outputs: List(Item))
 }
 
+/// A type in braces: {}, {A}, {A | "b" | 5} or {A & B}. Braces hold only a type.
 fn box(sc: Scan) -> R(Box) {
   case at(sc, "{}") {
     True -> Ok(#(EmptyBox, adv(sc, 2)))
     False -> {
       use sc <- result.try(eat(sc, "{"))
-      case mapping_head(sc) {
-        Some(#(inputs, sc2)) -> {
-          use #(outs, sc3) <- result.try(items(sc2))
-          case list.length(inputs) == 2 && list.length(outs) > 1 {
-            True -> err(sc, "a two-input mapping has a single output item")
-            False -> {
-              use sc4 <- result.try(eat(sc3, "}"))
-              Ok(#(MapBox(inputs, outs), sc4))
-            }
-          }
+      use #(its, sc2) <- result.try(items(sc))
+      let counted = case gap(sc2) {
+        Some(sc3) -> starts_number(sc3) || at(sc3, "..")
+        None -> False
+      }
+      case counted, its, has_sym(sc2, "&") {
+        True, _, _ ->
+          err(
+            sc2,
+            "braces hold only a type: a list's count is an item, e.g. {Digit} qty: 2",
+          )
+        False, [TypeItem(_) as first], True -> {
+          use #(more, sc3) <- result.try(inter_rest(sc2, [first]))
+          use sc4 <- result.try(eat(sc3, "}"))
+          Ok(#(InterBox(more), sc4))
         }
-        None -> {
-          use #(its, sc2) <- result.try(items(sc))
-          let counted = case gap(sc2) {
-            Some(sc3) -> starts_number(sc3) || at(sc3, "..")
-            None -> False
-          }
-          case its, counted {
-            [one], True -> {
-              let assert Some(sc3) = gap(sc2)
-              use #(c, sc4) <- result.try(value(sc3))
-              case c {
-                VNum(_) | VRange(..) -> {
-                  use sc5 <- result.try(eat(sc4, "}"))
-                  Ok(#(CountBox(one, c), sc5))
-                }
-                _ -> err(sc3, "a count is a number or a range, e.g. 2 or 1..")
-              }
-            }
-            [_, _, ..], True ->
-              err(
-                sc2,
-                "a count goes after a single item; to repeat a union, name it first",
-              )
-            _, _ -> box_rest(sc2, its)
-          }
+        False, _, _ -> {
+          use sc3 <- result.try(eat(sc2, "}"))
+          Ok(#(ItemsBox(its), sc3))
         }
       }
     }
-  }
-}
-
-/// A counted box reads as a single item plus its count, kept as the
-/// internal qty setting.
-fn uncount(bx: Box) -> #(Box, Option(Value)) {
-  case bx {
-    CountBox(one, c) -> #(ItemsBox([one]), Some(c))
-    _ -> #(bx, None)
-  }
-}
-
-fn with_count(
-  sc: Scan,
-  b: Block,
-  count: Option(Value),
-) -> Result(Block, MapError) {
-  case count, b {
-    None, _ -> Ok(b)
-    Some(c), Block(AndConn, cs) -> Ok(Block(AndConn, [Setting("qty", c), ..cs]))
-    Some(c), Block(OrConn, []) -> Ok(Block(AndConn, [Setting("qty", c)]))
-    Some(_), _ ->
-      err(
-        sc,
-        "a list cannot take '|' predicates; put the choice on the item type",
-      )
-  }
-}
-
-fn box_rest(sc2: Scan, its: List(Item)) -> R(Box) {
-  case its, has_sym(sc2, "&") {
-    [TypeItem(_) as first], True -> {
-      use #(more, sc3) <- result.try(inter_rest(sc2, [first]))
-      use sc4 <- result.try(eat(sc3, "}"))
-      Ok(#(InterBox(more), sc4))
-    }
-    _, _ -> {
-      use sc3 <- result.try(eat(sc2, "}"))
-      Ok(#(ItemsBox(its), sc3))
-    }
-  }
-}
-
-fn mapping_head(sc: Scan) -> Option(#(List(String), Scan)) {
-  case field_name(sc, "") {
-    Error(_) -> None
-    Ok(#(a, sc2)) ->
-      case sym(sc2, "->") {
-        Some(sc3) -> Some(#([a], sc3))
-        None ->
-          case sym(sc2, "&") {
-            None -> None
-            Some(sc3) ->
-              case field_name(sc3, "") {
-                Ok(#(b, sc4)) ->
-                  case sym(sc4, "->") {
-                    Some(sc5) -> Some(#([a, b], sc5))
-                    None -> None
-                  }
-                Error(_) -> None
-              }
-          }
-      }
   }
 }
 
@@ -746,6 +925,17 @@ fn trim_spaces_end(s: String) -> String {
   }
 }
 
+fn no_items(
+  sc: Scan,
+  its: List(#(String, LineItem)),
+  what: String,
+) -> Result(Nil, MapError) {
+  case its {
+    [] -> Ok(Nil)
+    _ -> err(sc, what <> " takes no items")
+  }
+}
+
 fn read_lines(
   lines: List(String),
   n: Int,
@@ -785,30 +975,33 @@ fn read_lines(
           ))
           use sc <- result.try(spaces_then(sc))
           use #(bx, sc) <- result.try(box(sc))
-          let #(bx, count) = uncount(bx)
           let docs = list.reverse(doc) |> string.join(" ")
           let d =
             Decl(name, model.Union, n, file, [], model.empty, [], [], "", docs)
+          use #(#(its, c), _) <- result.try(line_tail(sc))
+          use _ <- result.try(ok_unless(
+            list.any(its, fn(p) { p.0 == "from" }),
+            sc,
+            "from: belongs to a mapping, which is a field of a record",
+          ))
           case bx {
             EmptyBox -> {
-              use #(c, _) <- result.try(line_end(sc))
+              use _ <- result.try(no_items(sc, its, "a record line"))
               use #(fields, rest2, n2) <- result.try(
-                record_body(rest, n + 1, file, []),
+                record_body(rest, n + 1, file, [], []),
               )
+              use fields <- result.try(with_shape(fields, file))
               let d = Decl(..d, kind: model.Record, comment: c, fields: fields)
               read_lines(rest2, n2, file, [], [DeclEntry(d), ..acc])
             }
-            MapBox(..) -> err(sc, "a mapping is a field, not a top-level line")
-            CountBox(..) -> err(sc, "internal: counted box")
-            InterBox(its) -> {
-              use #(c, _) <- result.try(line_end(sc))
+            InterBox(its2) -> {
+              use _ <- result.try(no_items(sc, its, "an intersection"))
               let d =
-                Decl(..d, kind: model.Intersection, items: its, comment: c)
+                Decl(..d, kind: model.Intersection, items: its2, comment: c)
               read_lines(rest, n + 1, file, [], [DeclEntry(d), ..acc])
             }
             ItemsBox([one]) -> {
-              use #(#(b, c), _) <- result.try(tail(sc))
-              use b <- result.try(with_count(sc, b, count))
+              use b <- result.try(assemble(sc, its))
               use #(positions, rest2, n2) <- result.try(
                 read_positions(rest, n + 1, file, []),
               )
@@ -827,9 +1020,13 @@ fn read_lines(
                 )
               read_lines(rest2, n2, file, [], [DeclEntry(d), ..acc])
             }
-            ItemsBox(its) -> {
-              use #(c, _) <- result.try(line_end(sc))
-              let d = Decl(..d, kind: model.Union, items: its, comment: c)
+            ItemsBox(its2) -> {
+              use _ <- result.try(no_items(
+                sc,
+                its,
+                "a union (to restrict it, name it and refine the name)",
+              ))
+              let d = Decl(..d, kind: model.Union, items: its2, comment: c)
               read_lines(rest, n + 1, file, [], [DeclEntry(d), ..acc])
             }
           }
@@ -839,8 +1036,9 @@ fn read_lines(
   }
 }
 
-fn starts_position(s: String) -> Bool {
-  string.starts_with(s, "  ") && is_digit(char_at(s, 2))
+fn starts_position(s: String, indent: String) -> Bool {
+  string.starts_with(s, indent)
+  && is_digit(char_at(s, string.length(indent)))
 }
 
 fn read_positions(
@@ -851,7 +1049,7 @@ fn read_positions(
 ) -> Result(#(List(Position), List(String), Int), MapError) {
   case lines {
     [s, ..rest] ->
-      case starts_position(s) {
+      case starts_position(s, "  ") {
         True -> {
           use p <- result.try(position(s, n, file))
           read_positions(rest, n + 1, file, [p, ..acc])
@@ -862,26 +1060,31 @@ fn read_positions(
   }
 }
 
-fn position(s: String, line: Int, file: String) -> Result(Position, MapError) {
-  let sc = Scan(s, 0, line, file)
-  use sc <- result.try(eat(sc, "  "))
+/// 'N. ' after the indent: the position's number.
+fn position_number(sc: Scan, indent: String) -> R(Int) {
+  use sc <- result.try(eat(sc, indent))
   let #(digits, sc) = take_while(sc, is_digit)
   let assert Ok(num) = int.parse(digits)
   use sc <- result.try(eat(sc, ". "))
+  Ok(#(num, sc))
+}
+
+fn position(s: String, line: Int, file: String) -> Result(Position, MapError) {
+  let sc = Scan(s, 0, line, file)
+  use #(num, sc) <- result.try(position_number(sc, "  "))
   use #(bx, sc) <- result.try(box(sc))
-  let #(bx, count) = uncount(bx)
+  use #(#(its, _), _) <- result.try(line_tail(sc))
   case bx {
     ItemsBox([one]) -> {
-      use #(#(b, _), _) <- result.try(tail(sc))
-      use b <- result.try(with_count(sc, b, count))
+      use b <- result.try(assemble(sc, its))
       Ok(Position(num, [one], b, line))
     }
-    ItemsBox(its) -> {
-      use #(_, _) <- result.try(line_end(sc))
-      Ok(Position(num, its, model.empty, line))
+    ItemsBox(its2) -> {
+      use _ <- result.try(no_items(sc, its, "a union position"))
+      Ok(Position(num, its2, model.empty, line))
     }
     InterBox(_) -> err(sc, "an intersection is a top-level line")
-    _ -> err(sc, "a position holds an item or a union")
+    EmptyBox -> err(sc, "a position holds an item or a union")
   }
 }
 
@@ -892,46 +1095,253 @@ fn skip_blank(lines: List(String), n: Int) -> #(List(String), Int) {
   }
 }
 
+/// A position of a record's text shape: one of its fields, or a type or
+/// literal that holds no field.
+type ShapePosition {
+  FieldPosition(number: Int, field: String, line: Int)
+  TypePosition(number: Int, item: Item, preds: Block, line: Int)
+}
+
+type Shape {
+  Shape(positions: List(ShapePosition), line: Int)
+}
+
 fn record_body(
   lines: List(String),
   n: Int,
   file: String,
   acc: List(Field),
-) -> Result(#(List(Field), List(String), Int), MapError) {
+  shapes: List(Shape),
+) -> Result(#(#(List(Field), List(Shape)), List(String), Int), MapError) {
   let #(after, k) = skip_blank(lines, n)
+  let finish = Ok(#(#(list.reverse(acc), list.reverse(shapes)), lines, n))
   case after {
     [s, ..rest] ->
       case string.starts_with(s, "    "), string.starts_with(s, "  ") {
         True, _ ->
           Error(MapError(
-            "a case line ('    | ...') must follow a mapping field",
+            "a line four spaces in follows a mapping (its cases) or 'text {Text}' (its positions)",
             file,
             k,
             1,
           ))
-        False, False -> Ok(#(list.reverse(acc), lines, n))
+        False, False -> finish
         False, True ->
-          case string.starts_with(s, "  #") {
-            True -> record_body(rest, k + 1, file, acc)
-            False ->
-              case is_digit(char_at(s, 2)) {
-                True ->
-                  Error(MapError(
-                    "numbered positions belong to a layout, not a record",
-                    file,
-                    k,
-                    3,
-                  ))
+          case string.starts_with(s, "  #"), is_digit(char_at(s, 2)) {
+            True, _ -> record_body(rest, k + 1, file, acc, shapes)
+            _, True ->
+              Error(MapError(
+                "numbered positions belong to a layout; a record lays out its text under 'text {Text}'",
+                file,
+                k,
+                3,
+              ))
+            _, _ ->
+              case string.starts_with(s, "  text ") {
+                True -> {
+                  use #(sh, rest2, k2) <- result.try(shape(s, rest, k, file))
+                  record_body(rest2, k2, file, acc, [sh, ..shapes])
+                }
                 False -> {
                   use #(f, rest2, k2) <- result.try(field_line(s, rest, k, file))
-                  record_body(rest2, k2, file, [f, ..acc])
+                  record_body(rest2, k2, file, [f, ..acc], shapes)
                 }
               }
           }
       }
+    [] -> finish
+  }
+}
+
+/// 'text {Text}' and its positions, four spaces in.
+fn shape(
+  s: String,
+  rest: List(String),
+  line: Int,
+  file: String,
+) -> Result(#(Shape, List(String), Int), MapError) {
+  let sc = Scan(s, 0, line, file)
+  use sc <- result.try(eat(sc, "  text"))
+  use sc <- result.try(spaces_then(sc))
+  use sc <- result.try(eat(sc, "{Text}"))
+  use #(_, _) <- result.try(line_end(sc))
+  use #(positions, rest2, n2) <- result.try(
+    shape_positions(rest, line + 1, file, []),
+  )
+  case positions {
+    [] ->
+      Error(MapError(
+        "'text {Text}' lays out the record's text: give its positions four spaces in",
+        file,
+        line,
+        3,
+      ))
+    _ -> Ok(#(Shape(positions, line), rest2, n2))
+  }
+}
+
+fn shape_positions(
+  lines: List(String),
+  n: Int,
+  file: String,
+  acc: List(ShapePosition),
+) -> Result(#(List(ShapePosition), List(String), Int), MapError) {
+  case lines {
+    [s, ..rest] ->
+      case starts_position(s, "    ") {
+        True -> {
+          let sc = Scan(s, 0, n, file)
+          use #(num, sc) <- result.try(position_number(sc, "    "))
+          case at(sc, "{") && is_lower(char_at(sc.s, sc.i + 1)) {
+            True -> {
+              use #(f, sc) <- result.try(field_name(adv(sc, 1), "a field name"))
+              use sc <- result.try(eat(sc, "}"))
+              use #(_, _) <- result.try(line_end(sc))
+              shape_positions(rest, n + 1, file, [
+                FieldPosition(num, f, n),
+                ..acc
+              ])
+            }
+            False -> {
+              use #(bx, sc) <- result.try(box(sc))
+              use #(#(its, _), _) <- result.try(line_tail(sc))
+              case bx {
+                ItemsBox([one]) -> {
+                  use _ <- result.try(ok_unless(
+                    list.any(its, fn(p) { p.0 != "qty" }),
+                    sc,
+                    "a position of a text shape takes only qty:",
+                  ))
+                  use b <- result.try(assemble(sc, its))
+                  shape_positions(rest, n + 1, file, [
+                    TypePosition(num, one, b, n),
+                    ..acc
+                  ])
+                }
+                _ ->
+                  err(
+                    sc,
+                    "a position of a text shape holds one field, type or literal",
+                  )
+              }
+            }
+          }
+        }
+        False -> Ok(#(list.reverse(acc), lines, n))
+      }
     [] -> Ok(#(list.reverse(acc), lines, n))
   }
 }
+
+/// The name a position that holds no field takes in the model: its number and
+/// a dot, which no field name can be.
+pub fn position_field_name(number: Int) -> String {
+  int.to_string(number) <> "."
+}
+
+pub fn is_position_field(name: String) -> Bool {
+  string.ends_with(name, ".")
+}
+
+/// Order a record's fields by its text shape: the stored fields and the
+/// positions that hold no field, in position order, then the other fields as
+/// written. A record with no shape keeps its stored fields in order.
+fn with_shape(
+  parts: #(List(Field), List(Shape)),
+  file: String,
+) -> Result(List(Field), MapError) {
+  let #(fields, shapes) = parts
+  case shapes {
+    [] -> Ok(fields)
+    [_, Shape(_, line), ..] ->
+      Error(MapError("a record has at most one text shape", file, line, 3))
+    [Shape(positions, line)] -> {
+      let stored = list.filter(fields, model.is_stored)
+      use placed <- result.try(
+        list.index_map(positions, fn(p, i) { #(p, i + 1) })
+        |> list.try_map(fn(pair) {
+          let #(p, expect) = pair
+          case p {
+            FieldPosition(num, _, l) | TypePosition(num, _, _, l)
+              if num != expect
+            ->
+              Error(MapError(
+                "positions are numbered 1, 2, 3 in order: expected "
+                  <> int.to_string(expect),
+                file,
+                l,
+                5,
+              ))
+            FieldPosition(_, name, l) ->
+              case list.find(fields, fn(f) { f.name == name }) {
+                Error(_) ->
+                  Error(MapError(
+                    "the text shape names '"
+                      <> name
+                      <> "', which is not a field of this record",
+                    file,
+                    l,
+                    5,
+                  ))
+                Ok(f) ->
+                  case model.is_stored(f) {
+                    True -> Ok(f)
+                    False ->
+                      Error(MapError(
+                        "'"
+                          <> name
+                          <> "' is computed, so it has no text: a shape names stored fields",
+                        file,
+                        l,
+                        5,
+                      ))
+                  }
+              }
+            TypePosition(num, it, b, l) ->
+              Ok(Field(
+                position_field_name(num),
+                [it],
+                b,
+                None,
+                l,
+                "",
+                model.Stored,
+              ))
+          }
+        }),
+      )
+      let named = list.filter(placed, fn(f) { !is_position_field(f.name) })
+      use _ <- result.try(
+        list.try_map(stored, fn(f) {
+          case list.count(named, fn(g) { g.name == f.name }) {
+            1 -> Ok(Nil)
+            0 ->
+              Error(MapError(
+                "the stored field '"
+                  <> f.name
+                  <> "' is missing from the record's text shape",
+                file,
+                line,
+                3,
+              ))
+            _ ->
+              Error(MapError(
+                "the text shape names '" <> f.name <> "' more than once",
+                file,
+                line,
+                3,
+              ))
+          }
+        }),
+      )
+      Ok(list.append(placed, list.filter(fields, fn(f) { !model.is_stored(f) })))
+    }
+  }
+}
+
+/// Names the host still uses for itself in the model ('val' for 'value', and
+/// the folds), so no field may take them in this build.
+const host_names = ["val", "qty", "sum"]
 
 fn field_line(
   s: String,
@@ -945,22 +1355,41 @@ fn field_line(
     sc,
     "a field name (fields start with a lowercase letter)",
   ))
+  use _ <- result.try(ok_unless(
+    list.contains(host_names, name),
+    Scan(..sc, i: 2),
+    "'" <> name <> "' cannot name a field in this build: the checker still uses it",
+  ))
   use sc <- result.try(spaces_then(sc))
   use #(bx, sc) <- result.try(box(sc))
-  let #(bx, count) = uncount(bx)
+  use #(#(its, c), _) <- result.try(line_tail(sc))
   let f = Field(name, [], model.empty, None, line, "", model.Stored)
-  case bx {
-    EmptyBox -> err(sc, "a field needs a base")
-    InterBox(_) -> err(sc, "an intersection is a top-level line")
-    MapBox(inputs, outs) -> {
-      use #(c, _) <- result.try(line_end(sc))
+  let inputs =
+    list.find_map(its, fn(p) {
+      case p.1 {
+        IFrom(ins) -> Ok(ins)
+        _ -> Error(Nil)
+      }
+    })
+  case bx, inputs {
+    EmptyBox, _ -> err(sc, "a field needs a type")
+    InterBox(_), _ ->
+      err(sc, "an intersection is a top-level line: name it, then use the name")
+    ItemsBox(outs), Ok(ins) -> {
+      use _ <- result.try(ok_unless(
+        list.length(its) > 1,
+        sc,
+        "from: is the only item on its line",
+      ))
       use #(cases, rest2, n2) <- result.try(
         read_cases(rest, line + 1, file, []),
       )
       case cases {
         [] ->
           Error(MapError(
-            "mapping field '" <> name <> "' needs at least one case line",
+            "the mapping '"
+              <> name
+              <> "' needs case lines, '    {output} if: conditions'",
             file,
             line,
             1,
@@ -971,27 +1400,47 @@ fn field_line(
               ..f,
               items: outs,
               comment: c,
-              mapping: Some(Mapping(inputs, outs, cases)),
+              mapping: Some(Mapping(ins, outs, cases)),
             )
           Ok(#(Field(..f, role: model.classify(f)), rest2, n2))
         }
       }
     }
-    CountBox(..) -> err(sc, "internal: counted box")
-    ItemsBox([one]) -> {
-      use #(#(b, c), _) <- result.try(tail(sc))
-      use b <- result.try(with_count(sc, b, count))
+    ItemsBox([one]), Error(_) -> {
+      use _ <- result.try(ok_unless(
+        one == TypeItem("Claim") && list.any(its, fn(p) { p.0 != "if" }),
+        sc,
+        "a claim has one item, if:",
+      ))
+      use _ <- result.try(case one, its {
+        StrItem(_), [] | NumItem(..), [] ->
+          err(
+            sc,
+            "this field can hold only one text, so it holds no data: put the text in the record's text shape",
+          )
+        _, _ -> Ok(Nil)
+      })
+      use b <- result.try(assemble(sc, its))
+      let one = case one {
+        TypeItem("Claim") -> TypeItem("Fact")
+        _ -> one
+      }
       let f = Field(..f, items: [one], preds: b, comment: c)
       Ok(#(Field(..f, role: model.classify(f)), rest, line + 1))
     }
-    ItemsBox(its) -> {
-      use #(c, _) <- result.try(line_end(sc))
-      let f = Field(..f, items: its, comment: c)
+    ItemsBox(outs), Error(_) -> {
+      use _ <- result.try(no_items(
+        sc,
+        its,
+        "a union field (to restrict it, name the union as a type first)",
+      ))
+      let f = Field(..f, items: outs, comment: c)
       Ok(#(Field(..f, role: model.classify(f)), rest, line + 1))
     }
   }
 }
 
+/// '    {output} if: conditions', the cases under a mapping.
 fn read_cases(
   lines: List(String),
   n: Int,
@@ -1003,14 +1452,13 @@ fn read_cases(
       case string.starts_with(s, "    ") {
         True -> {
           let sc = Scan(s, 0, n, file)
-          use sc <- result.try(eat(sc, "    | "))
+          use sc <- result.try(eat(sc, "    "))
           use #(bx, sc) <- result.try(box(sc))
           case bx {
             ItemsBox([out]) -> {
-              use sc <- result.try(case gap(sc) {
-                Some(sc) -> Ok(sc)
-                None -> err(sc, "expected a space after the case output")
-              })
+              use sc <- result.try(spaces_then(sc))
+              use sc <- result.try(eat(sc, "if:"))
+              use sc <- result.try(spaces_then(sc))
               use #(b, sc) <- result.try(block(sc))
               use #(_, _) <- result.try(line_end(sc))
               read_cases(rest, n + 1, file, [Case(out, b, n), ..acc])

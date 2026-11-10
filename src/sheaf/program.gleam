@@ -330,12 +330,21 @@ pub fn verify_file(
                         }
                         _ -> line
                       }
+                      // a text shape and a comment name no field
                       case line.t {
-                        Some("Body_Comment_Line") -> Error(Nil)
+                        Some("Body_Comment_Line") | Some("Shape") -> Error(Nil)
                         _ -> Ok(kid_text(text, line, "name"))
                       }
                     })
-                  names == list.map(d.fields, fn(f) { f.name })
+                  // a text shape orders the stored fields, so compare as sets;
+                  // its positions that hold no field are not field lines
+                  list.sort(names, string.compare)
+                  == {
+                    d.fields
+                    |> list.map(fn(f) { f.name })
+                    |> list.filter(fn(n) { !reader.is_position_field(n) })
+                    |> list.sort(string.compare)
+                  }
                 }
                 _ -> True
               }

@@ -1353,6 +1353,15 @@ fn field_bounds(c: Ctx, fl: Field) -> #(B, B) {
     })
   let #(tl, th) = type_bounds(c, model.base(fl), [])
   let #(lo, hi) = #(bmax(lo, tl), bmin(hi, th))
+  // a count (count:, a path ending in qty) is never below 0
+  let #(lo, hi) = case def {
+    Some(VPath(parts)) ->
+      case list.last(parts) {
+        Ok("qty") -> #(bmax(lo, d0()), hi)
+        _ -> #(lo, hi)
+      }
+    _ -> #(lo, hi)
+  }
   case mod_of(fl) {
     Some(m) -> {
       let top = case integer_type(c, model.base(fl)) && decimal.is_integral(m) {
@@ -1362,6 +1371,64 @@ fn field_bounds(c: Ctx, fl: Field) -> #(B, B) {
       #(bmax(lo, d0()), bmin(hi, Fin(top)))
     }
     None -> #(lo, hi)
+  }
+}
+
+/// A field's bounds, with a total (sum:) bounded by its list's qty times the
+/// bounds of the field it adds up, in rec, the record that holds the field.
+/// So a total of delays that are each 0..120 is never below 0.
+fn def_bounds(c: Ctx, rec: Decl, fl: Field) -> #(B, B) {
+  let #(lo, hi) = field_bounds(c, fl)
+  case model.definition(fl) {
+    Some(VPath([list_name, ..rest])) ->
+      case model.field(rec, list_name), list.last(rest) {
+        Some(lf), Ok("sum") -> {
+          let filtered = list.any(rest, is_upper_start)
+          let #(qlo, qhi) = case model.qty(lf) {
+            Some(#(l, h)) -> #(
+              case l {
+                Some(n) -> Fin(n.value)
+                None -> d0()
+              },
+              case h {
+                Some(n) -> Fin(n.value)
+                None -> PosInf
+              },
+            )
+            None -> #(d0(), PosInf)
+          }
+          let qlo = case filtered {
+            True -> d0()
+            False -> qlo
+          }
+          let inner = case model.base(lf), list.filter(rest, fn(x) {
+              !is_upper_start(x)
+            })
+          {
+            TypeItem(t), [name, "sum"] ->
+              case model.record_of(c.decls, t) {
+                Some(it) -> model.field(it, name)
+                None -> None
+              }
+            _, _ -> None
+          }
+          case inner {
+            Some(inn) -> {
+              let #(ilo, ihi) = field_bounds(c, inn)
+              case bsign(ilo) >= 0 || bsign(ihi) <= 0 {
+                True -> {
+                  let #(a, b) = imul(#(qlo, qhi), #(ilo, ihi))
+                  #(bmax(lo, a), bmin(hi, b))
+                }
+                False -> #(lo, hi)
+              }
+            }
+            None -> #(lo, hi)
+          }
+        }
+        _, _ -> #(lo, hi)
+      }
+    _ -> #(lo, hi)
   }
 }
 
@@ -2077,7 +2144,7 @@ fn atom_bounds(c: Ctx, d: Decl, atom: String, claim: Field) -> #(B, B) {
     None -> #(NegInf, PosInf)
     Some(fl) ->
       case parts {
-        [_] -> field_bounds(c, fl)
+        [_] -> def_bounds(c, d, fl)
         _ -> {
           let assert Ok(last) = list.last(parts)
           let fold = case list.contains(model.folds, last) {
@@ -2133,7 +2200,7 @@ fn atom_bounds(c: Ctx, d: Decl, atom: String, claim: Field) -> #(B, B) {
                 it.name == d.name && subject == Some(inn.name)
               {
                 True -> claim_interval(claim)
-                False -> field_bounds(c, inn)
+                False -> def_bounds(c, it, inn)
               }
               case bcmp(qlo, d0()) == order.Eq {
                 True -> #(bmin(lo, d0()), bmax(hi, d0()))
