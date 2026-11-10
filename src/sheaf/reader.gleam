@@ -1425,10 +1425,6 @@ fn field_line(
         _, _ -> Ok(Nil)
       })
       use b <- result.try(assemble(sc, its))
-      let one = case one {
-        TypeItem("Claim") -> TypeItem("Fact")
-        _ -> one
-      }
       let f = Field(..f, items: [one], preds: b, comment: c)
       Ok(#(Field(..f, role: model.classify(f)), rest, line + 1))
     }

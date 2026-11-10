@@ -168,10 +168,10 @@ Character {Line_Character | Newline}
 # ---------- Step 2: Truth Values ----------
 
 # TRUE and FALSE are distinct atoms, not encodings of anything else.
+# A field that holds one of them is written {True | False}.
 # FALSE is an ordinary value. It is not the same as INVALID (Step 3).
 True {"TRUE"}
 False {"FALSE"}
-Fact {True | False}
 
 # A claim's value is always TRUE: the checker proves it before any
 # text is read (Step 3).
@@ -200,7 +200,7 @@ Claim {True}
 #   next_leg.delay' would double the length of the number at every
 #   level and is an error. Likewise a quotient may not have both its
 #   dividend and its divisor read through a recursive field.
-# Computed fields produce numbers and Facts, never new records or
+# Computed fields produce numbers, TRUE and FALSE, never new records or
 # lists, so evaluation never makes the data bigger.
 #
 # Folds. A list is read only through a fold, and a fold is always its
@@ -677,12 +677,12 @@ Unique_Item {}                           # unique: True
 # the checker supplies when it rounds,
 #   remainder {Decimal} value: 0..1    the part cut off, as a fraction of
 #                                      the last place kept
-#   odd {Fact}                         the last digit kept is odd
-#   negative {Fact}                    the exact value is below 0
+#   odd {True | False}                 the last digit kept is odd
+#   negative {True | False}            the exact value is below 0
 # For example, round half to even:
 #   Half_Even {}
 #     remainder {Decimal} value: 0..1
-#     odd {Fact}
+#     odd {True | False}
 #     direction {Direction} from: remainder & odd
 #       {"toward_zero"} if: remainder < 0.5
 #       {"away_from_zero"} if: remainder > 0.5
@@ -1090,10 +1090,10 @@ File {Blocks & Short_Lines}
 # Here, when left is FALSE no remaining case mentions right, so right is
 # never evaluated. This matters only when right is computed; stored data
 # has nothing to defer.
-And_Gate {}                              # Short-circuit AND over two facts
-  left {Fact}
-  right {Fact}
-  out {Fact} from: left & right
+And_Gate {}                              # Short-circuit AND over TRUE and FALSE
+  left {True | False}
+  right {True | False}
+  out {True | False} from: left & right
     {True} if: left = True & right = True
     {False} if: left = True & right = False
     {False} if: left = False             # No remaining case mentions right

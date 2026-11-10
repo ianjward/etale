@@ -31,15 +31,15 @@ Date {}
     {"yes"} if: length = "feb" & day = 1..28
     {"leap_day"} if: length = "feb" & day = 29
     {"no"} if: length = "feb" & day = 30..31
-  by_four {Fact} from: r4 & r100
+  by_four {True | False} from: r4 & r100
     {True} if: r4 = 0 & r100 = 1..99
     {False} if: r4 = 0 & r100 = 0
     {False} if: r4 = 1..3
-  leap {Fact} from: by_four & r400
+  leap {True | False} from: by_four & r400
     {True} if: by_four = True
     {True} if: by_four = False & r400 = 0
     {False} if: by_four = False & r400 = 1..399
-  valid {Fact} from: fit & leap
+  valid {True | False} from: fit & leap
     {True} if: fit = "yes"
     {False} if: fit = "no"
     {True} if: fit = "leap_day" & leap = True

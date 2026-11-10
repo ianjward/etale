@@ -21,7 +21,7 @@ Basket {}
 # 5. A mapping that misses a combination and overlaps.
 Grade {}
   score {Integer} value: 0..100
-  pass {Fact} from: score
+  pass {True | False} from: score
     {True} if: score >= 50
     {False} if: score < 40
     {False} if: score = 45..49

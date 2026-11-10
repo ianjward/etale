@@ -342,7 +342,7 @@ pub fn classify(f: Field) -> Role {
       case f.items, ps, settings(f.preds) {
         [TypeItem("True")], [], _ -> Constant
         [TypeItem("True")], _, _ -> Rule
-        [TypeItem("Fact")], [Plain(path, _, _)], [] if path != ["val"] -> Claim
+        [TypeItem("Claim")], [Plain(path, _, _)], [] if path != ["val"] -> Claim
         _, _, _ ->
           case definition(f) {
             Some(_) -> Computed

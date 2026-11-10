@@ -514,18 +514,20 @@ fn check_record(c: Ctx, d: Decl) -> Nil {
           c,
           d,
           f.line,
-          "a computed field holds one number or Fact, never a list: drop the count in its braces",
+          "a computed field holds one number, TRUE or FALSE, never a list: drop the count in its braces",
           where,
         )
       False -> Nil
     }
-    case f.role == model.Computed && !numeric && !is_fact(model.base(f)) {
+    case
+      f.role == model.Computed && !numeric && !is_truth_value(model.base(f))
+    {
       True ->
         err(
           c,
           d,
           f.line,
-          "a computed field produces a number or a Fact, never text, a record or a sequence",
+          "a computed field produces a number, TRUE or FALSE, never text, a record or a sequence",
           where,
         )
       False -> Nil
@@ -577,9 +579,9 @@ fn check_record(c: Ctx, d: Decl) -> Nil {
   cost_record(c, d)
 }
 
-fn is_fact(i: Item) -> Bool {
+fn is_truth_value(i: Item) -> Bool {
   case i {
-    TypeItem("Fact") | TypeItem("True") | TypeItem("False") -> True
+    TypeItem("True") | TypeItem("False") -> True
     _ -> False
   }
 }
@@ -1083,7 +1085,7 @@ fn field_kind(c: Ctx, fl: Field, rest: List(String)) -> Kind {
   case rest {
     [] ->
       case fl.role {
-        model.Rule | model.Claim | model.Constant -> NotNumber("a Fact")
+        model.Rule | model.Claim | model.Constant -> NotNumber("TRUE or FALSE")
         model.MappingRole ->
           case evaluate.items_numeric(c.ev, fl.items) {
             True -> Number
@@ -1944,8 +1946,7 @@ fn domain(c: Ctx, fl: Field) -> Option(Domain) {
             }
             False ->
               case model.base(fl) {
-                TypeItem("Fact") ->
-                  Some(Finite([VText("TRUE"), VText("FALSE")]))
+                TypeItem("Claim") -> Some(Finite([VText("TRUE")]))
                 _ -> None
               }
           }

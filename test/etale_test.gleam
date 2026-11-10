@@ -298,10 +298,12 @@ fn sequents_print() -> Outcome {
 fn mapping_outputs_and_inputs() -> Outcome {
   let assert Ok(#(_, r1)) =
     source(
-      "Two {\"x\" | \"y\"}\nM {}\n  a {Fact}\n  out {Two} from: a\n    {\"x\"} if: a = True\n    {\"x\"} if: a = False\n",
+      "Two {\"x\" | \"y\"}\nM {}\n  a {True | False}\n  out {Two} from: a\n    {\"x\"} if: a = True\n    {\"x\"} if: a = False\n",
     )
   let assert Ok(#(_, r2)) =
-    source("M {}\n  t {Text}\n  out {Fact} from: t\n    {True} if: t = \"a\"\n")
+    source(
+      "M {}\n  t {Text}\n  out {True | False} from: t\n    {True} if: t = \"a\"\n",
+    )
   all([
     expect(
       string.contains(msgs(r1), "no case produces"),
@@ -528,7 +530,7 @@ fn grids() -> Outcome {
 }
 
 /// The number of declarations in priv/language.sheaf.
-const spec_decls = 155
+const spec_decls = 154
 
 const inter_src =
   "Letters {Uppercase} qty: 3

@@ -6,7 +6,7 @@ Temperature {Integer} value: -90..60
 Reading {}
   where {Lowercase} qty: 1..
   degrees {Temperature}
-  freezing {Fact} from: degrees
+  freezing {True | False} from: degrees
     {True} if: degrees <= 0
     {False} if: degrees > 0
   text {Text}

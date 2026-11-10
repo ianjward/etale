@@ -14,7 +14,7 @@ Line {}
   units {Integer} value: 1..1000
   price {Decimal} places: 2, value: 0.00..
   line_total {Decimal} calc: units * price, places: 2
-  big {Fact} from: line_total
+  big {True | False} from: line_total
     {True} if: line_total >= 500.00
     {False} if: line_total < 500.00
   text {Text}

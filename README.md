@@ -49,7 +49,7 @@ Open `dist/workspace.html` in any browser to access a self-contained, infinite, 
 | Outline Color | State | Condition |
 | :--- | :--- | :--- |
 | **Green** | Compiled | Clean compilation with zero errors. |
-| **Purple** | Claims Proved | Successful compilation; all internal `{Fact}` claims verified. |
+| **Purple** | Claims Proved | Successful compilation; all internal `{Claim}` claims verified. |
 | **Yellow** | Changed | Unsaved edits present since last compile. |
 | **Orange** | Affected | Local file unchanged, but a linked dependency text was modified or has errors. |
 | **Red** | Errors | Compilation attempted but rejected by the checker. |
