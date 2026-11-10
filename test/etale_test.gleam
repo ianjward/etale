@@ -222,8 +222,8 @@ fn mistakes() -> Outcome {
     [
       "used before it is declared", "is reserved", "declared below",
       "do not cover", "not disjoint", "cannot prove", "at most one factor",
-      "rounding never happens",
-      "not a number, so it cannot be multiplied", "must always sit inside",
+      "rounding never happens", "not a number, so it cannot be multiplied",
+      "must always sit inside",
     ],
     fn(needle) { expect(string.contains(text, needle), needle) },
   )
@@ -350,8 +350,9 @@ fn libraries_clean() -> Outcome {
     [
       "priv/stdlib/logic.sheaf", "priv/stdlib/bits.sheaf",
       "priv/stdlib/dates.sheaf", "priv/stdlib/text.sheaf",
-      "examples/orders/orders.sheaf", "examples/proofs/proofs.sheaf",
-      "examples/meeting/meeting.sheaf", "examples/xor/xor.sheaf",
+      "priv/stdlib/rounding.sheaf", "examples/orders/orders.sheaf",
+      "examples/proofs/proofs.sheaf", "examples/meeting/meeting.sheaf",
+      "examples/xor/xor.sheaf",
     ],
     fn(f) {
       let #(_, rep) = load(f)
@@ -955,6 +956,134 @@ Grid {}
   total {Integer} sum: rows.n
 "
 
+const split_src =
+  "Split {}
+  total {Decimal} value: -10..10, places: 2
+  people {Integer} value: 1..20
+  text {Text}
+    1. {total}
+    2. {\" \"}
+    3. {people}
+  share {Decimal} calc: total / people, places: 2, round: Half_Even
+  share_low {Claim} if: share >= -10
+  share_high {Claim} if: share <= 10
+  down {Decimal} calc: total / people, places: 1, round: Floor
+  up {Decimal} calc: total / people, places: 1, round: Ceiling
+  whole {Integer} calc: total, round: Half_Up
+"
+
+const third_src =
+  "Third {}
+  total {Decimal} value: 0..1, places: 2
+  third {Decimal} calc: total / 3, places: 2, round: Half_Even
+  close {Claim} if: third <= 0.33
+"
+
+fn division_and_rounding() -> Outcome {
+  let assert Ok(#(p, rep)) = source(split_src)
+  let at = fn(text, name) {
+    let x = program.check(p, "Split", text)
+    case x.ok {
+      True -> num(get(p, x.value, name))
+      False -> "refused"
+    }
+  }
+  let errors_of = fn(src) {
+    case source(src) {
+      Ok(#(_, r)) -> msgs(r)
+      Error(e) -> model.error_text(e)
+    }
+  }
+  let refused_with = fn(line, why) {
+    string.contains(
+      errors_of(
+        "X {}\n  a {Integer} value: -5..5\n  b {Integer} value: 10 | 30\n  text {Text}\n    1. {a}\n    2. {\" \"}\n    3. {b}\n"
+        <> line
+        <> "\n",
+      ),
+      why,
+    )
+  }
+  let #(_, third_rep) = case source(third_src) {
+    Ok(r) -> r
+    Error(_) -> #(p, check.empty_report())
+  }
+  all([
+    expect(check.errors(rep) == [], "Split checks clean: " <> msgs(rep)),
+    expect(at("10.00 3", "share") == "3.33", "10 / 3"),
+    expect(at("0.05 2", "share") == "0.02", "a tie goes to even, down"),
+    expect(at("0.15 2", "share") == "0.08", "a tie goes to even, up"),
+    expect(at("-0.15 2", "share") == "-0.08", "and below 0"),
+    expect(at("-1.00 3", "down") == "-0.4", "Floor below 0"),
+    expect(at("-1.00 3", "up") == "-0.3", "Ceiling below 0"),
+    expect(at("1.00 3", "down") == "0.3", "Floor above 0"),
+    expect(at("1.00 3", "up") == "0.4", "Ceiling above 0"),
+    expect(at("-2.50 1", "whole") == "-3", "Half_Up goes away from zero"),
+    expect(at("9.00 3", "up") == "3.0", "an exact quotient is kept"),
+    expect(
+      check.errors(third_rep) == [],
+      "half a unit proves third <= 0.33: " <> msgs(third_rep),
+    ),
+    expect(
+      string.contains(
+        errors_of(string.replace(third_src, "Half_Even", "Floor")),
+        "cannot prove third <= 0.33",
+      ),
+      "Floor is only within one unit",
+    ),
+    expect(
+      refused_with(
+        "  q {Decimal} calc: b / a, places: 2, round: Half_Even",
+        "cannot prove the divisor a is never 0",
+      ),
+      "a divisor that may be 0",
+    ),
+    expect(
+      !refused_with(
+        "  q {Decimal} calc: a / b, places: 2, round: Half_Even",
+        "divisor",
+      ),
+      "a choice of values that leaves out 0",
+    ),
+    expect(
+      refused_with(
+        "  q {Decimal} calc: a / b, round: Half_Even",
+        "says how many places it rounds to",
+      ),
+      "a rounded Decimal names its places",
+    ),
+    expect(
+      refused_with(
+        "  q {Integer} calc: a + b, round: Floor",
+        "nothing to round",
+      ),
+      "round: on a calculation that never needs it",
+    ),
+    expect(
+      refused_with(
+        "  q {Integer} calc: a / b, round: X",
+        "is not a rounding rule",
+      ),
+      "round: names a rule",
+    ),
+    expect(
+      refused_with(
+        "  q {Decimal} calc: a / b, places: 2",
+        "names its rounding rule",
+      ),
+      "a quotient without round:",
+    ),
+    expect(
+      refused_with(
+        "  q {Decimal} calc: a * b, places: 2",
+        "rounding never happens implicitly",
+      )
+        == False,
+      "a product of whole numbers needs no rounding",
+    ),
+  ])
+}
+
 fn timed(f: fn() -> a) -> #(a, Float) {
   let t = now_ms()
   let x = f()
@@ -1027,6 +1156,7 @@ pub fn main() {
     #("review readings", review_readings),
     #("context paths", context_paths),
     #("filter-typed fields", filter_typed_fields),
+    #("division and rounding", division_and_rounding),
   ]
   let failed =
     list.fold(tests, 0, fn(failed, t) {

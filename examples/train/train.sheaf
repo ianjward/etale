@@ -58,6 +58,10 @@ Train {}
   stops {Stop} qty: 1..
   late_stops {Integer} count: stops, filter: Late_Stop
   total_delay {Integer} sum: stops.delay
+  # a train has at least one stop, so the count is never 0 and divides
+  stop_count {Integer} count: stops
+  average_delay {Decimal} calc: total_delay / stop_count, places: 1, round: Half_Even
+  average_never_early {Claim} if: average_delay >= 0
   credit {Integer} calc: Late_Stop_Credit * late_stops
   refund {True | False} from: kind & late_stops
     {True} if: kind = "fast" & late_stops >= 1

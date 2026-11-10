@@ -691,7 +691,10 @@ fn ok_unless(cond: Bool, sc: Scan, msg: String) -> Result(Nil, MapError) {
 
 /// A line's items as the model's block: qty first, then the line's own
 /// value ('val'), then the other restrictions, then its conditions.
-fn assemble(sc: Scan, its: List(#(String, LineItem))) -> Result(Block, MapError) {
+fn assemble(
+  sc: Scan,
+  its: List(#(String, LineItem)),
+) -> Result(Block, MapError) {
   let names = list.map(its, fn(p) { p.0 })
   let has = fn(n) { list.contains(names, n) }
   use _ <- result.try(case first_duplicate(names) {
@@ -699,9 +702,7 @@ fn assemble(sc: Scan, its: List(#(String, LineItem))) -> Result(Block, MapError)
     None -> Ok(Nil)
   })
   use _ <- result.try(ok_unless(
-    list.count(names, fn(n) {
-      list.contains(["calc", "count", "sum", "if"], n)
-    })
+    list.count(names, fn(n) { list.contains(["calc", "count", "sum", "if"], n) })
       > 1,
     sc,
     "a line takes at most one of calc:, count:, sum: and if:",
@@ -764,33 +765,34 @@ fn item_clauses(
   rounded: Bool,
 ) -> Result(List(Clause), MapError) {
   case it {
-    ICalc(VArith("/", _)) ->
-      case rounded {
-        False ->
-          err(
-            sc,
-            "a quotient names its rounding rule, e.g. calc: total / 3, places: 2, round: Half_Even",
-          )
-        True ->
-          err(
-            sc,
-            "division is in the spec, but this build of the checker cannot divide yet",
-          )
-      }
+    ICalc(VArith("/", _)) if !rounded ->
+      err(
+        sc,
+        "a quotient names its rounding rule, e.g. calc: total / 3, places: 2, round: Half_Even",
+      )
     ICalc(v) -> Ok([Plain(["val"], "=", v)])
     ICount(p) ->
       Ok([Plain(["val"], "=", VPath(list.flatten([p, filter, ["qty"]])))])
     ISum([list_name, field]) ->
-      Ok([Plain(["val"], "=", VPath(list.flatten([[list_name], filter, [field, "sum"]])))])
+      Ok([
+        Plain(
+          ["val"],
+          "=",
+          VPath(list.flatten([[list_name], filter, [field, "sum"]])),
+        ),
+      ])
     ISum(_) ->
-      err(sc, "sum: names a list and one field of its items, e.g. sum: lines.amount")
+      err(
+        sc,
+        "sum: names a list and one field of its items, e.g. sum: lines.amount",
+      )
     IQty(v) -> Ok([Setting("qty", v)])
     IValue(v) -> Ok([Plain(["val"], "=", v)])
     IPlaces(v) -> Ok([Setting("places", v)])
     IMod(v) -> Ok([Setting("mod", v)])
     IUnique(True) -> Ok([Flag("unique")])
-    // round: is checked beside calc:; the checker does not round yet.
-    IUnique(False) | IRound(_) | IFilter(_) | IIf(_) | IFrom(_) -> Ok([])
+    IRound(rule) -> Ok([Setting("round", VPath([rule]))])
+    IUnique(False) | IFilter(_) | IIf(_) | IFrom(_) -> Ok([])
   }
 }
 
@@ -1037,8 +1039,7 @@ fn read_lines(
 }
 
 fn starts_position(s: String, indent: String) -> Bool {
-  string.starts_with(s, indent)
-  && is_digit(char_at(s, string.length(indent)))
+  string.starts_with(s, indent) && is_digit(char_at(s, string.length(indent)))
 }
 
 fn read_positions(
@@ -1262,7 +1263,8 @@ fn with_shape(
         |> list.try_map(fn(pair) {
           let #(p, expect) = pair
           case p {
-            FieldPosition(num, _, l) | TypePosition(num, _, _, l)
+            FieldPosition(num, _, l)
+              | TypePosition(num, _, _, l)
               if num != expect
             ->
               Error(MapError(
@@ -1358,7 +1360,9 @@ fn field_line(
   use _ <- result.try(ok_unless(
     list.contains(host_names, name),
     Scan(..sc, i: 2),
-    "'" <> name <> "' cannot name a field in this build: the checker still uses it",
+    "'"
+      <> name
+      <> "' cannot name a field in this build: the checker still uses it",
   ))
   use sc <- result.try(spaces_then(sc))
   use #(bx, sc) <- result.try(box(sc))
