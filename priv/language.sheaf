@@ -59,6 +59,7 @@
 #     calc: a + b         a calculation
 #     count: lines        how many items a list holds
 #     sum: lines.amount   the total of a field over a list's items
+#     filter: Late_Stop   beside count: or sum:, only the items that are a Late_Stop
 #     if: total >= 0      a condition, on a rule, a claim, a refinement or a case
 #     from: a & b         a mapping's one or two inputs, with its cases below.
 #                         from: is the only item on its line.
@@ -76,7 +77,6 @@
 # Paths. A condition, calculation or fold names values by paths:
 #     total                 a field declared above, in the same record
 #     due.minutes           a field of that field's record
-#     stops.Late_Stop       the items of a list that are also a Late_Stop (a filter)
 #     Train.max_delay       a field of the Train this record sits inside
 #     value                 the value of this line itself
 # A path has at most one dot. To reach further, give the step its own field first.
@@ -200,9 +200,9 @@ Claim {True}
 #
 # Folds. A list is read only through a fold, and a fold is always its
 # own field:
-#   late_stops {Integer} count: stops.Late_Stop   the number of items
-#   total_delay {Integer} sum: stops.delay        the total of a numeric
-#                                                 field, with its places
+#   stop_count {Integer} count: stops       the number of items
+#   total_delay {Integer} sum: stops.delay  the total of a numeric field,
+#                                           with its places
 # An empty list folds to 0, and a count is never below 0. Both give the
 # same answer whatever the order of the items. Other counts are written
 # with these: the nodes of a tree, all levels down, are
@@ -211,12 +211,19 @@ Claim {True}
 # A field whose qty is at most 1 reads as its item, or as 0 when it is
 # absent, so 'train.total_delay + next_leg.delay' needs no fold.
 #
-# Filters. A path step that names a type keeps the items that inhabit
-# it: with 'Late_Stop {Stop} if: delay >= 2', 'stops.Late_Stop' is the
-# stops that are a Late_Stop, so 'count: stops.Late_Stop' counts them.
-# The type must be a refinement of the item type. Folds and filters
-# visit each item once, so they are linear. "Every item" is a filtered
-# count compared with a count.
+# Filters. 'filter:' beside a fold keeps the items that inhabit a type:
+# with 'Late_Stop {Stop} if: delay >= 2',
+#   late_stops {Integer} count: stops, filter: Late_Stop
+# counts the stops that are a Late_Stop, and 'sum: stops.delay, filter:
+# Late_Stop' adds up their delays. The type must be a refinement of the
+# list's item type, a fold takes at most one filter, and a path never
+# holds one. Folds and filters visit each item once, so they are linear.
+# "Every item" is a filtered count compared with a count. A relation
+# between the items of two lists is a filter on a unique key, read from
+# the item that asks:
+#   Its_Customer {Customer} if: code = Order.customer
+# and, in Order, 'matches {Integer} count: Book.customers, filter:
+# Its_Customer' with the rule 'known {True} if: matches = 1'.
 #
 # Context. A path that starts with a type name and goes on to a field
 # reaches the nearest record of that type around this one: inside a
@@ -355,20 +362,14 @@ Field_Step {Text}
   1. {"."}
   2. {Field_Name}
 
-Filter_Step {Text}                       # e.g. .Late_Stop, the items that are one
-  1. {"."}
-  2. {Type_Name}
-
-Path_Step {Field_Step | Filter_Step}
-
 # A path starts with a field declared above it, a one-value type, or a
 # record type around this one (Step 3, Context), and has at most one
-# step. A field cannot refer to itself, and may use its own record type
+# step, always a field. A field cannot refer to itself, and may use its own record type
 # only as a recursive field. 'value' names the value of the line it
 # appears on.
 Path {Text}                              # e.g. due.minutes
   1. {Name}
-  2. {Path_Step} qty: 0..1
+  2. {Field_Step} qty: 0..1
 
 
 # ---------- Step 4: Layout ----------
@@ -568,7 +569,7 @@ Calc_Item {}                             # calc: hour * 60
     2. {Gap}
     3. {calculation}
 
-Count_Item {}                            # count: stops.Late_Stop
+Count_Item {}                            # count: stops
   path {Path}
   text {Text}
     1. {"count:"}
@@ -588,6 +589,15 @@ If_Item {}                               # if: delay >= 2
     1. {"if:"}
     2. {Gap}
     3. {conditions}
+
+# A filter, beside 'count:' or 'sum:' only: the fold reads only the
+# items that inhabit the type named (Step 3, Filters).
+Filter_Item {}                           # filter: Late_Stop
+  kind {Type_Name}
+  text {Text}
+    1. {"filter:"}
+    2. {Gap}
+    3. {kind}
 
 # Restrictions. 'places: 2' fixes decimal places; without it, places
 # are inferred from the literals on the line. 'mod: 7' makes arithmetic
@@ -637,7 +647,7 @@ Unique_Item {}                           # unique: True
 
 Source {Calc_Item | Count_Item | Sum_Item | If_Item}
 Restriction {Qty_Item | Value_Item | Places_Item | Mod_Item}
-Item {Source | Restriction | Unique_Item}
+Item {Source | Filter_Item | Restriction | Unique_Item}
 
 Item_Tail {}
   next {Item}
