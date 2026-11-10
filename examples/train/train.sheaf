@@ -22,7 +22,7 @@ Time {}                                  # "08:45"
 Short {Character} qty: 1..12
 Station_Name {Word & Short}
 
-Code {Text}                              # "R10"
+Line_Code {Text}                         # "R10"
   1. {"R"}
   2. {Digit} qty: 1..2
 
@@ -52,7 +52,7 @@ Stop {}                                  # "Drammen 09:20 +4"
 Late_Stop {Stop} if: delay >= 2
 
 Train {}
-  line {Code}
+  line {Line_Code}
   kind {Kind}
   max_delay {Integer} value: 10 | 30 | 60
   stops {Stop} qty: 1..

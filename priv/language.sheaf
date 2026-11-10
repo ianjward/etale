@@ -704,17 +704,17 @@ Round_Item {}                            # round: Half_Even
 
 Source {Calc_Item | Count_Item | Sum_Item | If_Item}
 Restriction {Qty_Item | Value_Item | Places_Item | Mod_Item | Round_Item}
-Item {Source | Filter_Item | Restriction | Unique_Item}
+Named_Item {Source | Filter_Item | Restriction | Unique_Item}
 
 Item_Tail {}
-  next {Item}
+  next {Named_Item}
   text {Text}
     1. {","}
     2. {Gap}
     3. {next}
 
 Items {}                                 # e.g. calc: hour + 5, mod: 24
-  first {Item}
+  first {Named_Item}
   rest {Item_Tail} qty: 0..
   text {Text}
     1. {Gap}

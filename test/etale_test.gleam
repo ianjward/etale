@@ -284,7 +284,7 @@ fn sequents_print() -> Outcome {
       book,
       "Its_Customer(t) ⊣⊢ Customer(t) ∧ t.code = around(t, Order).customer",
     ),
-    has(book, "around(t, Book).customers.Its_Customer.qty = 1"),
+    has(book, "t.matches = around(t, Book).customers.Its_Customer.qty"),
     has(book, "t.code = u.code ⊢ t = u"),
     expect(
       !string.contains(orders <> book, "¬")
@@ -424,7 +424,7 @@ fn recursion_mapping_bytes() -> Outcome {
       "far parcel",
     ),
     expect(
-      num(get(q, program.check(q, "Byte", "01000001").value, "value")) == "65",
+      num(get(q, program.check(q, "Byte", "01000001").value, "number")) == "65",
       "byte value",
     ),
     expect(
@@ -527,7 +527,7 @@ fn grids() -> Outcome {
 }
 
 /// The number of declarations in priv/language.sheaf.
-const spec_decls = 130
+const spec_decls = 155
 
 const inter_src =
   "Letters {Uppercase} qty: 3
