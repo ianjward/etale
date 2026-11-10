@@ -3,7 +3,8 @@
 //// print(type, value) builds the canonical text for a value, then parses it
 //// back and refuses to return it unless it reads back to that same value in
 //// exactly one way. format(file) prints a file from its own parse tree, with
-//// every sequence that declares print= reset to that many items.
+//// every position of a text shape that holds no field printed as its type's
+//// first form (so Pad and Gap print as one space), and trailing spaces dropped.
 
 import gleam/dict
 import gleam/int
@@ -459,7 +460,7 @@ pub fn format(
   fname: String,
 ) -> Result(String, String) {
   let bare = text != "" && !string.ends_with(text, "\n")
-  let text = reader.as_file_text(text)
+  let text = drop_trailing_spaces(reader.as_file_text(text))
   use entries <- result.try(
     reader.read(text, fname) |> result.map_error(model.error_text),
   )
@@ -512,7 +513,15 @@ fn emit(p: Program, n: Node, text: String) -> String {
         NLit | NChar -> slice(text, n.s, n.e)
         NAlt(c) -> emit(p, c, text)
         NSeq(_) -> list.map(node.items(n), emit(p, _, text)) |> string.concat
-        NRec(kids) | NLay(kids) ->
+        NRec(kids) ->
+          list.map(kids, fn(k) {
+            case reader.is_position_field(k.0), shape_part(p, n, k.0) {
+              True, Some(t) -> t
+              _, _ -> emit(p, k.1, text)
+            }
+          })
+          |> string.concat
+        NLay(kids) ->
           list.map(kids, fn(k) { emit(p, k.1, text) }) |> string.concat
       }
   }
@@ -528,7 +537,9 @@ pub fn from_val(p: Program, v: Val) -> PV {
     VText(t) -> PText(t)
     VRecord(r) ->
       PRec(
-        list.filter(r.decl.fields, model.is_stored)
+        list.filter(r.decl.fields, fn(f) {
+          model.is_stored(f) && !reader.is_position_field(f.name)
+        })
         |> list.map(fn(f) {
           #(f.name, from_val(p, evaluate.get(p.ev, r, f.name)))
         }),
@@ -627,4 +638,66 @@ fn doc_above(before: List(String)) -> List(String) {
   |> list.reverse
   |> list.take_while(fn(l) { string.starts_with(l, "#") })
   |> list.reverse
+}
+
+// ---------------------------------------------------------------- formatting
+
+fn drop_trailing_spaces(text: String) -> String {
+  string.split(text, "\n")
+  |> list.map(string.trim_end)
+  |> string.join("\n")
+}
+
+/// The first form of a position that holds no field, in the record that
+/// node n was read as: a literal, a union's first item, a list's fewest items.
+fn shape_part(p: Program, n: Node, label: String) -> Option(String) {
+  case n.t {
+    Some(name) ->
+      case decl(p, name) {
+        Some(d) ->
+          case model.field(d, label) {
+            Some(f) -> {
+              let #(lo, _) = grammar.qty_bounds(model.qty(f))
+              case model.qty(f), f.items {
+                Some(_), [one] ->
+                  first_form(p, one, [])
+                  |> option.map(fn(t) { string.repeat(t, lo) })
+                None, [one] -> first_form(p, one, [])
+                _, _ -> None
+              }
+            }
+            None -> None
+          }
+        None -> None
+      }
+    None -> None
+  }
+}
+
+fn first_form(p: Program, it: Item, seen: List(String)) -> Option(String) {
+  case it {
+    StrItem(s) -> Some(s)
+    NumItem(_, t) -> Some(t)
+    TypeItem(n) ->
+      case list.contains(seen, n), decl(p, n) {
+        True, _ | _, None -> None
+        False, Some(d) -> {
+          let seen = [n, ..seen]
+          case d.kind, d.items {
+            model.Union, [first, ..] -> first_form(p, first, seen)
+            model.Refine, [one] ->
+              case model.qty_of(d.preds), model.plains(d.preds) {
+                Some(_), _ -> {
+                  let #(lo, _) = grammar.qty_bounds(model.qty_of(d.preds))
+                  first_form(p, one, seen)
+                  |> option.map(fn(t) { string.repeat(t, lo) })
+                }
+                None, [] -> first_form(p, one, seen)
+                None, _ -> None
+              }
+            _, _ -> None
+          }
+        }
+      }
+  }
 }

@@ -1,5 +1,8 @@
 # The standard library is in every file's scope: Date and Identifier need no import.
 Meeting {}
   on {Date}
-  gap {" "}
   room {Identifier}
+  text {Text}
+    1. {on}
+    2. {" "}
+    3. {room}
