@@ -70,6 +70,7 @@
 #     places: 2           decimal places
 #     mod: 24             arithmetic wraps at 24
 #     unique: True        no two items of a list share this field's value
+#     round: Half_Even    how a calculation is rounded to the field's places (Step 5)
 #
 #   Defaults, when nothing is written: qty 1; places inferred from the numbers on the line;
 #   unique False.
@@ -93,14 +94,15 @@
 #     a = 1 | b = 1
 #
 # Calculations:
-#   + - * on numbers, one kind per calculation
+#   + - * / on numbers, one kind per calculation
 #     a + b + c             allowed
 #     a + b * c             refused: there is no precedence, so give b * c its own field
-#   There is no division. Compare products instead, naming the left side first:
-#     tenfold {Money} calc: paid * 10
-#     enough {True} if: tenfold >= total * 3
+#     a / b                 a quotient: two terms only, and only after calc:
 #   Integers never overflow and decimals are exact: + and - keep the larger number of
-#   places, and * adds them. mod makes arithmetic wrap.
+#   places, and * adds them. mod makes arithmetic wrap. The checker must prove that a
+#   divisor is never 0. A quotient may need any number of places, so its field says how
+#   to round it:
+#     share {Decimal} calc: total / 3, places: 2, round: Half_Even
 #
 # Text shapes. A record's fields hold only meaning. When its text has more than its stored
 # fields in order, a field named text lays it out, with positions four spaces in:
@@ -149,8 +151,10 @@ Newline {"\n"}
 Quote {"\""}
 Backslash {"\\"}
 
-Operator_Symbol {"{" | "}" | "|" | "&" | "=" | "<" | ">" | "." | "," | ":" | "#" | "*" | "+" | "-"}
-Other_Symbol_A {"/" | ";" | "!" | "?" | "'" | "(" | ")"}
+Operator_Symbol_A {"{" | "}" | "|" | "&" | "=" | "<" | ">" | "."}
+Operator_Symbol_B {"," | ":" | "#" | "*" | "+" | "-" | "/"}
+Operator_Symbol {Operator_Symbol_A | Operator_Symbol_B}
+Other_Symbol_A {";" | "!" | "?" | "'" | "(" | ")"}
 Other_Symbol_B {"@" | "%" | "[" | "]" | "^" | "~" | "`" | "$"}
 Other_Symbol {Other_Symbol_A | Other_Symbol_B}
 Reserved {Operator_Symbol | Quote | Backslash}
@@ -194,7 +198,8 @@ Claim {True}
 # - A product may have at most one factor read through a recursive
 #   field. 'next_leg.delay * 10' is allowed; 'next_leg.delay *
 #   next_leg.delay' would double the length of the number at every
-#   level and is an error.
+#   level and is an error. Likewise a quotient may not have both its
+#   dividend and its divisor read through a recursive field.
 # Computed fields produce numbers and Facts, never new records or
 # lists, so evaluation never makes the data bigger.
 #
@@ -296,7 +301,10 @@ Number_Literal {Decimal_Literal | Integer_Literal}
 # 'value:', its choice of values, or its count. On a recursive type, the
 # claim itself may be assumed for the recursive field (induction). A
 # product of two fields is kept as one term, bounded by multiplying
-# their ranges. If the bound does not settle the comparison, the claim
+# their ranges. A quotient is kept as one term too, bounded by dividing
+# ranges, and a rounded field is within one unit of its last place of
+# the exact value (half a unit when its rule rounds away from zero only
+# above a half). If the bound does not settle the comparison, the claim
 # is a compile error, "cannot prove". Each claim is checked once
 # against the declarations, never against data, so proofs are
 # polynomial in the size of the program.
@@ -386,7 +394,7 @@ Indent_4 {Text}
   1. {Space} qty: 4
 
 # Spacing around operators. Any number of spaces, none included, may
-# surround '&', '|', '+', '-', '*' and the comparisons; one or more
+# surround '&', '|', '+', '-', '*', '/' and the comparisons; one or more
 # separate a name from its type and follow a comma or a colon. Lines
 # are at most 100 characters long (File, Step 7), which bounds every
 # run of spaces. Spacing holds no meaning, so no field holds it: it sits
@@ -418,8 +426,8 @@ Line_End {Plain_End | Noted_End}
 
 # ---------- Step 5: Values, Conditions and Items ----------
 
-# Arithmetic is '+', '-' and '*'. Division does not exist. A
-# calculation uses one operator kind only, so no precedence exists.
+# Arithmetic is '+', '-', '*' and '/'. A calculation uses one operator
+# kind only, so no precedence exists.
 Term {Path | Number_Literal}
 
 Sum_Tail {}
@@ -459,6 +467,23 @@ Product {}
   rest {Product_Tail} qty: 1..
 
 Arithmetic {Sum | Difference | Product}  # One operator kind per calculation
+
+# Division. A quotient has exactly two terms, and is written only after
+# 'calc:', never in a condition: to divide again, or to compare a
+# quotient, give it its own field first. The checker must prove the
+# divisor is never 0, from its 'value:', its choice of values or its
+# count; otherwise the line is an error. The exact quotient may need any
+# number of places, so its field names a rounding rule with 'round:'.
+# 1 / 3 is the exact value one third, never a decimal cut short.
+Quotient {}                              # e.g. total / 3
+  dividend {Term}
+  divisor {Term}
+  text {Text}
+    1. {dividend}
+    2. {Pad}
+    3. {"/"}
+    4. {Pad}
+    5. {divisor}
 
 Value {Arithmetic | Range_Literal | Number_Literal | String_Literal | Path}
 
@@ -553,7 +578,7 @@ Allowed_Values {Allowed_Choice | Allowed}
 # Allowed numbers of items, after 'qty:'.
 Quantity {Range_Literal | Natural}
 
-Calculation {Arithmetic | Term}
+Calculation {Arithmetic | Quotient | Term}
 
 
 # Items. Each item is a name, a colon, one or more spaces, and its value.
@@ -603,10 +628,12 @@ Filter_Item {}                           # filter: Late_Stop
 # are inferred from the literals on the line. 'mod: 7' makes arithmetic
 # wrap. A value given to a field must satisfy the field's 'value:', and
 # giving it to fewer decimal places is a compile error, so rounding
-# never happens implicitly. 'unique: True' forbids two items of a list
-# with equal values in that field; its opposite, two equal items, is
-# positive and always decidable. 'unique: False' says nothing, and fmt
-# drops it.
+# never happens implicitly: a calculation whose exact value may have
+# more places than its field allows, a quotient always among them,
+# names a rounding rule with 'round:'. 'unique: True' forbids two items
+# of a list with equal values in that field; its opposite, two equal
+# items, is positive and always decidable. 'unique: False' says
+# nothing, and fmt drops it.
 Qty_Item {}                              # qty: 1..
   allowed {Quantity}
   text {Text}
@@ -645,8 +672,38 @@ Unique_Item {}                           # unique: True
     2. {Gap}
     3. {flag}
 
+# Rounding. 'round: Half_Even' names a rounding rule: a record whose
+# field 'direction {Direction}' is a mapping on one or two of the inputs
+# the checker supplies when it rounds,
+#   remainder {Decimal} value: 0..1    the part cut off, as a fraction of
+#                                      the last place kept
+#   odd {Fact}                         the last digit kept is odd
+#   negative {Fact}                    the exact value is below 0
+# For example, round half to even:
+#   Half_Even {}
+#     remainder {Decimal} value: 0..1
+#     odd {Fact}
+#     direction {Direction} from: remainder & odd
+#       {"toward_zero"} if: remainder < 0.5
+#       {"away_from_zero"} if: remainder > 0.5
+#       {"toward_zero"} if: remainder = 0.5 & odd = False
+#       {"away_from_zero"} if: remainder = 0.5 & odd = True
+# The mapping's checks refuse a rule that misses a case, such as the
+# tie. The standard library holds Half_Even, Half_Up, Floor and Ceiling;
+# anyone may declare more. A rule decides only which way to round, so
+# every rounded value is within one unit of its last place of the exact
+# value.
+Direction {"toward_zero" | "away_from_zero"}
+
+Round_Item {}                            # round: Half_Even
+  rule {Type_Name}
+  text {Text}
+    1. {"round:"}
+    2. {Gap}
+    3. {rule}
+
 Source {Calc_Item | Count_Item | Sum_Item | If_Item}
-Restriction {Qty_Item | Value_Item | Places_Item | Mod_Item}
+Restriction {Qty_Item | Value_Item | Places_Item | Mod_Item | Round_Item}
 Item {Source | Filter_Item | Restriction | Unique_Item}
 
 Item_Tail {}
