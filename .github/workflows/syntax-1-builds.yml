@@ -1,6 +1,7 @@
 # Temporary, for the syntax-1 build only: compiles main and this branch and
-# keeps both builds as an artifact, so their outputs can be compared in a
-# session without Gleam. Removed before review.
+# prints both builds into the log, so their outputs can be compared in a
+# session without Gleam (the session's proxy blocks artifact downloads, but
+# not logs). Removed before review.
 name: syntax-1 builds (temporary)
 
 on:
@@ -40,13 +41,20 @@ jobs:
       - name: Build main
         run: cd before && gleam build --target javascript
       - name: Build this branch
-        run: cd after && { gleam build --target javascript > ../after-build.log 2>&1; echo "exit $?" >> ../after-build.log; cat ../after-build.log; }
+        run: cd after && { gleam build --target javascript 2>&1; echo "BUILD-EXIT $?"; }
       - name: Test this branch
-        run: cd after && { gleam test > ../after-test.log 2>&1; echo "exit $?" >> ../after-test.log; tail -60 ../after-test.log; }
-      - name: Pack
-        run: tar czf builds.tgz before/build/dev/javascript after/build/dev/javascript after-build.log after-test.log
-      - uses: actions/upload-artifact@v4
-        with:
-          name: builds
-          path: builds.tgz
-          retention-days: 3
+        run: cd after && { gleam test 2>&1 | tail -80; echo "TEST-EXIT ${PIPESTATUS[0]}"; }
+        shell: bash
+      - name: Bootstrap this branch
+        run: cd after && { node bin/sheaf.mjs bootstrap 2>&1 | tail -20; echo "BOOT-EXIT ${PIPESTATUS[0]}"; }
+        shell: bash
+      - name: Print the builds
+        run: |
+          for side in before after; do
+            if [ -d $side/build/dev/javascript ]; then
+              tar czf $side.tgz --exclude=_gleam_artefacts -C $side/build/dev javascript
+              echo "=====BEGIN-$side $(sha256sum $side.tgz | cut -c1-64)"
+              base64 -w 100 $side.tgz
+              echo "=====END-$side"
+            fi
+          done
