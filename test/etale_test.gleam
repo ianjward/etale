@@ -276,15 +276,11 @@ fn sequents_print() -> Outcome {
   let book = theory("examples/book/book.sheaf")
   let has = fn(text, needle) { expect(string.contains(text, needle), needle) }
   all([
-    has(orders, "Big_Line(t) ⊣⊢ Line(t) ∧ t.line_total ≥ 500.00"),
     has(orders, "Order(t) ⊢ t.total = t.lines.line_total.sum"),
     has(orders, "Line(t) ∧ t.line_total ≥ 500.00 ⊢ t.big = TRUE"),
     has(orders, "∧ Line{1..}(lines)"),
-    has(
-      book,
-      "Its_Customer(t) ⊣⊢ Customer(t) ∧ t.code = around(t, Order).customer",
-    ),
-    has(book, "t.matches = around(t, Book).customers.Its_Customer.qty"),
+    has(orders, "t.big_lines = t.lines.qty [only items with lines.big = True]"),
+    has(book, "t.orders.customer ⊆ t.customers.code"),
     has(book, "t.code = u.code ⊢ t = u"),
     expect(
       !string.contains(orders <> book, "¬")
@@ -374,11 +370,10 @@ fn orders() -> Outcome {
     expect(o.ok, "order inhabits Order"),
     expect(num(get(p, o.value, "total")) == "1259.97", "total"),
     expect(num(get(p, o.value, "big_lines")) == "1", "big lines"),
-    expect(program.check(p, "Big_Order", t).ok, "is a Big_Order"),
+    expect(program.check(p, "Order", small).ok, "a small order inhabits Order"),
     expect(
-      program.check(p, "Order", small).ok
-        && !program.check(p, "Big_Order", small).ok,
-      "filter",
+      num(get(p, program.check(p, "Order", small).value, "big_lines")) == "0",
+      "a filter that keeps nothing counts 0",
     ),
     expect(
       !bad.ok
@@ -455,7 +450,10 @@ fn scope() -> Outcome {
     program.load(base(False), program.join(cwd(), "examples/cycle/a.sheaf"))
   let order = "2026-10-15\nABC123 19.99\nXYZ042 5.00\n"
   let bundle =
-    program.bundle_text([#("a/x.sheaf", "X {\"x\"}"), #("a/y.sheaf", "Y {\"y\" | X}\n")])
+    program.bundle_text([
+      #("a/x.sheaf", "X {\"x\"}"),
+      #("a/y.sheaf", "Y {\"y\" | X}\n"),
+    ])
   all([
     expect(
       program.check(m, "Meeting", "2024-02-29 room_4").ok,
@@ -504,8 +502,8 @@ fn graphs() -> Outcome {
   let svg = graph.to_svg(g, graph.layout(g), "orders")
   let wires = list.length(g.edges)
   all([
-    expect(list.any(g.nodes, fn(n) { n.id == "Big_Order" }), "Big_Order node"),
-    expect(wires > 10, "wires"),
+    expect(list.any(g.nodes, fn(n) { n.id == "Order" }), "Order node"),
+    expect(wires == 9, "wires: " <> int.to_string(wires)),
     expect(string.starts_with(svg, "<svg"), "svg"),
     expect(
       dict.size(graph.layout(g)) == list.length(g.nodes),
@@ -530,7 +528,7 @@ fn grids() -> Outcome {
 }
 
 /// The number of declarations in priv/language.sheaf.
-const spec_decls = 161
+const spec_decls = 156
 
 const inter_src =
   "Letters {Uppercase} qty: 3
@@ -694,12 +692,12 @@ fn printing() -> Outcome {
     ),
     expect(
       case
-        printer.print_code(o, "Big_Line", fn(f) {
+        printer.print_code(o, "Line", fn(f) {
           read_file(program.join(cwd(), f))
         })
       {
         Ok(code) ->
-          string.contains(code, "Big_Line {Line} if: line_total >= 500.00")
+          string.contains(code, "big {True | False} (line_total)")
           && string.starts_with(code, "#")
         Error(_) -> False
       },
@@ -712,16 +710,15 @@ const filter_src =
   "Item {}
   d {Digit}
   w {Integer} value: 0..9
-Heavy {Item} if: w >= 5
 Box {}
   items {Item} qty: 1..
-  heavy {Integer} count: items, filter: Heavy
-  hw {Integer} sum: items.w, filter: Heavy
+  heavy {Integer} count: items, filter: items.w >= 5
+  hw {Integer} sum: items.w, filter: items.w >= 5
   ok {Claims} hw >= 0
 "
 
-/// {Type n} makes a list (no count means one); a type-named step filters it;
-/// a list appears only inside a fold.
+/// {Type n} makes a list (no count means one); a filter keeps the items that
+/// meet a condition; a list appears only inside a fold.
 fn lists_and_filters() -> Outcome {
   let assert Ok(#(p, rep)) = source(filter_src)
   let b = program.check(p, "Box", "1726")
@@ -766,49 +763,47 @@ fn context_paths() -> Outcome {
   let assert Ok(unknown) = read_file("examples/book/book_unknown.txt")
   let ok = program.check(p, "Book", good)
   let bad = program.check(p, "Book", unknown)
-  let alone = program.check(p, "Order", "1041 C001\n")
   let lib =
-    "Item {}\n  n {Integer}\n  text {Text}\n    1. {n}\n    2. {Newline}\n\n"
-    <> "Big {Item} if: n > Box.limit\n\n"
+    "Item {}\n  n {Integer}\n  within {Needs} n <= Box.limit\n  text {Text}\n    1. {n}\n    2. {Newline}\n\n"
     <> "Box {}\n  limit {Integer}\n  items {Item} qty: 0..\n  text {Text}\n    1. {limit}\n    2. {Newline}\n    3. {items}\n"
-    <> "  bigs {Integer} count: items, filter: Big\n"
   let assert Ok(#(bp, brep)) = source(lib)
-  let box = program.check(bp, "Box", "5\n3\n7\n9\n")
+  let box = program.check(bp, "Box", "5\n3\n4\n")
+  let over = program.check(bp, "Box", "5\n3\n7\n")
+  let alone = program.check(bp, "Item", "3\n")
   let assert Ok(#(_, escaped)) =
-    source(
-      lib
-      <> "\nShelf {}\n  items {Item} qty: 0..\n  bigs {Integer} count: items, filter: Big\n",
-    )
+    source(lib <> "\nShelf {}\n  items {Item} qty: 0..\n")
   let assert Ok(#(_, text_cmp)) =
     source(
-      string.replace(lib, "n {Integer}", "n {Natural}")
-      |> string.replace("limit {Integer}", "limit {Natural}"),
+      "Item {}\n  n {Natural}\n  text {Text}\n    1. {n}\n    2. {Newline}\n\n"
+      <> "Box {}\n  items {Item} qty: 0..\n  bigs {Integer} count: items, filter: items.n > 5\n"
+      <> "  text {Text}\n    1. {items}\n",
     )
   let assert Ok(#(_, not_rec)) =
     source("Two {\"2\"}\nR {}\n  a {Integer} value: Two.x\n")
-  let assert Ok(#(_, promised)) =
-    source(
-      "C {}\n  k {Natural}\n  text {Text}\n    1. {k}\n    2. {Newline}\n\nMine {C} if: k = O.k\n\n"
-      <> "O {}\n  k {Natural}\n  text {Text}\n    1. {k}\n    2. {Newline}\n"
-      <> "  n {Integer} count: B.cs, filter: Mine\n\n"
-      <> "B {}\n  cs {C} qty: 0..\n  os {O} qty: 0..\n",
-    )
   all([
     expect(check.errors(rep) == [], "book checks clean: " <> msgs(rep)),
     expect(ok.ok, "every order's customer exists"),
     expect(
       !bad.ok
-        && list.any(bad.failures, fn(f) { string.contains(f, "Order.known") }),
-      "an unknown customer is caught after the parse",
+        && list.any(bad.failures, fn(f) {
+        string.contains(f, "Book.each_order_has_its_customer")
+        && string.contains(f, "orders item 2: customer is")
+      }),
+      "an unknown customer is caught, naming the order",
     ),
     expect(
       list.any(alone.failures, fn(f) {
-        string.contains(f, "there is no Book around this Order")
+        string.contains(f, "there is no Box around this Item")
       }),
-      "an Order alone has no Book around it",
+      "an Item alone has no Box around it",
     ),
-    expect(check.errors(brep) == [], "filter by an outer field: " <> msgs(brep)),
-    expect(num(get(bp, box.value, "bigs")) == "2", "items above the box limit"),
+    expect(check.errors(brep) == [], "a rule on an outer field: " <> msgs(brep)),
+    expect(box.ok, "items within the box limit"),
+    expect(
+      !over.ok
+        && list.any(over.failures, fn(f) { string.contains(f, "within") }),
+      "an item above the box limit breaks its rule",
+    ),
     expect(
       string.contains(msgs(escaped), "Shelf holds it without one around"),
       "a holder outside the context is an error",
@@ -819,17 +814,13 @@ fn context_paths() -> Outcome {
       "a filter's comparison needs numbers: " <> msgs(text_cmp),
     ),
     expect(
-      check.errors(promised) == [],
-      "cost names the outer list: " <> msgs(promised),
-    ),
-    expect(
-      list.contains(rep.costs, #("Order", "O(Book.customers.qty)")),
-      "cost of a lookup",
+      list.contains(rep.costs, #("Book", "O(customers.qty + orders.qty)")),
+      "cost of a relation",
     ),
   ])
 }
 
-const filter_field_src =
+const tied_src =
   "Element {Integer} value: 0..9
   1. {Digit}
 
@@ -838,22 +829,17 @@ Mul {}
   right {Element}
   out {Element}
 
-Small {Mul} if: out <= 5
-Tiny {Small} if: out <= 2
-
 Holder {}
-  m {Small}
+  m {Mul}
   half {Needs} m.out <= 4
-  ms {Tiny} qty: 0..
-  total {Integer} sum: ms.out
 "
 
-/// A field typed by a filter holds values of the filter's record, so a path
-/// reaches the record's fields through it; a filter that reaches a record
-/// around it is decided once the text is read (examples/xor).
-fn filter_typed_fields() -> Outcome {
-  let assert Ok(#(p, rep)) = source(filter_field_src)
-  let good = program.check(p, "Holder", "123112221")
+/// A field typed by a record holds its values, so a path reaches the record's
+/// fields through it, and a rule in the record that holds both ties them
+/// together (examples/xor).
+fn tied_by_rules() -> Outcome {
+  let assert Ok(#(p, rep)) = source(tied_src)
+  let good = program.check(p, "Holder", "123")
   let half = program.check(p, "Holder", "125")
   let #(x, xrep) = load("examples/xor/xor.sheaf")
   let run = fn(name) {
@@ -864,22 +850,18 @@ fn filter_typed_fields() -> Outcome {
     !o.ok && list.any(o.failures, fn(f) { string.contains(f, what) })
   }
   all([
-    expect(check.errors(rep) == [], "fields through a filter: " <> msgs(rep)),
-    expect(good.ok, "a value of the filter is a record"),
-    expect(num(get(p, good.value, "total")) == "3", "sum through a filter"),
-    expect(
-      refused_by(half, "Holder.half"),
-      "a rule through a filter-typed field",
-    ),
+    expect(check.errors(rep) == [], "fields through a record: " <> msgs(rep)),
+    expect(good.ok, "a value of the record"),
+    expect(refused_by(half, "Holder.half"), "a rule through a field"),
     expect(check.errors(xrep) == [], "examples/xor: " <> msgs(xrep)),
-    expect(run("xor").ok, "products that fit their filters"),
+    expect(run("xor").ok, "products that fit their rules"),
     expect(
-      refused_by(run("xor_bc"), "Assoc.bc is not Bc"),
-      "a filter reaching the record around it",
+      refused_by(run("xor_bc"), "Assoc.bc_takes_b_and_c"),
+      "a rule tying a product to the inputs",
     ),
     expect(
-      refused_by(run("xor_ab_c"), "Assoc.ab_c is not Ab_C"),
-      "a filter reaching a field of a sibling",
+      refused_by(run("xor_ab_c"), "Assoc.ab_c_takes_ab_out_and_c"),
+      "a rule tying a product to another product",
     ),
   ])
 }
@@ -1189,6 +1171,160 @@ fn float_text(x: Float) -> String {
   int.to_string(float.round(x)) <> " ms"
 }
 
+/// 'if:' belongs to cases; a type never narrows another by a condition; a
+/// filter takes a condition written through its list; a relation between two
+/// lists is a rule in the record that holds both. Every old form says what
+/// to write instead.
+fn conditions_filters_relations() -> Outcome {
+  let refused = fn(text, needle) {
+    case source(text) {
+      Error(e) -> string.contains(e.msg, needle)
+      Ok(_) -> False
+    }
+  }
+  let flagged = fn(text, needle) {
+    case source(text) {
+      Ok(#(_, r)) -> string.contains(msgs(r), needle)
+      Error(_) -> False
+    }
+  }
+  let box =
+    "Item {}\n  d {Digit}\n  w {Integer} value: 0..9\n"
+    <> "Box {}\n  items {Item} qty: 1..\n"
+  let counted = fn(filter) {
+    let assert Ok(#(p, _)) =
+      source(box <> "  n {Integer} count: items, filter: " <> filter <> "\n")
+    num(get(p, program.check(p, "Box", "1726").value, "n"))
+  }
+  let rel = fn(unique, customer, line) {
+    "Customer {}\n  code {Natural}"
+    <> unique
+    <> "\n  text {Text}\n    1. {code}\n    2. {Newline}\n\n"
+    <> "Order {}\n  customer {"
+    <> customer
+    <> "}\n  text {Text}\n    1. {customer}\n    2. {Newline}\n\n"
+    <> "Book {}\n  customers {Customer} qty: 1..\n  orders {Order} qty: 0..\n"
+    <> line
+    <> "\n"
+  }
+  let tie = "  ok {Needs} orders.customer = customers.code"
+  all([
+    expect(
+      refused(
+        "Order {}\n  total {Decimal}\nBig_Order {Order} if: total >= 1000.00\n",
+        "'Big_Order {Order} if: ...' is gone",
+      ),
+      "a type narrowing a record by a condition",
+    ),
+    expect(
+      refused(
+        "Line {}\n  w {Integer}\nCart {}\n  lines {Line} qty: 0..9\n  n {Integer} count: lines.Big_Line\n",
+        "'lines.Big_Line' is gone",
+      ),
+      "a type name in a path",
+    ),
+    expect(
+      refused("Money {Decimal} places: 2, if: value >= 0.00\n", "value: 0.00.."),
+      "a number is restricted with value:",
+    ),
+    expect(
+      refused(
+        box <> "  n {Integer} count: items, filter: Heavy\n",
+        "takes a condition, not a type",
+      ),
+      "filter: by a type",
+    ),
+    expect(
+      refused(
+        box <> "  n {Integer} count: items, filter: w >= 5\n",
+        "filter: items.w >= 5",
+      ),
+      "a field not written through the list",
+    ),
+    expect(
+      refused(
+        box <> "  n {Integer} count: items, filter: items.w >= Box.limit\n",
+        "a filter compares each item with a number",
+      ),
+      "a filter against another record",
+    ),
+    expect(
+      refused(
+        box
+          <> "  limit {Integer}\n  n {Integer} count: items, filter: items.w >= limit\n",
+        "a filter compares each item with a number",
+      ),
+      "a filter against another field",
+    ),
+    expect(
+      refused(
+        box <> "  n {Integer} value: 1, filter: items.w >= 5\n",
+        "beside count: or sum:",
+      ),
+      "filter: with no fold",
+    ),
+    expect(
+      flagged(
+        box <> "  n {Integer} count: items, filter: items.zzz >= 5\n",
+        "zzz",
+      ),
+      "a filter naming no field",
+    ),
+    expect(counted("items.w >= 6") == "2", "a condition"),
+    expect(
+      counted("items.w >= 6 & items.w <= 6") == "1",
+      "conditions joined by &",
+    ),
+    expect(counted("items.w = 6 | 7") == "2", "a choice of values"),
+    expect(counted("items.w = 3") == "0", "no item meets it"),
+    expect(
+      is_ok(source(rel(" unique: True", "Natural", tie))),
+      "a relation checks clean",
+    ),
+    expect(
+      flagged(rel("", "Natural", tie), "must be unique"),
+      "a relation needs a unique key",
+    ),
+    expect(
+      flagged(
+        rel(
+          " unique: True",
+          "Natural",
+          "  ok {Needs} orders.customer >= customers.code",
+        ),
+        "uses = only",
+      ),
+      "a relation uses =",
+    ),
+    expect(
+      flagged(
+        rel(
+          " unique: True",
+          "Natural",
+          "  ok {Claims} orders.customer = customers.code",
+        ),
+        "a rule, not a claim",
+      ),
+      "a relation is not a claim",
+    ),
+    expect(
+      flagged(
+        rel(
+          " unique: True",
+          "Natural",
+          tie <> " & orders.customer = customers.code",
+        ),
+        "a line of its own",
+      ),
+      "a relation is alone on its line",
+    ),
+    expect(
+      flagged(rel(" unique: True", "Digit", tie), "same type"),
+      "a relation compares the same type",
+    ),
+  ])
+}
+
 pub fn main() {
   let tests = [
     #("bootstrap", bootstrap),
@@ -1217,7 +1353,8 @@ pub fn main() {
     #("lists and filters", lists_and_filters),
     #("review readings", review_readings),
     #("context paths", context_paths),
-    #("filter-typed fields", filter_typed_fields),
+    #("records tied by rules", tied_by_rules),
+    #("conditions, filters and relations", conditions_filters_relations),
     #("division and rounding", division_and_rounding),
     #("value: checks or works out", value_checks_or_works_out),
     #("rules, claims and mapping inputs", rules_claims_and_inputs),
@@ -1273,10 +1410,7 @@ fn rules_claims_and_inputs() -> Outcome {
     expect(!refused_rule.ok, "a failed rule refuses the record"),
     expect(list.key_find(rep.claims, "R.pos") |> is_ok, "a claim is proved"),
     expect(refused(r <> "  ok {True} if: a <= 8\n", "{Needs}"), "old rule"),
-    expect(
-      refused(r <> "  pos {Claim} if: a >= 0\n", "{Claims}"),
-      "old claim",
-    ),
+    expect(refused(r <> "  pos {Claim} if: a >= 0\n", "{Claims}"), "old claim"),
     expect(
       refused(r <> "  ok {Needs} if: a <= 8\n", "no if:"),
       "{Needs} takes no if:",
@@ -1292,7 +1426,7 @@ fn rules_claims_and_inputs() -> Outcome {
       "a {False} field",
     ),
     expect(
-      refused(r <> "  t {Integer} value: a, if: a = 1\n", "refinements and cases"),
+      refused(r <> "  t {Integer} value: a, if: a = 1\n", "only for the cases"),
       "if: on a field line",
     ),
     expect(

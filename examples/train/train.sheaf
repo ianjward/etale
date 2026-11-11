@@ -49,14 +49,12 @@ Stop {}                                  # "Drammen 09:20 +4"
     5. {delay}
     6. {Newline}
 
-Late_Stop {Stop} if: delay >= 2
-
 Train {}
   line {Line_Code}
   kind {Kind}
   max_delay {Integer} value: 10 | 30 | 60
   stops {Stop} qty: 1..
-  late_stops {Integer} count: stops, filter: Late_Stop
+  late_stops {Integer} count: stops, filter: stops.delay >= 2
   total_delay {Integer} sum: stops.delay
   # a train has at least one stop, so the count is never 0 and divides
   stop_count {Integer} count: stops

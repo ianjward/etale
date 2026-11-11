@@ -20,8 +20,9 @@ import sheaf/decimal.{type Decimal}
 import sheaf/evaluate.{type Ev, type Val, VNumber, VText}
 import sheaf/grammar.{type Cell}
 import sheaf/model.{
-  type Case, type Decl, type Field, type Item, type Value, NumItem, OrConn,
-  Plain, Setting, StrItem, TypeItem, VArith, VMulti, VNum, VPath, VRange, VStr,
+  type Case, type Decl, type Field, type Item, type Value, Decl, NumItem, OrConn,
+  Plain, Setting, StrItem, TypeItem, VArith, VFilter, VMulti, VNum, VPath,
+  VRange, VStr,
 }
 
 pub type Diag {
@@ -121,6 +122,21 @@ fn idx(c: Ctx, name: String) -> Int {
     Ok(i) -> i
     Error(_) -> -1
   }
+}
+
+/// The bounds, claims and costs below read a filtered fold as a path with a
+/// filter step in it, 'stops.Filtered.qty': a filter keeps some of the items,
+/// so it can only lower a count to 0. The step is a marker for them and is
+/// never looked up as a type.
+fn analysis_value(v: Value) -> Value {
+  case v {
+    VFilter([list_name, ..rest], _) -> VPath([list_name, "Filtered", ..rest])
+    _ -> v
+  }
+}
+
+fn definition(f: Field) -> Option(Value) {
+  option.map(model.definition(f), analysis_value)
 }
 
 fn is_upper_start(s: String) -> Bool {
@@ -533,31 +549,42 @@ fn check_record(c: Ctx, d: Decl) -> Nil {
       False -> Nil
     }
     list.each(f.preds.clauses, fn(cl) {
-      case cl {
-        Plain(p, op, v) -> {
-          check_path(c, d, Some(f), p, f.line, seen)
-          let vs = case v {
-            VMulti(xs) -> xs
-            _ -> [v]
-          }
-          list.each(vs, fn(x) { check_value_paths(c, d, f, x, f.line, seen) })
-          case v, op {
-            VRange(..), o | VMulti(..), o if o != "=" ->
-              err(
-                c,
-                d,
-                f.line,
-                "a range or a choice of values is compared with '=' (membership)",
-                where,
-              )
-            _, _ -> Nil
-          }
-        }
-        Setting(k, v) if k == "qty" || k == "mod" || k == "places" ->
-          check_value_paths(c, d, f, v, f.line, seen)
-        _ -> Nil
+      case model.relation_of(d, cl) {
+        Some(rel) -> check_relation(c, d, f, rel)
+        None -> Nil
       }
     })
+    list.each(
+      list.filter(f.preds.clauses, fn(cl) {
+        option.is_none(model.relation_of(d, cl))
+      }),
+      fn(cl) {
+        case cl {
+          Plain(p, op, v) -> {
+            check_path(c, d, Some(f), p, f.line, seen)
+            let vs = case v {
+              VMulti(xs) -> xs
+              _ -> [v]
+            }
+            list.each(vs, fn(x) { check_value_paths(c, d, f, x, f.line, seen) })
+            case v, op {
+              VRange(..), o | VMulti(..), o if o != "=" ->
+                err(
+                  c,
+                  d,
+                  f.line,
+                  "a range or a choice of values is compared with '=' (membership)",
+                  where,
+                )
+              _, _ -> Nil
+            }
+          }
+          Setting(k, v) if k == "qty" || k == "mod" || k == "places" ->
+            check_value_paths(c, d, f, v, f.line, seen)
+          _ -> Nil
+        }
+      },
+    )
     case f.mapping {
       Some(_) -> check_mapping(c, d, f, seen)
       None -> Nil
@@ -579,6 +606,120 @@ fn check_record(c: Ctx, d: Decl) -> Nil {
   cost_record(c, d)
 }
 
+/// A relation is a rule on a line of its own, '{Needs} orders.customer =
+/// customers.code': each item of the left list equals exactly one item of the
+/// right list, which the right field's 'unique: True' guarantees.
+fn check_relation(c: Ctx, d: Decl, f: Field, rel: model.Relation) -> Nil {
+  let where = d.name <> "." <> f.name
+  let left = rel.left_list.name <> "." <> rel.left_field
+  let right = rel.right_list.name <> "." <> rel.right_field
+  let bad = fn(msg) { err(c, d, f.line, msg, where) }
+  let example = f.name <> " {Needs} " <> left <> " = " <> right
+  let item_of = fn(l: Field) { model.record_of(c.decls, item_name(l)) }
+  case f.role, rel.op, list.length(f.preds.clauses) {
+    model.Claim, _, _ ->
+      bad("a relation between two lists is a rule, not a claim: " <> example)
+    _, o, _ if o != "=" ->
+      bad(
+        "a relation between two lists uses = only: each item of "
+        <> rel.left_list.name
+        <> " equals one item of "
+        <> rel.right_list.name,
+      )
+    _, _, n if n != 1 ->
+      bad(
+        "a relation between two lists is a line of its own, with no other condition: "
+        <> example,
+      )
+    _, _, _ ->
+      case rel.left_list.name == rel.right_list.name {
+        True -> bad("a relation is between two different lists: " <> example)
+        False ->
+          case item_of(rel.left_list), item_of(rel.right_list) {
+            Some(li), Some(ri) ->
+              case
+                model.field(li, rel.left_field),
+                model.field(ri, rel.right_field)
+              {
+                Some(lf), Some(rf) -> {
+                  let scalar = fn(x: Field) {
+                    option.is_none(model.qty(x))
+                    && case model.base(x) {
+                      TypeItem(t) -> option.is_none(model.record_of(c.decls, t))
+                      _ -> True
+                    }
+                  }
+                  let same_kind =
+                    model.base(lf) == model.base(rf)
+                    || {
+                      evaluate.items_numeric(c.ev, lf.items)
+                      && evaluate.items_numeric(c.ev, rf.items)
+                    }
+                  case scalar(lf) && scalar(rf), same_kind {
+                    False, _ ->
+                      bad(
+                        left
+                        <> " and "
+                        <> right
+                        <> " are compared as single numbers or texts: neither may be a list or a record",
+                      )
+                    _, False ->
+                      bad(
+                        left
+                        <> " is "
+                        <> model.item_text(model.base(lf))
+                        <> " but "
+                        <> right
+                        <> " is "
+                        <> model.item_text(model.base(rf))
+                        <> ": a relation compares fields of the same type",
+                      )
+                    _, _ ->
+                      case model.has_flag(rf.preds, "unique") {
+                        True -> Nil
+                        False ->
+                          bad(
+                            right
+                            <> " must be unique, so that each item of "
+                            <> rel.left_list.name
+                            <> " matches exactly one: add 'unique: True' to "
+                            <> rel.right_field
+                            <> " in "
+                            <> ri.name,
+                          )
+                      }
+                  }
+                }
+                None, _ ->
+                  bad(
+                    "'"
+                    <> li.name
+                    <> "' has no field '"
+                    <> rel.left_field
+                    <> "'",
+                  )
+                _, None ->
+                  bad(
+                    "'"
+                    <> ri.name
+                    <> "' has no field '"
+                    <> rel.right_field
+                    <> "'",
+                  )
+              }
+            _, _ ->
+              bad(
+                "a relation is between two lists of records: "
+                <> rel.left_list.name
+                <> " and "
+                <> rel.right_list.name
+                <> " must each be a list of one record type",
+              )
+          }
+      }
+  }
+}
+
 fn is_truth_value(i: Item) -> Bool {
   case i {
     TypeItem("True") | TypeItem("False") -> True
@@ -598,7 +739,69 @@ fn check_value_paths(
     VPath(p) -> check_path(c, d, Some(f), p, line, seen)
     VArith(_, ts) ->
       list.each(ts, fn(t) { check_value_paths(c, d, f, t, line, seen) })
+    VFilter(p, conditions) -> {
+      check_path(c, d, Some(f), p, line, seen)
+      check_filter(c, d, f, p, conditions, line)
+    }
     _ -> Nil
+  }
+}
+
+/// A filter's conditions name fields of the items of the list it folds, and
+/// compare each with a number, a text or a range. They are checked as the
+/// conditions of a refinement of the item type.
+fn check_filter(
+  c: Ctx,
+  d: Decl,
+  f: Field,
+  p: List(String),
+  conditions: model.Block,
+  line: Int,
+) -> Nil {
+  let assert [list_name, ..] = p
+  let where = d.name <> "." <> f.name
+  case model.field(d, list_name) {
+    Some(lf) ->
+      case model.base(lf), model.record_of(c.decls, item_name(lf)) {
+        TypeItem(t), Some(_) -> {
+          let synthetic =
+            Decl(
+              t <> " (a filter)",
+              model.Refine,
+              line,
+              d.file,
+              [TypeItem(t)],
+              conditions,
+              [],
+              [],
+              "",
+              "",
+            )
+          list.each(model.plains(conditions), fn(cl) {
+            let assert Plain(cp, _, _) = cl
+            check_path(c, synthetic, None, cp, line, [])
+          })
+          check_refine_numbers(c, synthetic)
+        }
+        _, _ ->
+          err(
+            c,
+            d,
+            line,
+            "filter: keeps some items of a list of records, and '"
+              <> list_name
+              <> "' is not one",
+            where,
+          )
+      }
+    None -> Nil
+  }
+}
+
+fn item_name(f: Field) -> String {
+  case model.base(f) {
+    TypeItem(t) -> t
+    _ -> ""
   }
 }
 
@@ -716,8 +919,7 @@ fn check_path_inner(
             Some(_), None -> walk(c, d, f, p, line, d)
           }
         _ -> {
-          // a refinement of a record is a filter over the record's fields;
-          // so is a refinement of such a filter
+          // a refinement used as a filter: its conditions name the fields
           let base = case d.items {
             [TypeItem(b)] -> model.record_of(c.decls, b)
             _ -> None
@@ -819,52 +1021,22 @@ fn walk(
                 #(None, None, NotSeq, True)
               }
               case rec, i > 0 && is_upper_start(step) {
-                // a filter: the items that inhabit a refinement of the item type
+                // a type name in a path: the old way to keep some items
                 Some(rd), True -> {
-                  let ok = case dict.get(c.decls, step) {
-                    Ok(td) ->
-                      td.name == rd.name
-                      || {
-                        td.kind == model.Refine
-                        && td.items == [TypeItem(rd.name)]
-                      }
-                    Error(_) -> False
-                  }
-                  case state == NotSeq, ok {
-                    True, _ -> {
-                      err(
-                        c,
-                        d,
-                        line,
-                        "'."
-                          <> step
-                          <> "' filters a list, but "
-                          <> string.join(list.take(p, i), ".")
-                          <> " is not one",
-                        where,
-                      )
-                      #(None, None, NotSeq, True)
-                    }
-                    False, False -> {
-                      err(
-                        c,
-                        d,
-                        line,
-                        "'."
-                          <> step
-                          <> "' must name a refinement of "
-                          <> rd.name
-                          <> ", e.g. Big_"
-                          <> rd.name
-                          <> " {"
-                          <> rd.name
-                          <> "} ...",
-                        where,
-                      )
-                      #(None, None, NotSeq, True)
-                    }
-                    False, True -> #(rec, fld, state, False)
-                  }
+                  err(
+                    c,
+                    d,
+                    line,
+                    "'"
+                      <> string.join(list.take(p, i + 1), ".")
+                      <> "' is gone: a path holds only fields, and a type cannot narrow a list. To keep some of the items, give "
+                      <> rd.name
+                      <> " a field with cases and write filter: in the count: or sum:, e.g. filter: "
+                      <> string.join(list.take(p, i), ".")
+                      <> ".field = True",
+                    where,
+                  )
+                  #(None, None, NotSeq, True)
                 }
                 // a field of a record, or of the record under a filter
                 Some(rd), False ->
@@ -949,7 +1121,7 @@ fn check_recursive_products(c: Ctx, d: Decl, f: Field) -> Nil {
         False -> Error(Nil)
       }
     })
-  case model.definition(f) {
+  case definition(f) {
     Some(VArith("*", terms)) -> {
       let n =
         list.count(terms, fn(t) {
@@ -1024,7 +1196,7 @@ fn places(c: Ctx, d: Decl, v: Value, seen: List(String)) -> Option(Int) {
                   case
                     model.field_places(c.decls, fl),
                     fl.role,
-                    model.definition(fl)
+                    definition(fl)
                   {
                     Some(VNum(pl)), _, _ -> Some(decimal.to_int(pl.value))
                     _, model.Computed, Some(_) if rounded ->
@@ -1191,8 +1363,8 @@ fn check_numbers(c: Ctx, d: Decl, f: Field) -> Nil {
   })
 }
 
-/// The same for a refinement of a record, whose predicates name the fields
-/// of its base: 'Big_Line {Line} n > 5' needs n to be a number.
+/// The same for the conditions of a filter: they name the fields of the item
+/// type, so 'filter: lines.n > 5' needs n to be a number.
 fn check_refine_numbers(c: Ctx, d: Decl) -> Nil {
   case d.kind, d.items {
     model.Refine, [TypeItem(b)] ->
@@ -1240,7 +1412,7 @@ fn check_refine_numbers(c: Ctx, d: Decl) -> Nil {
 }
 
 fn check_places(c: Ctx, d: Decl, f: Field) -> Nil {
-  case model.field_places(c.decls, f), model.definition(f) {
+  case model.field_places(c.decls, f), definition(f) {
     Some(VNum(pl)), Some(def) ->
       case places(c, d, def, []) {
         Some(got) ->
@@ -1302,7 +1474,7 @@ fn check_rounding(c: Ctx, d: Decl, f: Field, rule: Value) -> Nil {
       )
     Some(_) -> Nil
   }
-  case model.definition(f), n {
+  case definition(f), n {
     Some(VArith("/", [_, divisor])), _ -> check_divisor(c, d, f, divisor)
     Some(def), Some(n) ->
       case places(c, d, def, []) {
@@ -1693,7 +1865,7 @@ fn d0() -> B {
 }
 
 fn field_bounds(c: Ctx, fl: Field) -> #(B, B) {
-  let def = model.definition(fl)
+  let def = definition(fl)
   let #(lo, hi) =
     list.fold(model.plains(fl.preds), #(NegInf, PosInf), fn(acc, cl) {
       let #(lo, hi) = acc
@@ -1750,7 +1922,7 @@ fn field_bounds(c: Ctx, fl: Field) -> #(B, B) {
 /// So a total of delays that are each 0..120 is never below 0.
 fn def_bounds(c: Ctx, rec: Decl, fl: Field) -> #(B, B) {
   let #(lo, hi) = field_bounds(c, fl)
-  case model.setting(fl.preds, "round"), model.definition(fl) {
+  case model.setting(fl.preds, "round"), definition(fl) {
     Some(VPath([rule])), Some(def) -> {
       let #(rlo, rhi) = rounded_bounds(c, rec, fl, def, rule)
       #(bmax(lo, rlo), bmin(hi, rhi))
@@ -1770,7 +1942,7 @@ fn def_bounds(c: Ctx, rec: Decl, fl: Field) -> #(B, B) {
 }
 
 fn sum_bounds(c: Ctx, rec: Decl, fl: Field, lo: B, hi: B) -> #(B, B) {
-  case model.definition(fl) {
+  case definition(fl) {
     Some(VPath([list_name, ..rest])) ->
       case model.field(rec, list_name), list.last(rest) {
         Some(lf), Ok("sum") -> {
@@ -2017,7 +2189,7 @@ fn case_box(
                 let parts =
                   list.try_map(vals, fn(x) {
                     case x {
-                      VArith(..) ->
+                      VArith(..) | VFilter(..) ->
                         Error(
                           "a case compares to a literal or a range: no arithmetic, no other fields",
                         )
@@ -2493,7 +2665,7 @@ fn expand(d: Decl, v: Value, depth: Int) -> Option(Poly) {
           // stays an atom, bounded by def_bounds within a unit of it
           case
             fl.role,
-            model.definition(fl),
+            definition(fl),
             model.setting(fl.preds, "mod"),
             model.setting(fl.preds, "round")
           {
@@ -2777,6 +2949,7 @@ fn cost_value(
         cadd(acc, cost_value(c, d, t, prefix, seen))
       })
     VPath(p) -> cost_path(c, d, p, prefix, seen)
+    VFilter(..) -> cost_value(c, d, analysis_value(v), prefix, seen)
   }
 }
 
@@ -2951,7 +3124,7 @@ fn promise_var(d: Decl, p: List(String)) -> String {
     [f] ->
       case model.field(d, f) {
         Some(fl) ->
-          case model.definition(fl) {
+          case definition(fl) {
             Some(VArith("+", [VNum(one), VPath([r, f2, ..tail])]))
             | Some(VArith("+", [VPath([r, f2, ..tail]), VNum(one)])) ->
               case

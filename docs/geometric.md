@@ -57,7 +57,8 @@ Only `= ∧ ∨ ∃ ⊢` appear, with `≤ < ≥ >` between numbers.
 | `mod = m` | `t.f = e mod m`: total only for `m > 0`. Now refused unless m is a positive number written out. | GEOMETRIC (with the guard) |
 | `.qty` | `qty(ε) = 0`, `qty(x ⧺ xs) = 1 + qty(xs)`: defined by recursion on the list | GEOMETRIC |
 | `.sum` | `sum(ε) = 0`, `sum(x ⧺ xs) = x.f + sum(xs)` | GEOMETRIC |
-| Type-named filter `lines.Big_Line` | The recursion needs both `T(x) ⊢ …` and `not T(x) ⊢ …`; `not T(x)` is positive because T is decidable | GEOMETRIC IF DECIDABLE |
+| `filter: lines.big = True` in a count or sum | The recursion needs both `c(x) ⊢ …` and `not c(x) ⊢ …`; `not c(x)` is positive because the condition compares a field with a value written out, which is decidable | GEOMETRIC IF DECIDABLE |
+| Relation `orders.customer = customers.code` | inclusion `t.orders.customer ⊆ t.customers.code`; the right field is unique so each item matches one | GEOMETRIC |
 | `qty = 0`, "every item" (`xs.T.qty = xs.qty`) | Hidden `¬∃` / `∀` over a finite list; safe because the filter is decidable | GEOMETRIC IF DECIDABLE |
 | Context path `Order.customer` | `around(t, Order).customer`. "Nearest" hides "no closer Order", decidable on a finite parse tree. Total because the checker proves the type always sits inside an Order. | GEOMETRIC IF DECIDABLE; see Open 2 |
 | `{Needs}` rule field | a conjunct of the type's definition: texts that break it do not inhabit | GEOMETRIC |

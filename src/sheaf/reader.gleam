@@ -287,8 +287,26 @@ fn path_rest(sc: Scan, acc: List(String)) -> R(List(String)) {
             "a path has at most one dot: to reach further, give the step its own field first",
           )
         _ -> {
-          use #(n, sc) <- result.try(any_name(adv(sc, 1)))
-          path_rest(sc, [n, ..acc])
+          use #(n, sc2) <- result.try(any_name(adv(sc, 1)))
+          case
+            string.slice(n, 0, 1) == string.uppercase(string.slice(n, 0, 1))
+            && string.lowercase(string.slice(n, 0, 1)) != string.slice(n, 0, 1)
+          {
+            True ->
+              err(
+                sc,
+                "'"
+                  <> string.join(list.reverse(acc), ".")
+                  <> "."
+                  <> n
+                  <> "' is gone: a path holds only fields, and a type cannot narrow a list. To keep some of the items, give the item a field with cases and write filter: after the count: or sum:, e.g. count: "
+                  <> string.join(list.reverse(acc), ".")
+                  <> ", filter: "
+                  <> string.join(list.reverse(acc), ".")
+                  <> ".field = True",
+              )
+            False -> path_rest(sc2, [n, ..acc])
+          }
         }
       }
     False -> Ok(#(list.reverse(acc), sc))
@@ -540,7 +558,7 @@ type LineItem {
   ICalc(Value)
   ICount(List(String))
   ISum(List(String))
-  IFilter(String)
+  IFilter(Block)
   IIf(Block)
   IQty(Value)
   IValue(Value)
@@ -631,9 +649,18 @@ fn item_value(sc: Scan, word: String) -> R(LineItem) {
     "count" -> result.map(path(sc), fn(r) { #(ICount(r.0), r.1) })
     "sum" -> result.map(path(sc), fn(r) { #(ISum(r.0), r.1) })
     "filter" ->
-      result.map(type_name(sc, "a type name (the filter's refinement)"), fn(r) {
-        #(IFilter(r.0), r.1)
-      })
+      case is_upper(peek(sc)) {
+        True -> {
+          let #(w, _) = take_while(sc, is_name_char)
+          err(
+            sc,
+            "filter: takes a condition, not a type. Write the condition "
+              <> w
+              <> " stood for, e.g. filter: stops.delay >= 2",
+          )
+        }
+        False -> result.map(block(sc), fn(r) { #(IFilter(r.0), r.1) })
+      }
     "round" ->
       result.map(type_name(sc, "a rounding rule's type name"), fn(r) {
         #(IRound(r.0), r.1)
@@ -721,7 +748,8 @@ fn ok_unless(cond: Bool, sc: Scan, msg: String) -> Result(Nil, MapError) {
 }
 
 /// A line's items as the model's block: qty first, then the line's own
-/// value ('val'), then the other restrictions, then its conditions.
+/// value ('val'), then the other restrictions. A line's conditions are not
+/// items: 'if:' belongs to cases, and a rule or claim has its own line form.
 fn assemble(
   sc: Scan,
   its: List(#(String, LineItem)),
@@ -733,29 +761,26 @@ fn assemble(
     None -> Ok(Nil)
   })
   use _ <- result.try(ok_unless(
-    list.count(names, fn(n) { list.contains(["calc", "count", "sum", "if"], n) })
-      > 1,
+    has("if"),
     sc,
-    "a line takes at most one of count:, sum:, if: and a calculation after value:",
+    "if: is only for the cases of a mapping, '    {output} if: conditions'",
+  ))
+  use _ <- result.try(ok_unless(
+    list.count(names, fn(n) { list.contains(["calc", "count", "sum"], n) }) > 1,
+    sc,
+    "a line takes at most one of count:, sum: and a calculation after value:",
   ))
   use _ <- result.try(ok_unless(
     has("filter") && !has("count") && !has("sum"),
     sc,
-    "filter: goes beside count: or sum:",
+    "filter: goes beside count: or sum:, e.g. count: stops, filter: stops.delay >= 2",
   ))
   use _ <- result.try(ok_unless(
     has("round") && !has("calc"),
     sc,
     "round: goes beside a calculation after value:, to round it",
   ))
-  let filter =
-    list.find_map(its, fn(p) {
-      case p.1 {
-        IFilter(t) -> Ok([t])
-        _ -> Error(Nil)
-      }
-    })
-    |> result.unwrap([])
+  use filter <- result.try(fold_filter(sc, its))
   use clauses <- result.try(
     list.try_map(its, fn(p) { item_clauses(sc, p.1, filter, has("round")) }),
   )
@@ -767,32 +792,115 @@ fn assemble(
         _ -> False
       }
     })
-  let conditions =
+  Ok(Block(AndConn, list.append(qty, rest)))
+}
+
+/// The conditions of a line's 'filter:', as conditions on the fields of the
+/// items of the list it folds ('delay', not 'stops.delay'), or none.
+fn fold_filter(
+  sc: Scan,
+  its: List(#(String, LineItem)),
+) -> Result(Option(Block), MapError) {
+  let written =
     list.find_map(its, fn(p) {
       case p.1 {
-        IIf(b) -> Ok(b)
+        IFilter(b) -> Ok(b)
         _ -> Error(Nil)
       }
     })
-  case conditions {
-    Ok(Block(OrConn, [_, _, ..] as ors)) ->
-      case qty, rest {
-        [], [] -> Ok(Block(OrConn, ors))
-        _, _ ->
-          err(
-            sc,
-            "conditions joined by '|' take no other items: name the choice as its own field",
-          )
+  let list_name =
+    list.find_map(its, fn(p) {
+      case p.1 {
+        ICount([l]) -> Ok(Ok(l))
+        ICount(_) -> Ok(Error(Nil))
+        ISum([l, _]) -> Ok(Ok(l))
+        _ -> Error(Nil)
       }
-    Ok(b) -> Ok(Block(AndConn, list.flatten([qty, rest, b.clauses])))
-    Error(_) -> Ok(Block(AndConn, list.append(qty, rest)))
+    })
+  case written, list_name {
+    Error(_), _ -> Ok(None)
+    Ok(_), Ok(Error(_)) ->
+      err(
+        sc,
+        "filter: works on a list that is a field of this record: count: stops, filter: stops.delay >= 2",
+      )
+    Ok(b), Ok(Ok(l)) -> result.map(filter_conditions(sc, l, b), Some)
+    Ok(_), Error(_) -> Ok(None)
+  }
+}
+
+const filter_value_message =
+  "a filter compares each item with a number, a text or a range written out, not with another field or record. To compare items with something elsewhere, state a relation in the record that holds both lists, e.g. each_order_has_its_customer {Needs} orders.customer = customers.code"
+
+fn filter_conditions(
+  sc: Scan,
+  list_name: String,
+  b: Block,
+) -> Result(Block, MapError) {
+  use clauses <- result.try(
+    list.try_map(b.clauses, fn(cl) {
+      case cl {
+        Plain(p, op, v) -> {
+          use field <- result.try(case p {
+            [l, f] if l == list_name -> Ok(f)
+            [f] ->
+              err(
+                sc,
+                "in filter:, write the field through the list: filter: "
+                  <> list_name
+                  <> "."
+                  <> f
+                  <> " "
+                  <> op
+                  <> " "
+                  <> model.value_text(v),
+              )
+            [other, _] ->
+              case is_upper(string.slice(other, 0, 1)) {
+                True -> err(sc, filter_value_message)
+                False ->
+                  err(
+                    sc,
+                    "filter: tests the items of "
+                      <> list_name
+                      <> ", so write its fields through that list, e.g. "
+                      <> list_name
+                      <> ".delay >= 2 (not "
+                      <> other
+                      <> ")",
+                  )
+              }
+            _ -> err(sc, "a path has at most one dot")
+          })
+          use _ <- result.try(filter_value(sc, v))
+          Ok(Plain([field], op, v))
+        }
+        other -> Ok(other)
+      }
+    }),
+  )
+  Ok(Block(b.conn, clauses))
+}
+
+/// What a filter compares an item's field with: a number, a text, a range, a
+/// choice of them, or the one value of a type such as True.
+fn filter_value(sc: Scan, v: Value) -> Result(Nil, MapError) {
+  case v {
+    VNum(_) | VStr(_) | VRange(..) -> Ok(Nil)
+    VPath([t]) ->
+      case is_upper(string.slice(t, 0, 1)) {
+        True -> Ok(Nil)
+        False -> err(sc, filter_value_message)
+      }
+    VMulti(vs) -> list.try_each(vs, fn(x) { filter_value(sc, x) })
+    _ -> err(sc, filter_value_message)
   }
 }
 
 fn item_clauses(
   sc: Scan,
   it: LineItem,
-  filter: List(String),
+  filter: Option(Block),
   rounded: Bool,
 ) -> Result(List(Clause), MapError) {
   case it {
@@ -802,16 +910,8 @@ fn item_clauses(
         "a quotient names its rounding rule, e.g. value: total / 3, places: 2, round: Half_Even",
       )
     ICalc(v) -> Ok([Plain(["val"], "=", v)])
-    ICount(p) ->
-      Ok([Plain(["val"], "=", VPath(list.flatten([p, filter, ["qty"]])))])
-    ISum([list_name, field]) ->
-      Ok([
-        Plain(
-          ["val"],
-          "=",
-          VPath(list.flatten([[list_name], filter, [field, "sum"]])),
-        ),
-      ])
+    ICount(p) -> Ok([folded(list.append(p, ["qty"]), filter)])
+    ISum([list_name, field]) -> Ok([folded([list_name, field, "sum"], filter)])
     ISum(_) ->
       err(
         sc,
@@ -824,6 +924,15 @@ fn item_clauses(
     IUnique(True) -> Ok([Flag("unique")])
     IRound(rule) -> Ok([Setting("round", VPath([rule]))])
     IUnique(False) | IFilter(_) | IIf(_) -> Ok([])
+  }
+}
+
+/// A fold's definition: its path, and the conditions of its filter if it has
+/// one.
+fn folded(path: List(String), filter: Option(Block)) -> Clause {
+  case filter {
+    Some(b) -> Plain(["val"], "=", model.VFilter(path, b))
+    None -> Plain(["val"], "=", VPath(path))
   }
 }
 
@@ -958,6 +1067,62 @@ fn trim_spaces_end(s: String) -> String {
   }
 }
 
+fn condition_item(its: List(#(String, LineItem))) -> Option(Block) {
+  list.find_map(its, fn(p) {
+    case p.1 {
+      IIf(b) -> Ok(b)
+      _ -> Error(Nil)
+    }
+  })
+  |> option.from_result
+}
+
+/// A type that narrows another by a condition: 'Big_Order {Order} if: ...'.
+/// Say what it was, and what to write: a number is restricted with value:, and
+/// a record gets a field with cases that its users then name.
+fn refinement_gone(name: String, base: Item, cond: Block) -> String {
+  let base_name = model.item_text(base)
+  let head = "'" <> name <> " {" <> base_name <> "} if: ...' is gone: "
+  let about_number =
+    list.any(cond.clauses, fn(cl) {
+      case cl {
+        Plain(["val", ..], _, _) -> True
+        _ -> False
+      }
+    })
+  case about_number {
+    True ->
+      head
+      <> "a type restricts a number's values with value:, e.g. "
+      <> name
+      <> " {"
+      <> base_name
+      <> "} value: 0.00.."
+    False -> {
+      let input = case model.plains(cond) {
+        [Plain([first, ..], _, _), ..] -> first
+        _ -> "total"
+      }
+      let field = string.lowercase(name)
+      head
+      <> "a type cannot narrow "
+      <> base_name
+      <> " by a condition. Give "
+      <> base_name
+      <> " a field with cases, e.g. "
+      <> field
+      <> " {True | False} ("
+      <> input
+      <> ") with a {True} if: case and a {False} if: case, and use it where it is needed: "
+      <> "a rule such as ok {Needs} "
+      <> string.lowercase(base_name)
+      <> "."
+      <> field
+      <> " = True, or filter: in a count or sum"
+    }
+  }
+}
+
 fn no_items(
   sc: Scan,
   its: List(#(String, LineItem)),
@@ -1029,6 +1194,10 @@ fn read_lines(
               read_lines(rest, n + 1, file, [], [DeclEntry(d), ..acc])
             }
             ItemsBox([one]) -> {
+              use _ <- result.try(case condition_item(its) {
+                Some(cond) -> err(sc, refinement_gone(name, one, cond))
+                None -> Ok(Nil)
+              })
               use b <- result.try(assemble(sc, its))
               use #(positions, rest2, n2) <- result.try(
                 read_positions(rest, n + 1, file, []),
@@ -1461,7 +1630,7 @@ fn old_forms(
     _, True ->
       err(
         sc,
-        "if: is for refinements and cases: a field's condition is a rule, name {Needs} condition, or a claim, name {Claims} condition",
+        "if: is only for the cases of a mapping: a field's condition is a rule, name {Needs} condition, or a claim, name {Claims} condition",
       )
     _, _ -> Ok(Nil)
   }
@@ -1485,7 +1654,10 @@ fn condition_line(
     None ->
       err(
         sc,
-        "{" <> kind <> "} takes its condition straight after it, e.g. " <> example,
+        "{"
+          <> kind
+          <> "} takes its condition straight after it, e.g. "
+          <> example,
       )
     Some(sc2) ->
       case looks_like_condition(sc2) {
@@ -1519,8 +1691,7 @@ fn condition_line(
               err(sc2, "a claim holds one comparison, e.g. " <> example)
             _, _ -> Ok(Nil)
           })
-          let f =
-            Field(..f, items: [TypeItem(kind)], preds: b, comment: c)
+          let f = Field(..f, items: [TypeItem(kind)], preds: b, comment: c)
           Ok(#(Field(..f, role: model.classify(f)), rest, line + 1))
         }
       }

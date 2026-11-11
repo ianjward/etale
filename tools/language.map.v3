@@ -419,8 +419,8 @@ Empty_Box {"{}"}
 # predicates. A union line has two or more items and no predicates, so
 # predicates on a union do not parse. A mapping line has a mapping base
 # and no predicates.
-# A refinement of a record is a filter: its predicates may name the
-# record's fields, e.g. 'Big_Order {Order} total >= 1000.00'.
+# A type never narrows a record by a condition; use a field with cases and
+# 'filter:' in a count or sum.
 Refinement_Line {}                       # Single-item base, optional predicates
   indent {Indent_0}
   name {Type_Name}

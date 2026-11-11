@@ -1,12 +1,12 @@
-# An operation as a mapping in one record, reached from other records through filters.
-# Mul is exclusive or on 0 and 1: its text is the two inputs, and out is computed. Ab is the
-# Mul whose inputs are the a and b of the Assoc around it, so 'ab.out' is a times b. A path has
-# one dot, so Assoc names each product ('ab_out') before a filter reads it. A filter
-# that reaches a record around it is decided once the whole text is read.
+# An operation as a mapping in one record, tied to its inputs by rules in the record that holds
+# the products. Mul is exclusive or on 0 and 1: its text is the two inputs, and out is
+# computed. Assoc holds four Muls and says what each one takes: 'ab_takes_a_and_b' needs the
+# inputs of ab to be the a and b of this Assoc, so 'ab.out' is a times b. A path has one dot,
+# so Assoc names each product ('ab_out') before a rule reads it.
 #
 # An Assoc is eleven digits, with no newline at the end: a, b and c, then the inputs of ab, bc,
-# (ab)c and a(bc). Exclusive or is associative, so every text whose products fit their filters
-# is accepted (xor.txt); a product that does not fit is refused, naming its filter
+# (ab)c and a(bc). Exclusive or is associative, so every text whose products fit their rules
+# is accepted (xor.txt); a product that does not fit is refused, naming its rule
 # (xor_bc.txt, xor_ab_c.txt).
 Element {Integer} value: 0..1
   1. {Digit}
@@ -22,19 +22,18 @@ Mul {}
     {1} if: left = 1 & right = 0
     {0} if: left = 1 & right = 1
 
-Ab {Mul} if: left = Assoc.a & right = Assoc.b
-Bc {Mul} if: left = Assoc.b & right = Assoc.c
-Ab_C {Mul} if: left = Assoc.ab_out & right = Assoc.c
-A_Bc {Mul} if: left = Assoc.a & right = Assoc.bc_out
-
 Assoc {}
   a {Element}
   b {Element}
   c {Element}
-  ab {Ab}
-  bc {Bc}
+  ab {Mul}
+  bc {Mul}
   ab_out {Integer} value: ab.out
   bc_out {Integer} value: bc.out
-  ab_c {Ab_C}
-  a_bc {A_Bc}
+  ab_c {Mul}
+  a_bc {Mul}
+  ab_takes_a_and_b {Needs} ab.left = a & ab.right = b
+  bc_takes_b_and_c {Needs} bc.left = b & bc.right = c
+  ab_c_takes_ab_out_and_c {Needs} ab_c.left = ab_out & ab_c.right = c
+  a_bc_takes_a_and_bc_out {Needs} a_bc.left = a & a_bc.right = bc_out
   same {Needs} ab_c.out = a_bc.out
