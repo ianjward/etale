@@ -25,16 +25,13 @@ Line {}
     5. {price}
     6. {Newline}
 
-# A line worth 500.00 or more. Used below as a filter on a list.
-Big_Line {Line} if: line_total >= 500.00
-
 # An order: a header line, then one or more lines.
 Order {}
   number {Natural}
   lines {Line} qty: 1..
   total {Decimal} sum: lines.line_total
-  big_lines {Integer} count: lines, filter: Big_Line
-  big_total {Decimal} sum: lines.line_total, filter: Big_Line, places: 2
+  big_lines {Integer} count: lines, filter: lines.big = True
+  big_total {Decimal} sum: lines.line_total, filter: lines.big = True, places: 2
   line_count {Integer} count: lines
   not_all_big {Needs} big_lines <= line_count
   text {Text}
@@ -42,6 +39,3 @@ Order {}
     2. {number}
     3. {Newline}
     4. {lines}
-
-# A refinement of a record is a filter, here on whole orders.
-Big_Order {Order} if: total >= 1000.00

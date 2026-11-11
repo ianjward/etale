@@ -5,7 +5,7 @@
 # How Etale works
 #
 # In logic, every construction is built only from:
-#   =          equality of texts and numbers        {"TRUE"}, if: code = "A1"
+#   =          equality of texts and numbers        {"TRUE"}, code = "A1"
 #   and        conjunction                          records, positions, &, ranges
 #   or         disjunction                          |
 #   exists     there is a part of the text          each stored field and position
@@ -22,10 +22,11 @@
 #   name {type} (input, input)
 #
 # Example:
-#   Rectangle {}
-#     length {Decimal}
-#     width {Decimal}
-#   Square {Rectangle} if: length = width
+#   Order {}
+#     total {Decimal}
+#     big {True | False} (total)
+#       {True} if: total >= 1000.00
+#       {False} if: total < 1000.00
 #
 # name:
 #   a type        capitalized snake case, not indented          Order_Line
@@ -75,8 +76,7 @@
 #     value: a + b        a calculation, as above
 #     count: lines        how many items a list holds
 #     sum: lines.amount   the total of a field over a list's items
-#     filter: Late_Stop   beside count: or sum:, only the items that are a Late_Stop
-#     if: delay >= 2      a condition, on a refinement or a case
+#     filter: stops.delay >= 2   beside count: or sum:, only the items that meet a condition
 #
 #   restrictions:
 #     qty: 1..            how many items a list may hold. A field with qty is a list.
@@ -88,6 +88,10 @@
 #
 #   Defaults, when nothing is written: qty 1; places inferred from the numbers on the line;
 #   unique False.
+#
+# 'if:' is not an item. It belongs to the cases of a mapping, '{output} if: conditions'. A
+# type never narrows another type by a condition: to pick out some Orders, give Order a field
+# with cases (big, above) and use it where it is needed, 'large {Needs} order.big = True'.
 #
 # Paths. A condition, calculation or fold names values by paths:
 #     total                 a field declared above, in the same record
@@ -234,19 +238,24 @@ Claims {True}
 # A field whose qty is at most 1 reads as its item, or as 0 when it is
 # absent, so 'train.total_delay + next_leg.delay' needs no fold.
 #
-# Filters. 'filter:' beside a fold keeps the items that inhabit a type:
-# with 'Late_Stop {Stop} if: delay >= 2',
-#   late_stops {Integer} count: stops, filter: Late_Stop
-# counts the stops that are a Late_Stop, and 'sum: stops.delay, filter:
-# Late_Stop' adds up their delays. The type must be a refinement of the
-# list's item type, a fold takes at most one filter, and a path never
-# holds one. Folds and filters visit each item once, so they are linear.
-# "Every item" is a filtered count compared with a count. A relation
-# between the items of two lists is a filter on a unique key, read from
-# the item that asks:
-#   Its_Customer {Customer} if: code = Order.customer
-# and, in Order, 'matches {Integer} count: Book.customers, filter:
-# Its_Customer' with the rule 'known {Needs} matches = 1'.
+# Filters. 'filter:' beside a fold keeps the items that meet a condition on their fields,
+# each written through the list, as 'sum: stops.delay' is:
+#   late_stops {Integer} count: stops, filter: stops.delay >= 2
+# counts the stops with a delay of 2 or more, and 'sum: stops.delay, filter: stops.delay >= 2'
+# adds up their delays. A condition is one comparison, or several joined by '&' or by '|',
+# each comparing a field of the items with a number, a text, a range, a choice of them, or
+# the one value of a type such as True: 'filter: orders.big = True'. A filter tests only the
+# items of the list it folds, a fold takes at most one filter, and a path never holds one.
+# Folds and filters visit each item once, so they are linear. "Every item" is a filtered
+# count compared with a count.
+#
+# Relations. A relation between the items of two lists is stated in the record that holds
+# both, as a rule on a line of its own:
+#   each_order_has_its_customer {Needs} orders.customer = customers.code
+# Every item of orders has a customer equal to the code of an item of customers. Both sides
+# are a field of the items of a list of this record, of the same type, and the right field is
+# 'unique: True', so each order matches exactly one customer. A text that breaks it is refused,
+# naming the first order that matches no customer.
 #
 # Context. A path that starts with a type name and goes on to a field
 # reaches the nearest record of that type around this one: inside a
@@ -613,8 +622,9 @@ Value_Content {Allowed_Choice | Range_Literal | Calculation}
 # need not be reserved.
 #
 # Where a value comes from. A line has at most one of these: a
-# calculation after 'value:' (Value_Item, below), a fold, or a
-# condition.
+# calculation after 'value:' (Value_Item, below) or a fold. A condition is
+# not an item: a rule or a claim has its own line form (Step 7), and 'if:'
+# belongs to cases.
 Count_Item {}                            # count: stops
   path {Path}
   text {Text}
@@ -629,21 +639,15 @@ Sum_Item {}                              # sum: stops.delay
     2. {Gap}
     3. {path}
 
-If_Item {}                               # if: delay >= 2
-  conditions {Conditions}
-  text {Text}
-    1. {"if:"}
-    2. {Gap}
-    3. {conditions}
-
 # A filter, beside 'count:' or 'sum:' only: the fold reads only the
-# items that inhabit the type named (Step 3, Filters).
-Filter_Item {}                           # filter: Late_Stop
-  kind {Type_Name}
+# items that meet the conditions (Step 3, Filters). Each condition names a
+# field of the items through the list.
+Filter_Item {}                           # filter: stops.delay >= 2
+  conditions {Conditions}
   text {Text}
     1. {"filter:"}
     2. {Gap}
-    3. {kind}
+    3. {conditions}
 
 # Restrictions. 'places: 2' fixes decimal places; without it, places
 # are inferred from the literals on the line. 'mod: 7' makes arithmetic
@@ -723,7 +727,7 @@ Round_Item {}                            # round: Half_Even
     2. {Gap}
     3. {rule}
 
-Source {Count_Item | Sum_Item | If_Item}
+Source {Count_Item | Sum_Item}
 Restriction {Qty_Item | Value_Item | Places_Item | Mod_Item | Round_Item}
 Named_Item {Source | Filter_Item | Restriction | Unique_Item}
 
@@ -737,26 +741,6 @@ Item_Tail {}
 Items {}                                 # e.g. value: hour + 5, mod: 24
   first {Named_Item}
   rest {Item_Tail} qty: 0..
-  text {Text}
-    1. {Gap}
-    2. {first}
-    3. {rest}
-
-# A field line takes every item but 'if:': a field's condition is a
-# rule or a claim, written after {Needs} or {Claims} (Step 7).
-Field_Source {Count_Item | Sum_Item}
-Field_Named_Item {Field_Source | Filter_Item | Restriction | Unique_Item}
-
-Field_Item_Tail {}
-  next {Field_Named_Item}
-  text {Text}
-    1. {","}
-    2. {Gap}
-    3. {next}
-
-Field_Items {}                           # e.g. count: stops, filter: Late_Stop
-  first {Field_Named_Item}
-  rest {Field_Item_Tail} qty: 0..
   text {Text}
     1. {Gap}
     2. {first}
@@ -862,8 +846,8 @@ Intersection_Box {}
 # conditions on a union do not read. A mapping line has its inputs in
 # parentheses and nothing else after its type. A rule or claim line has
 # its condition and nothing else after its type.
-# A refinement of a record is a filter: its condition may name the
-# record's fields, e.g. 'Late_Stop {Stop} if: delay >= 2'.
+# A refinement narrows a number or a text with items such as value:, places: and
+# qty:. It never narrows by a condition: 'if:' belongs to cases.
 Refinement_Line {}                       # Single-item base, optional items
   name {Type_Name}
   base {Item_Box}
@@ -913,7 +897,7 @@ Record_Header {}
 Field_Line {}
   name {Field_Name}
   base {Item_Box}
-  items {Field_Items} qty: 0..1
+  items {Items} qty: 0..1
   finish {Line_End}
   text {Text}
     1. {Indent_2}

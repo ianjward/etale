@@ -469,7 +469,6 @@ fn settle_loop(ev: Ev, v: Val) -> Nil {
         case model.is_stored(f) {
           True -> {
             let fv = get(inner, r, f.name)
-            settle_filters(inner, r, f, fv)
             settle_loop(inner, fv)
           }
           False -> Nil
@@ -478,84 +477,6 @@ fn settle_loop(ev: Ev, v: Val) -> Nil {
     }
     VSeqv(xs, _, _) -> list.each(xs, fn(x) { settle_loop(ev, x) })
     _ -> Nil
-  }
-}
-
-/// A field typed by a filter whose predicates reach a record around it,
-/// 'bc {Bc}' with 'Bc {Mul} left = Assoc.b', could not be decided while the
-/// text was read. Now every record knows the records around it: a value that
-/// is not one is refused, naming the field and the filter. Filters that reach
-/// nothing around them were already decided while reading.
-fn settle_filters(ev: Ev, r: Rec, f: Field, fv: Val) -> Nil {
-  let filters = case model.base(f) {
-    TypeItem(t) -> outer_filters(ev, t, [])
-    _ -> []
-  }
-  case filters {
-    [] -> Nil
-    _ -> {
-      let values = case fv {
-        VSeqv(xs, _, _) -> xs
-        x -> [x]
-      }
-      list.each(values, fn(x) {
-        case x {
-          VRecord(xr) ->
-            list.each(filters, fn(d) {
-              case eval_block(ev, Some(xr), d.preds, x) {
-                No | Inv ->
-                  fail(
-                    r,
-                    f.name
-                      <> " is not "
-                      <> d.name
-                      <> ": "
-                      <> model.block_text(d.preds),
-                  )
-                _ -> Nil
-              }
-            })
-          _ -> Nil
-        }
-      })
-    }
-  }
-}
-
-/// The filters on the way from a type down to its record whose predicates
-/// reach a record around this one (a path that starts with a type name).
-fn outer_filters(ev: Ev, name: String, seen: List(String)) -> List(Decl) {
-  case list.contains(seen, name), dict.get(ev.decls, name) {
-    False, Ok(d) ->
-      case d.kind, d.items {
-        model.Refine, [TypeItem(b)] -> {
-          let below = outer_filters(ev, b, [name, ..seen])
-          case reaches_around(d.preds) {
-            True -> [d, ..below]
-            False -> below
-          }
-        }
-        _, _ -> []
-      }
-    _, _ -> []
-  }
-}
-
-fn reaches_around(b: Block) -> Bool {
-  list.any(model.plains(b), fn(cl) {
-    case cl {
-      Plain(p, _, v) -> outer_path(VPath(p)) || outer_path(v)
-      _ -> False
-    }
-  })
-}
-
-fn outer_path(v: Value) -> Bool {
-  case v {
-    VPath([first, _, ..]) -> !is_lower_start(first)
-    VArith(_, ts) -> list.any(ts, outer_path)
-    VMulti(vs) -> list.any(vs, outer_path)
-    _ -> False
   }
 }
 
@@ -626,17 +547,21 @@ fn field_value(ev: Ev, r: Rec, f: Field) -> Val {
             Inv -> " (an input is INVALID)"
             _ -> ""
           }
-          fail(r, f.name <> ": " <> model.block_text(f.preds) <> extra)
-          note(
-            r,
-            Trace(
-              f.name,
-              "rule",
-              "INVALID",
-              ds,
-              "failed: " <> model.block_text(f.preds),
-            ),
-          )
+          // a relation between two lists says which item matched nothing
+          let said = case model.plains(f.preds), res {
+            [one], No ->
+              case relation(ev, Some(r), one) {
+                Some(#(No, why)) -> why
+                _ -> ""
+              }
+            _, _ -> ""
+          }
+          let what = case said {
+            "" -> model.block_text(f.preds) <> extra
+            why -> why
+          }
+          fail(r, f.name <> ": " <> what)
+          note(r, Trace(f.name, "rule", "INVALID", ds, "failed: " <> what))
           VInvalid
         }
       }
@@ -1128,6 +1053,97 @@ fn eval_block(ev: Ev, r: Option(Rec), b: Block, cur: Val) -> Tri {
 }
 
 fn eval_plain(ev: Ev, r: Option(Rec), c: Clause, cur: Val) -> Tri {
+  case c, relation(ev, r, c) {
+    _, Some(#(tri, _)) -> tri
+    _, None -> eval_compare(ev, r, c, cur)
+  }
+}
+
+/// A relation between two lists of this record, 'orders.customer =
+/// customers.code': every item of the left list equals an item of the right
+/// list. Gives the answer and, when it fails, what failed: the first item that
+/// matches nothing.
+fn relation(ev: Ev, r: Option(Rec), c: Clause) -> Option(#(Tri, String)) {
+  case c, r {
+    Plain([l1, f1], "=", VPath([l2, f2])), Some(rec) ->
+      case list_field(rec, l1), list_field(rec, l2) {
+        True, True -> Some(relation_over(ev, rec, l1, f1, l2, f2))
+        _, _ -> None
+      }
+    _, _ -> None
+  }
+}
+
+fn list_field(rec: Rec, name: String) -> Bool {
+  case model.field(rec.decl, name) {
+    Some(f) -> model.is_list_field(f)
+    None -> False
+  }
+}
+
+/// The values of one field of each item of a list.
+fn item_values(
+  ev: Ev,
+  items: List(Val),
+  field: String,
+) -> Result(List(Val), Tri) {
+  list.try_map(items, fn(it) {
+    case it {
+      VRecord(ir) ->
+        case get(ev, ir, field) {
+          VInvalid -> Error(Inv)
+          VLater -> Error(Later)
+          v -> Ok(v)
+        }
+      _ -> Error(Inv)
+    }
+  })
+}
+
+fn relation_over(
+  ev: Ev,
+  rec: Rec,
+  l1: String,
+  f1: String,
+  l2: String,
+  f2: String,
+) -> #(Tri, String) {
+  case get(ev, rec, l1), get(ev, rec, l2) {
+    VLater, _ | _, VLater -> #(Later, "")
+    VInvalid, _ | _, VInvalid -> #(Inv, "")
+    VSeqv(ls, _, _), VSeqv(rs, _, _) ->
+      case item_values(ev, ls, f1), item_values(ev, rs, f2) {
+        Error(t), _ | _, Error(t) -> #(t, "")
+        Ok(lvs), Ok(rvs) -> {
+          let missing =
+            list.index_map(lvs, fn(lv, i) { #(lv, i + 1) })
+            |> list.find(fn(p) { !list.any(rvs, fn(rv) { same(p.0, rv) }) })
+          case missing {
+            Error(_) -> #(Yes, "")
+            Ok(#(lv, n)) -> #(
+              No,
+              l1
+                <> " item "
+                <> int.to_string(n)
+                <> ": "
+                <> f1
+                <> " is "
+                <> show(lv)
+                <> ", but no item of "
+                <> l2
+                <> " has "
+                <> f2
+                <> " "
+                <> show(lv),
+            )
+          }
+        }
+      }
+    _, _ -> #(Inv, "")
+  }
+}
+
+fn eval_compare(ev: Ev, r: Option(Rec), c: Clause, cur: Val) -> Tri {
   case c {
     Plain(path, op, v) ->
       case eval_path(ev, r, path, cur) {
@@ -1165,6 +1181,8 @@ fn eval_value(ev: Ev, r: Option(Rec), v: Value, cur: Val) -> Rhs {
         option.map(hi, fn(n) { n.value }),
       )
     VPath(parts) -> RVal(eval_path(ev, r, parts, cur))
+    model.VFilter(parts, conditions) ->
+      RVal(eval_path_with(ev, r, parts, cur, Some(conditions)))
     VMulti(_) -> RVal(VInvalid)
     VArith(op, terms) -> {
       let rs = list.map(terms, fn(t) { eval_value(ev, r, t, cur) })
@@ -1204,6 +1222,18 @@ fn result_all(xs: List(Result(a, Nil))) -> Result(List(a), Nil) {
 }
 
 pub fn eval_path(ev: Ev, r: Option(Rec), parts: List(String), cur: Val) -> Val {
+  eval_path_with(ev, r, parts, cur, None)
+}
+
+/// A path, with the conditions of a filter applied to the list it starts at:
+/// only the items that meet them are folded.
+fn eval_path_with(
+  ev: Ev,
+  r: Option(Rec),
+  parts: List(String),
+  cur: Val,
+  filter: Option(Block),
+) -> Val {
   let assert [head, ..steps] = parts
   let #(start, walk) = case head, r {
     "val", _ -> #(cur, ev)
@@ -1214,16 +1244,19 @@ pub fn eval_path(ev: Ev, r: Option(Rec), parts: List(String), cur: Val) -> Val {
       }
     _, None -> outer(ev, head, steps)
   }
+  let start = case filter, start {
+    Some(b), VSeqv(items, hi, elem) -> filter_items(ev, items, hi, elem, b)
+    _, _ -> start
+  }
   let v =
     list.fold(steps, start, fn(v, step) {
       case v {
         VInvalid -> VInvalid
         VLater -> VLater
-        VSeqv(items, hi, elem) ->
-          case list.contains(model.folds, step), is_type_name(step) {
-            True, _ -> fold(ev, v, step)
-            False, True -> filter(ev, items, hi, elem, step)
-            False, False -> {
+        VSeqv(items, hi, _elem) ->
+          case list.contains(model.folds, step) {
+            True -> fold(ev, v, step)
+            False -> {
               let vals =
                 list.try_fold(items, [], fn(acc, it) {
                   case it {
@@ -1314,41 +1347,33 @@ fn type_constant(ev: Ev, head: String) -> Val {
   }
 }
 
-@external(javascript, "./ffi.mjs", "first_is_upper")
-fn is_type_name(s: String) -> Bool
-
-/// A filter step: the items that inhabit a refinement of the item type
-/// (Step 3). An item whose predicates are INVALID makes the result INVALID.
-fn filter(
+/// A filter: the items that meet its conditions, which name fields of the
+/// items (Step 3, Filters). An item whose conditions are INVALID makes the
+/// result INVALID, and one that cannot be decided yet makes it LATER.
+fn filter_items(
   ev: Ev,
   items: List(Val),
   hi: Option(Int),
   elem: Option(String),
-  name: String,
+  conditions: Block,
 ) -> Val {
-  case dict.get(ev.decls, name) {
-    Error(_) -> VInvalid
-    Ok(d) -> {
-      let kept =
-        list.try_fold(items, [], fn(acc, it) {
-          case it, d.kind {
-            VRecord(rec), _ if rec.decl.name == name -> Ok([it, ..acc])
-            VRecord(rec), model.Refine ->
-              case eval_block(ev, Some(rec), d.preds, it) {
-                Yes -> Ok([it, ..acc])
-                No -> Ok(acc)
-                Inv -> Error(False)
-                Later -> Error(True)
-              }
-            _, _ -> Error(False)
+  let kept =
+    list.try_fold(items, [], fn(acc, it) {
+      case it {
+        VRecord(rec) ->
+          case eval_block(ev, Some(rec), conditions, it) {
+            Yes -> Ok([it, ..acc])
+            No -> Ok(acc)
+            Inv -> Error(False)
+            Later -> Error(True)
           }
-        })
-      case kept {
-        Ok(xs) -> VSeqv(list.reverse(xs), hi, elem)
-        Error(True) -> VLater
-        Error(False) -> VInvalid
+        _ -> Error(False)
       }
-    }
+    })
+  case kept {
+    Ok(xs) -> VSeqv(list.reverse(xs), hi, elem)
+    Error(True) -> VLater
+    Error(False) -> VInvalid
   }
 }
 

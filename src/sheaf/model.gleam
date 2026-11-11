@@ -64,6 +64,11 @@ pub type Value {
   VStr(text: String)
   VPath(parts: List(String))
   VMulti(values: List(Value))
+  /// A fold over only the items that meet a condition: 'count: stops, filter:
+  /// stops.delay >= 2'. 'path' is the fold's path ([stops, "qty"] or
+  /// [lines, amount, "sum"]); 'conditions' name fields of the list's items
+  /// (delay), not of this record.
+  VFilter(path: List(String), conditions: Block)
 }
 
 pub type Clause {
@@ -174,7 +179,36 @@ pub fn value_text(v: Value) -> String {
     VStr(s) -> quote(s)
     VPath(parts) -> string.join(parts, ".")
     VMulti(vs) -> list.map(vs, value_text) |> string.join(" | ")
+    VFilter(path, conditions) -> {
+      let assert [list_name, ..] = path
+      string.join(path, ".")
+      <> ", filter: "
+      <> through_list(list_name, conditions)
+    }
   }
+}
+
+/// A filter's conditions as written: each item field through its list.
+pub fn through_list(list_name: String, b: Block) -> String {
+  let sep = case b.conn {
+    AndConn -> " & "
+    OrConn -> " | "
+  }
+  b.clauses
+  |> list.map(fn(c) {
+    case c {
+      Plain(p, op, v) ->
+        list_name
+        <> "."
+        <> string.join(p, ".")
+        <> " "
+        <> op
+        <> " "
+        <> value_text(v)
+      other -> clause_text(other)
+    }
+  })
+  |> string.join(sep)
 }
 
 fn opt_num(n: Option(Num)) -> String {
@@ -307,6 +341,42 @@ pub fn qty_of(b: Block) -> Option(#(Option(Num), Option(Num))) {
   }
 }
 
+/// A field that holds more than one item: a list.
+pub fn is_list_field(f: Field) -> Bool {
+  case qty(f) {
+    Some(#(_, None)) -> True
+    Some(#(_, Some(h))) -> decimal.lt(decimal.from_int(1), h.value)
+    None -> False
+  }
+}
+
+/// A relation between two lists of a record: 'orders.customer =
+/// customers.code', each side a field of the items of a list of the record.
+pub type Relation {
+  Relation(
+    left_list: Field,
+    left_field: String,
+    right_list: Field,
+    right_field: String,
+    op: String,
+  )
+}
+
+pub fn relation_of(d: Decl, cl: Clause) -> Option(Relation) {
+  case cl {
+    Plain([l1, f1], op, VPath([l2, f2])) ->
+      case field(d, l1), field(d, l2) {
+        Some(a), Some(b) ->
+          case is_list_field(a) && is_list_field(b) {
+            True -> Some(Relation(a, f1, b, f2, op))
+            False -> None
+          }
+        _, _ -> None
+      }
+    _ -> None
+  }
+}
+
 /// The value of a 'val =' predicate that defines the field, if any.
 pub fn definition(f: Field) -> Option(Value) {
   list.find_map(f.preds.clauses, fn(c) {
@@ -345,8 +415,7 @@ pub fn classify(f: Field) -> Role {
       case f.items, ps, settings(f.preds) {
         [TypeItem("Needs")], [], _ -> Constant
         [TypeItem("Needs")], _, _ -> Rule
-        [TypeItem("Claims")], [Plain(path, _, _)], [] if path != ["val"] ->
-          Claim
+        [TypeItem("Claims")], [Plain(path, _, _)], [] if path != ["val"] -> Claim
         _, _, _ ->
           case definition(f) {
             Some(_) -> Computed

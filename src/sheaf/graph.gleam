@@ -236,7 +236,7 @@ fn is_type(s: String) -> Bool {
 
 fn value_paths(v: model.Value) -> List(List(String)) {
   case v {
-    model.VPath(p) -> [p]
+    model.VPath(p) | model.VFilter(p, _) -> [p]
     model.VArith(_, ts) | model.VMulti(ts) -> list.flat_map(ts, value_paths)
     _ -> []
   }

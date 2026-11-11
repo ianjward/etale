@@ -1,8 +1,6 @@
-# Orders that belong to customers. A path that starts with a type name
-# reaches the nearest record of that type around this one: inside an
-# Order, 'Order.customer' is that order's customer, and 'Book.customers'
-# the customers of the book holding it. So "this order belongs to that
-# customer" is a filter, and "there is one" is a count.
+# Orders that belong to customers. A relation between the items of two lists is stated in
+# the record that holds both: every order's customer is the code of one customer in the
+# book, and 'unique: True' on the code makes it one.
 Customer_Code {Text}
   1. {"C"}
   2. {Digit} qty: 3
@@ -16,13 +14,9 @@ Customer {}
     3. {name}
     4. {Newline}
 
-Its_Customer {Customer} if: code = Order.customer
-
 Order {}
   number {Natural}
   customer {Customer_Code}
-  matches {Integer} count: Book.customers, filter: Its_Customer
-  known {Needs} matches = 1
   text {Text}
     1. {number}
     2. {" "}
@@ -32,6 +26,7 @@ Order {}
 Book {}
   customers {Customer} qty: 1..
   orders {Order} qty: 1..
+  each_order_has_its_customer {Needs} orders.customer = customers.code
   text {Text}
     1. {customers}
     2. {"---"}

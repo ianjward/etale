@@ -116,7 +116,24 @@ fn record(d: Decl, me: String) -> List(String) {
     d.fields
     |> list.flat_map(fn(f) {
       case f.role {
-        model.Rule -> [paren_or(f.preds, "t")]
+        model.Rule ->
+          case model.plains(f.preds) {
+            [one] ->
+              case model.relation_of(d, one) {
+                Some(rel) -> [
+                  "t."
+                  <> rel.left_list.name
+                  <> "."
+                  <> rel.left_field
+                  <> " ⊆ t."
+                  <> rel.right_list.name
+                  <> "."
+                  <> rel.right_field,
+                ]
+                None -> [paren_or(f.preds, "t")]
+              }
+            _ -> [paren_or(f.preds, "t")]
+          }
         model.Computed ->
           model.constraints(f)
           |> list.map(fn(c) { clause(c, "t." <> f.name) })
@@ -282,6 +299,15 @@ fn value(v: Value, self: String) -> String {
     VNum(n) -> n.text
     VStr(s) -> model.quote(s)
     VPath(parts) -> path_term(parts, self)
+    model.VFilter(parts, conditions) ->
+      path_term(parts, self)
+      <> case parts {
+        [list_name, ..] ->
+          " [only items with "
+          <> model.through_list(list_name, conditions)
+          <> "]"
+        [] -> ""
+      }
     VRange(lo, hi) -> range("_", lo, hi)
     VMulti(vs) -> list.map(vs, fn(x) { value(x, self) }) |> string.join(" | ")
   }
