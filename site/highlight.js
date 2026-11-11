@@ -9,7 +9,7 @@ export function highlight(text) {
       if (rest[0] === "#") { out += `<span class="cm">${esc(rest)}</span>`; break; }
       if ((m = rest.match(/^"(?:[^"\\]|\\.)*"/))) { out += `<span class="str">${esc(m[0])}</span>`; k += m[0].length; continue; }
       if ((m = rest.match(/^[A-Z][A-Za-z0-9_]*/))) { out += `<span class="ty">${m[0]}</span>`; k += m[0].length; continue; }
-      if ((m = rest.match(/^(from|calc|count|sum|filter|if|qty|value|places|mod|unique|round):/))) { out += `<span class="kw">${m[0]}</span>`; k += m[0].length; continue; }
+      if ((m = rest.match(/^(from|count|sum|filter|if|qty|value|places|mod|unique|round):/))) { out += `<span class="kw">${m[0]}</span>`; k += m[0].length; continue; }
       if ((m = rest.match(/^value\b/))) { out += `<span class="kw">${m[0]}</span>`; k += m[0].length; continue; }
       if ((m = rest.match(/^[a-z_][A-Za-z0-9_]*/))) { out += m[0]; k += m[0].length; continue; }
       if ((m = rest.match(/^\d+(\.\d+)?/))) { out += `<span class="num">${m[0]}</span>`; k += m[0].length; continue; }

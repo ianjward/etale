@@ -260,3 +260,88 @@ pub fn abs_digits(a: Decimal) -> String {
 pub fn is_negative(a: Decimal) -> Bool {
   big_compare(a.mantissa, big(0)) < 0
 }
+
+/// A quotient cut to a number of places toward zero, with what was cut off.
+/// 'kept' has exactly the places asked for; 'exact' says nothing was cut;
+/// 'negative' says the exact value is below 0.
+pub type Cut {
+  Cut(kept: Decimal, exact: Bool, negative: Bool, cut_off: BigInt, unit: BigInt)
+}
+
+/// a / b cut to n places toward zero. Error when b is 0.
+pub fn divide(a: Decimal, b: Decimal, n: Int) -> Result(Cut, Nil) {
+  case is_zero(b) {
+    True -> Error(Nil)
+    False -> {
+      let #(x, y, _) = align(a, b)
+      let x = big_mul(x, big_pow10(n))
+      let q = big_div(x, y)
+      let r = big_rem(x, y)
+      let exact = big_compare(r, big(0)) == 0
+      let negative = case exact {
+        True -> big_compare(q, big(0)) < 0
+        False ->
+          { big_compare(x, big(0)) < 0 } != { big_compare(y, big(0)) < 0 }
+      }
+      Ok(Cut(Decimal(q, n), exact, negative, big_abs(r), big_abs(y)))
+    }
+  }
+}
+
+fn big_abs(a: BigInt) -> BigInt {
+  case big_compare(a, big(0)) < 0 {
+    True -> big_sub(big(0), a)
+    False -> a
+  }
+}
+
+/// What a cut took off, as a fraction of the last place kept (0 up to but
+/// not including 1), written with k places. When the fraction needs more
+/// places, a 5 is put after the k places cut toward zero: the result then
+/// lies strictly between two values of k places, so it compares with every
+/// literal of k places or fewer exactly as the true fraction does.
+pub fn cut_fraction(c: Cut, k: Int) -> Decimal {
+  let scaled = big_mul(c.cut_off, big_pow10(k))
+  let q = big_div(scaled, c.unit)
+  case big_compare(big_rem(scaled, c.unit), big(0)) == 0 {
+    True -> Decimal(q, k)
+    False -> Decimal(big_add(big_mul(q, big(10)), big(5)), k + 1)
+  }
+}
+
+/// The last digit kept is odd.
+pub fn last_digit_odd(a: Decimal) -> Bool {
+  big_compare(big_rem(big_abs(a.mantissa), big(2)), big(1)) == 0
+}
+
+/// One step of the cut's last place away from zero.
+pub fn away_from_zero(c: Cut) -> Decimal {
+  let step = case c.negative {
+    True -> big(-1)
+    False -> big(1)
+  }
+  Decimal(big_add(c.kept.mantissa, step), c.kept.places)
+}
+
+/// The largest value of n places not above a: floor at n places.
+pub fn floor_places(a: Decimal, n: Int) -> Decimal {
+  let assert Ok(c) = divide(a, from_int(1), n)
+  case c.exact || !c.negative {
+    True -> c.kept
+    False -> away_from_zero(c)
+  }
+}
+
+/// The smallest value of n places not below a: ceiling at n places.
+pub fn ceiling_places(a: Decimal, n: Int) -> Decimal {
+  let assert Ok(c) = divide(a, from_int(1), n)
+  case c.exact || c.negative {
+    True -> c.kept
+    False -> away_from_zero(c)
+  }
+}
+
+/// One unit of the last of n places: 0.01 for 2.
+pub fn unit(n: Int) -> Decimal {
+  Decimal(big(1), n)
+}

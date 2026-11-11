@@ -9,6 +9,7 @@ import gleam/dict.{type Dict}
 import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
+import gleam/result
 import gleam/set
 import gleam/string
 import sheaf/decimal.{type Decimal}
@@ -642,9 +643,13 @@ fn field_value(ev: Ev, r: Rec, f: Field) -> Val {
     }
     model.Computed -> {
       let assert Some(def) = model.definition(f)
-      let v = case eval_value(ev, Some(r), def, VInvalid) {
-        RVal(v) -> v
-        RRange(..) -> VInvalid
+      let v = case model.setting(f.preds, "round") {
+        Some(VPath([rule])) -> rounded_value(ev, r, f, def, rule)
+        _ ->
+          case eval_value(ev, Some(r), def, VInvalid) {
+            RVal(v) -> v
+            RRange(..) -> VInvalid
+          }
       }
       use <- later_first(v)
       let v = case v, model.setting(f.preds, "mod") {
@@ -663,6 +668,164 @@ fn field_value(ev: Ev, r: Rec, f: Field) -> Val {
     }
     model.MappingRole -> eval_mapping(ev, r, f)
   }
+}
+
+// ---------------------------------------------------------------- rounding (Step 5)
+
+/// A rounded calculation: the exact value (for a quotient, the exact
+/// quotient) cut toward zero to the field's places, then moved one step away
+/// from zero when the rule's direction says so. Nothing cut off means
+/// nothing to round, whatever the rule says.
+fn rounded_value(ev: Ev, r: Rec, f: Field, def: Value, rule: String) -> Val {
+  let n = case model.field_places(ev.decls, f) {
+    Some(VNum(p)) -> decimal.to_int(p.value)
+    _ -> 0
+  }
+  let operands = case def {
+    VArith("/", [a, b]) -> [a, b]
+    _ -> [def]
+  }
+  let vals =
+    list.map(operands, fn(t) {
+      case eval_value(ev, Some(r), t, VInvalid) {
+        RVal(v) -> v
+        RRange(..) -> VInvalid
+      }
+    })
+  case list.contains(vals, VLater), vals {
+    True, _ -> VLater
+    _, [VNumber(a), VNumber(b)] -> round_cut(ev, r, f, a, b, n, rule)
+    _, [VNumber(a)] -> round_cut(ev, r, f, a, decimal.from_int(1), n, rule)
+    _, _ -> VInvalid
+  }
+}
+
+fn round_cut(
+  ev: Ev,
+  r: Rec,
+  f: Field,
+  a: Decimal,
+  b: Decimal,
+  n: Int,
+  rule: String,
+) -> Val {
+  case decimal.divide(a, b, n) {
+    Error(_) -> {
+      // the checker proves every divisor is never 0, so this is a bug
+      fail(
+        r,
+        f.name
+          <> ": the divisor is 0, which the checker proved impossible (a checker bug; please report it)",
+      )
+      VInvalid
+    }
+    Ok(cut) ->
+      case cut.exact {
+        True -> VNumber(cut.kept)
+        False ->
+          case round_direction(ev, rule, cut) {
+            Ok("away_from_zero") -> VNumber(decimal.away_from_zero(cut))
+            Ok(_) -> VNumber(cut.kept)
+            Error(_) -> {
+              fail(
+                r,
+                f.name <> ": the rounding rule " <> rule <> " gave no direction",
+              )
+              VInvalid
+            }
+          }
+      }
+  }
+}
+
+/// The places a rounding rule's conditions are written with, plus one: the
+/// fraction cut off is given to the rule with that many places, which
+/// compares with its literals exactly as the true fraction does.
+fn rule_places(m: model.Mapping) -> Int {
+  let of_value = fn(v: Value) {
+    case v {
+      VNum(n) -> n.value.places
+      VRange(lo, hi) ->
+        int.max(
+          option.map(lo, fn(x) { x.value.places }) |> option.unwrap(0),
+          option.map(hi, fn(x) { x.value.places }) |> option.unwrap(0),
+        )
+      VMulti(vs) ->
+        list.fold(vs, 0, fn(acc, x) {
+          case x {
+            VNum(n) -> int.max(acc, n.value.places)
+            _ -> acc
+          }
+        })
+      _ -> 0
+    }
+  }
+  list.fold(m.cases, 0, fn(acc, c) {
+    list.fold(model.plains(c.preds), acc, fn(acc, cl) {
+      let assert Plain(_, _, v) = cl
+      int.max(acc, of_value(v))
+    })
+  })
+  + 1
+}
+
+/// The direction a rounding rule gives for a cut: its field 'direction'
+/// is a mapping on remainder, odd and negative (Step 5).
+pub fn round_direction(
+  ev: Ev,
+  rule: String,
+  cut: decimal.Cut,
+) -> Result(String, Nil) {
+  use d <- result.try(dict.get(ev.decls, rule))
+  use f <- result.try(option.to_result(model.field(d, "direction"), Nil))
+  use m <- result.try(option.to_result(f.mapping, Nil))
+  let fact = fn(b: Bool) {
+    case b {
+      True -> VText("TRUE")
+      False -> VText("FALSE")
+    }
+  }
+  let env = [
+    #("remainder", VNumber(decimal.cut_fraction(cut, rule_places(m)))),
+    #("odd", fact(decimal.last_digit_odd(cut.kept))),
+    #("negative", fact(cut.negative)),
+  ]
+  direction_at(ev, m, env)
+}
+
+/// The output of a rounding rule's mapping at given inputs.
+pub fn direction_at(
+  ev: Ev,
+  m: model.Mapping,
+  env: List(#(String, Val)),
+) -> Result(String, Nil) {
+  let holds = fn(cl: model.Clause) {
+    case cl {
+      Plain([name], op, v) ->
+        case list.key_find(env, name) {
+          Ok(left) ->
+            list.any(
+              case v {
+                VMulti(vs) -> vs
+                _ -> [v]
+              },
+              fn(x) { compare(left, op, eval_value(ev, None, x, VInvalid)) },
+            )
+          Error(_) -> False
+        }
+      _ -> True
+    }
+  }
+  list.find_map(m.cases, fn(c) {
+    let ok = case c.preds.conn {
+      AndConn -> list.all(model.plains(c.preds), holds)
+      OrConn -> list.any(model.plains(c.preds), holds)
+    }
+    case ok, item_value(ev, c.output) {
+      True, Some(VText(t)) -> Ok(t)
+      _, _ -> Error(Nil)
+    }
+  })
 }
 
 fn later_first(v: Val, then: fn() -> Val) -> Val {

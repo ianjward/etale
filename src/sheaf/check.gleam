@@ -514,18 +514,20 @@ fn check_record(c: Ctx, d: Decl) -> Nil {
           c,
           d,
           f.line,
-          "a computed field holds one number or Fact, never a list: drop the count in its braces",
+          "a computed field holds one number, TRUE or FALSE, never a list: drop the count in its braces",
           where,
         )
       False -> Nil
     }
-    case f.role == model.Computed && !numeric && !is_fact(model.base(f)) {
+    case
+      f.role == model.Computed && !numeric && !is_truth_value(model.base(f))
+    {
       True ->
         err(
           c,
           d,
           f.line,
-          "a computed field produces a number or a Fact, never text, a record or a sequence",
+          "a computed field produces a number, TRUE or FALSE, never text, a record or a sequence",
           where,
         )
       False -> Nil
@@ -564,7 +566,10 @@ fn check_record(c: Ctx, d: Decl) -> Nil {
     case f.role {
       model.Claim -> prove_claim(c, d, f)
       model.Computed -> {
-        check_places(c, d, f)
+        case model.setting(f.preds, "round") {
+          Some(rule) -> check_rounding(c, d, f, rule)
+          None -> check_places(c, d, f)
+        }
         check_recursive_products(c, d, f)
       }
       _ -> Nil
@@ -574,9 +579,9 @@ fn check_record(c: Ctx, d: Decl) -> Nil {
   cost_record(c, d)
 }
 
-fn is_fact(i: Item) -> Bool {
+fn is_truth_value(i: Item) -> Bool {
   case i {
-    TypeItem("Fact") | TypeItem("True") | TypeItem("False") -> True
+    TypeItem("True") | TypeItem("False") -> True
     _ -> False
   }
 }
@@ -965,6 +970,25 @@ fn check_recursive_products(c: Ctx, d: Decl, f: Field) -> Nil {
         False -> Nil
       }
     }
+    Some(VArith("/", [a, b])) -> {
+      let through = fn(t) {
+        case t {
+          VPath([h, ..]) -> list.contains(rec_fields, h)
+          _ -> False
+        }
+      }
+      case through(a) && through(b) {
+        True ->
+          err(
+            c,
+            d,
+            f.line,
+            "a quotient may not read both its dividend and its divisor through a recursive field",
+            d.name <> "." <> f.name,
+          )
+        False -> Nil
+      }
+    }
     _ -> Nil
   }
 }
@@ -995,13 +1019,16 @@ fn places(c: Ctx, d: Decl, v: Value, seen: List(String)) -> Option(Int) {
           case parts {
             [name] ->
               case model.field(d, name) {
-                Some(fl) ->
+                Some(fl) -> {
+                  let rounded = model.setting(fl.preds, "round") != None
                   case
                     model.field_places(c.decls, fl),
                     fl.role,
                     model.definition(fl)
                   {
                     Some(VNum(pl)), _, _ -> Some(decimal.to_int(pl.value))
+                    _, model.Computed, Some(_) if rounded ->
+                      rounded_places(c, fl)
                     _, model.Computed, Some(def) ->
                       case list.contains(seen, name) {
                         True -> None
@@ -1014,6 +1041,7 @@ fn places(c: Ctx, d: Decl, v: Value, seen: List(String)) -> Option(Int) {
                         _ -> None
                       }
                   }
+                }
                 None -> None
               }
             _ -> None
@@ -1057,7 +1085,7 @@ fn field_kind(c: Ctx, fl: Field, rest: List(String)) -> Kind {
   case rest {
     [] ->
       case fl.role {
-        model.Rule | model.Claim | model.Constant -> NotNumber("a Fact")
+        model.Rule | model.Claim | model.Constant -> NotNumber("TRUE or FALSE")
         model.MappingRole ->
           case evaluate.items_numeric(c.ev, fl.items) {
             True -> Number
@@ -1125,6 +1153,7 @@ fn check_numbers(c: Ctx, d: Decl, f: Field) -> Nil {
               complain(k.0, kind, case op {
                 "+" -> "added"
                 "-" -> "subtracted"
+                "/" -> "divided"
                 _ -> "multiplied"
               })
             _ -> Nil
@@ -1233,6 +1262,348 @@ fn check_places(c: Ctx, d: Decl, f: Field) -> Nil {
         None -> Nil
       }
     _, _ -> Nil
+  }
+}
+
+// ---------------------------------------------------------------- rounding
+
+/// The places a rounded field rounds to: its 'places:', the places of its
+/// type, or 0 for an integer.
+fn rounded_places(c: Ctx, f: Field) -> Option(Int) {
+  case model.field_places(c.decls, f) {
+    Some(VNum(pl)) -> Some(decimal.to_int(pl.value))
+    _ ->
+      case integer_type(c, model.base(f)) {
+        True -> Some(0)
+        False -> None
+      }
+  }
+}
+
+/// 'round:' names a rounding rule (Step 5). The field says its places; a
+/// calculation that is not a quotient rounds only when it may need more
+/// places than the field holds; a quotient's divisor is never 0.
+fn check_rounding(c: Ctx, d: Decl, f: Field, rule: Value) -> Nil {
+  let where = d.name <> "." <> f.name
+  let complain = fn(msg) { err(c, d, f.line, msg, where) }
+  case rule {
+    VPath([name]) ->
+      case rounding_rule(c, name) {
+        Ok(_) -> Nil
+        Error(why) -> complain(why)
+      }
+    _ -> complain("round: names a rounding rule, e.g. round: Half_Even")
+  }
+  let n = rounded_places(c, f)
+  case n {
+    None ->
+      complain(
+        "a rounded field says how many places it rounds to, e.g. places: 2",
+      )
+    Some(_) -> Nil
+  }
+  case model.definition(f), n {
+    Some(VArith("/", [_, divisor])), _ -> check_divisor(c, d, f, divisor)
+    Some(def), Some(n) ->
+      case places(c, d, def, []) {
+        Some(got) if got <= n ->
+          complain(
+            "nothing to round: the calculation has at most "
+            <> int.to_string(got)
+            <> " decimal places and the field holds "
+            <> int.to_string(n)
+            <> ", so drop round:",
+          )
+        _ -> Nil
+      }
+    _, _ -> Nil
+  }
+}
+
+/// A rounding rule is a record whose field 'direction' is a mapping on
+/// remainder, odd and negative.
+fn rounding_rule(c: Ctx, name: String) -> Result(model.Mapping, String) {
+  let not_rule =
+    "'"
+    <> name
+    <> "' is not a rounding rule: a rule is a record whose field direction {Direction} is a mapping on remainder, odd and negative (Half_Even, Half_Up, Floor and Ceiling are in the standard library)"
+  case dict.get(c.decls, name) {
+    Error(_) -> Error("round: names " <> name <> ", which is not declared")
+    Ok(rd) ->
+      case rd.kind, model.field(rd, "direction") {
+        model.Record, Some(df) ->
+          case df.mapping, model.base(df) {
+            Some(m), TypeItem("Direction") ->
+              case
+                list.all(m.inputs, fn(i) {
+                  list.contains(["remainder", "odd", "negative"], i)
+                })
+              {
+                True -> Ok(m)
+                False -> Error(not_rule)
+              }
+            _, _ -> Error(not_rule)
+          }
+        _, _ -> Error(not_rule)
+      }
+  }
+}
+
+/// The checker must prove a divisor is never 0, from its 'value:', its
+/// choice of values or its count.
+fn check_divisor(c: Ctx, d: Decl, f: Field, divisor: Value) -> Nil {
+  case divisor_nonzero(c, d, divisor) {
+    True -> Nil
+    False -> {
+      let #(lo, hi) = term_bounds(c, d, divisor)
+      err(
+        c,
+        d,
+        f.line,
+        "cannot prove the divisor "
+          <> model.value_text(divisor)
+          <> " is never 0: it is only known to lie in ["
+          <> bfmt(lo)
+          <> ", "
+          <> bfmt(hi)
+          <> "]; give it a value: or a type that leaves out 0",
+        d.name <> "." <> f.name,
+      )
+    }
+  }
+}
+
+fn divisor_nonzero(c: Ctx, d: Decl, divisor: Value) -> Bool {
+  let #(lo, hi) = term_bounds(c, d, divisor)
+  let nonzero = fn(v: Val) {
+    case v {
+      VNumber(x) -> !decimal.is_zero(x)
+      _ -> False
+    }
+  }
+  bsign(lo) > 0
+  || bsign(hi) < 0
+  || case divisor {
+    VPath([name]) ->
+      case model.field(d, name) {
+        Some(fl) ->
+          case evaluate.finite_values(c.ev, fl.items), value_choice(fl) {
+            Some(vs), _ -> vs != [] && list.all(vs, nonzero)
+            _, Some(vs) -> list.all(vs, nonzero)
+            None, None -> False
+          }
+        None -> False
+      }
+    _ -> False
+  }
+}
+
+/// The numbers a field's 'value:' chooses among, as in value: 10 | 30.
+fn value_choice(fl: Field) -> Option(List(Val)) {
+  list.find_map(model.plains(fl.preds), fn(cl) {
+    case cl {
+      Plain(["val"], "=", VMulti(xs)) ->
+        list.try_map(xs, fn(x) {
+          case x {
+            VNum(n) -> Ok(VNumber(n.value))
+            _ -> Error(Nil)
+          }
+        })
+      _ -> Error(Nil)
+    }
+  })
+  |> option.from_result
+}
+
+/// The bounds of one term of a calculation: a number, or a path.
+fn term_bounds(c: Ctx, d: Decl, v: Value) -> #(B, B) {
+  case v {
+    VNum(n) -> #(Fin(n.value), Fin(n.value))
+    VPath(parts) -> atom_bounds(c, d, string.join(parts, "."), None)
+    _ -> #(NegInf, PosInf)
+  }
+}
+
+/// The bounds of a calculation's exact value, by interval arithmetic; a
+/// quotient's bounds are worked out to n places, outward.
+fn value_bounds(c: Ctx, d: Decl, v: Value, n: Int) -> #(B, B) {
+  case v {
+    VArith("/", [a, b]) ->
+      case divisor_nonzero(c, d, b) {
+        True -> idiv(term_bounds(c, d, a), term_bounds(c, d, b), n)
+        False -> #(NegInf, PosInf)
+      }
+    VArith(op, [first, ..rest]) ->
+      list.fold(rest, value_bounds(c, d, first, n), fn(acc, t) {
+        let b = value_bounds(c, d, t, n)
+        case op {
+          "+" -> #(badd(acc.0, b.0), badd(acc.1, b.1))
+          "-" -> #(bsub(acc.0, b.1), bsub(acc.1, b.0))
+          _ -> imul(acc, b)
+        }
+      })
+    _ -> term_bounds(c, d, v)
+  }
+}
+
+fn bsub(a: B, b: B) -> B {
+  badd(a, bmul(b, Fin(decimal.from_int(-1))))
+}
+
+/// Dividing ranges, for a divisor whose range leaves out 0. For a divisor
+/// above 0, x / y grows with x, and shrinks with y when x is not below 0
+/// and grows with it otherwise, so each bound pairs one end of x with the
+/// end of y that suits its sign; a divisor below 0 is the same with both
+/// signs turned. Each bound is worked out to n places, the lower one down
+/// and the upper one up, and a divisor without end gives 0.
+fn idiv(x: #(B, B), y: #(B, B), n: Int) -> #(B, B) {
+  case bsign(y.0) > 0, bsign(y.1) < 0 {
+    True, _ -> {
+      let lo = case bsign(x.0) >= 0 {
+        True -> bdiv(x.0, y.1, n, False)
+        False -> bdiv(x.0, y.0, n, False)
+      }
+      let hi = case bsign(x.1) >= 0 {
+        True -> bdiv(x.1, y.0, n, True)
+        False -> bdiv(x.1, y.1, n, True)
+      }
+      #(lo, hi)
+    }
+    _, True -> idiv(bneg_range(x), bneg_range(y), n)
+    _, _ -> #(NegInf, PosInf)
+  }
+}
+
+fn bneg_range(x: #(B, B)) -> #(B, B) {
+  let neg = fn(b) { bmul(b, Fin(decimal.from_int(-1))) }
+  #(neg(x.1), neg(x.0))
+}
+
+/// One bound divided by another, a divisor that is not 0, worked out to n
+/// places down or up.
+fn bdiv(a: B, b: B, n: Int, up: Bool) -> B {
+  case a, b {
+    Fin(p), Fin(q) -> {
+      let assert Ok(cut) = decimal.divide(p, q, n)
+      case cut.exact || up == cut.negative {
+        True -> Fin(cut.kept)
+        False -> Fin(decimal.away_from_zero(cut))
+      }
+    }
+    Fin(_), _ -> d0()
+    _, _ ->
+      case bsign(a) * bsign(b) > 0 {
+        True -> PosInf
+        False -> NegInf
+      }
+  }
+}
+
+/// A rounded field is a value of its places within one unit of its last
+/// place of the exact value, or half a unit when its rule rounds toward
+/// zero below a half and away from zero above one.
+fn rounded_bounds(
+  c: Ctx,
+  d: Decl,
+  fl: Field,
+  def: Value,
+  rule: String,
+) -> #(B, B) {
+  case rounded_places(c, fl) {
+    None -> #(NegInf, PosInf)
+    Some(n) -> {
+      let #(lo, hi) = value_bounds(c, d, def, n + 1)
+      let half = rule_rounds_half(c, rule)
+      let u = decimal.unit(n)
+      let hu = decimal.half(u)
+      #(
+        case lo, half {
+          Fin(x), True -> Fin(decimal.ceiling_places(decimal.sub(x, hu), n))
+          Fin(x), False -> Fin(decimal.floor_places(x, n))
+          b, _ -> b
+        },
+        case hi, half {
+          Fin(x), True -> Fin(decimal.floor_places(decimal.add(x, hu), n))
+          Fin(x), False -> Fin(decimal.ceiling_places(x, n))
+          b, _ -> b
+        },
+      )
+    }
+  }
+}
+
+/// A rule rounds within half a unit when, for every odd and negative, its
+/// direction is toward zero for each remainder below 0.5 and away from
+/// zero for each one above. Its cases are intervals, so the direction
+/// changes only at the numbers they are written with: trying those
+/// numbers and the points between them tries every remainder.
+fn rule_rounds_half(c: Ctx, rule: String) -> Bool {
+  case rounding_rule(c, rule) {
+    Error(_) -> False
+    Ok(m) -> {
+      let half = decimal.half(decimal.from_int(1))
+      let one = decimal.from_int(1)
+      let marks =
+        list.flat_map(m.cases, fn(cs) {
+          list.flat_map(model.plains(cs.preds), fn(cl) {
+            case cl {
+              Plain(["remainder"], _, v) ->
+                case v {
+                  VNum(x) -> [x.value]
+                  VRange(l, h) ->
+                    list.map(option.values([l, h]), fn(x) { x.value })
+                  VMulti(xs) ->
+                    list.filter_map(xs, fn(x) {
+                      case x {
+                        VNum(y) -> Ok(y.value)
+                        _ -> Error(Nil)
+                      }
+                    })
+                  _ -> []
+                }
+              _ -> []
+            }
+          })
+        })
+      let marks =
+        [decimal.zero(), half, one, ..marks]
+        |> list.filter(fn(x) {
+          decimal.le(decimal.zero(), x) && decimal.le(x, one)
+        })
+        |> list.sort(decimal.compare)
+        |> dedupe_dec
+      let between =
+        list.window_by_2(marks)
+        |> list.map(fn(p) { decimal.half(decimal.add(p.0, p.1)) })
+      let remainders =
+        list.append(marks, between)
+        |> list.filter(fn(x) {
+          decimal.lt(decimal.zero(), x) && decimal.lt(x, one)
+        })
+      let facts = [VText("TRUE"), VText("FALSE")]
+      list.all(remainders, fn(r) {
+        let want = case decimal.compare(r, half) {
+          order.Lt -> Some("toward_zero")
+          order.Gt -> Some("away_from_zero")
+          order.Eq -> None
+        }
+        list.all(facts, fn(odd) {
+          list.all(facts, fn(negative) {
+            let got =
+              evaluate.direction_at(c.ev, m, [
+                #("remainder", VNumber(r)),
+                #("odd", odd),
+                #("negative", negative),
+              ])
+            case want, got {
+              None, Ok(_) -> True
+              Some(w), Ok(g) -> w == g
+              _, Error(_) -> False
+            }
+          })
+        })
+      })
+    }
   }
 }
 
@@ -1379,6 +1750,26 @@ fn field_bounds(c: Ctx, fl: Field) -> #(B, B) {
 /// So a total of delays that are each 0..120 is never below 0.
 fn def_bounds(c: Ctx, rec: Decl, fl: Field) -> #(B, B) {
   let #(lo, hi) = field_bounds(c, fl)
+  case model.setting(fl.preds, "round"), model.definition(fl) {
+    Some(VPath([rule])), Some(def) -> {
+      let #(rlo, rhi) = rounded_bounds(c, rec, fl, def, rule)
+      #(bmax(lo, rlo), bmin(hi, rhi))
+    }
+    _, Some(VPath([_, _, ..] as parts)) ->
+      case list.last(parts) {
+        // a count is bounded by its list's qty, as in count: stops with
+        // stops qty: 1.., which is never 0
+        Ok("qty") -> {
+          let #(qlo, qhi) = atom_bounds(c, rec, string.join(parts, "."), None)
+          #(bmax(lo, qlo), bmin(hi, qhi))
+        }
+        _ -> sum_bounds(c, rec, fl, lo, hi)
+      }
+    _, _ -> sum_bounds(c, rec, fl, lo, hi)
+  }
+}
+
+fn sum_bounds(c: Ctx, rec: Decl, fl: Field, lo: B, hi: B) -> #(B, B) {
   case model.definition(fl) {
     Some(VPath([list_name, ..rest])) ->
       case model.field(rec, list_name), list.last(rest) {
@@ -1401,9 +1792,9 @@ fn def_bounds(c: Ctx, rec: Decl, fl: Field) -> #(B, B) {
             True -> d0()
             False -> qlo
           }
-          let inner = case model.base(lf), list.filter(rest, fn(x) {
-              !is_upper_start(x)
-            })
+          let inner = case
+            model.base(lf),
+            list.filter(rest, fn(x) { !is_upper_start(x) })
           {
             TypeItem(t), [name, "sum"] ->
               case model.record_of(c.decls, t) {
@@ -1555,8 +1946,7 @@ fn domain(c: Ctx, fl: Field) -> Option(Domain) {
             }
             False ->
               case model.base(fl) {
-                TypeItem("Fact") ->
-                  Some(Finite([VText("TRUE"), VText("FALSE")]))
+                TypeItem("Claim") -> Some(Finite([VText("TRUE")]))
                 _ -> None
               }
           }
@@ -2074,6 +2464,7 @@ fn expand(d: Decl, v: Value, depth: Int) -> Option(Poly) {
   case depth > 50, v {
     True, _ -> None
     _, VNum(n) -> Some(dict.from_list([#([], n.value)]))
+    _, VArith("/", _) -> None
     _, VArith(op, terms) -> {
       let ps = list.map(terms, fn(t) { expand(d, t, depth + 1) })
       case list.all(ps, option.is_some), option.values(ps) {
@@ -2097,9 +2488,16 @@ fn expand(d: Decl, v: Value, depth: Int) -> Option(Poly) {
         Some(fl), [_] ->
           // a field that wraps ('mod =') is not its definition: it stays an
           // atom, bounded by field_bounds to [0, m)
-          case fl.role, model.definition(fl), model.setting(fl.preds, "mod") {
-            model.Computed, Some(def), None -> expand(d, def, depth + 1)
-            _, _, _ -> Some(dict.from_list([#([head], decimal.from_int(1))]))
+          // and a rounded field ('round:') is not its calculation either: it
+          // stays an atom, bounded by def_bounds within a unit of it
+          case
+            fl.role,
+            model.definition(fl),
+            model.setting(fl.preds, "mod"),
+            model.setting(fl.preds, "round")
+          {
+            model.Computed, Some(def), None, None -> expand(d, def, depth + 1)
+            _, _, _, _ -> Some(dict.from_list([#([head], decimal.from_int(1))]))
           }
         Some(_), _ ->
           Some(
@@ -2131,7 +2529,27 @@ fn claim_interval(claim: Field) -> #(B, B) {
   }
 }
 
-fn atom_bounds(c: Ctx, d: Decl, atom: String, claim: Field) -> #(B, B) {
+/// On a recursive type, the claim itself may be assumed for the field it
+/// claims, read through the recursive field.
+fn induction(
+  d: Decl,
+  it: Decl,
+  inn: Field,
+  claim: Option(Field),
+) -> Option(#(B, B)) {
+  case claim {
+    Some(cl) -> {
+      let #(subject, _, _) = claim_parts(cl)
+      case it.name == d.name && subject == Some(inn.name) {
+        True -> Some(claim_interval(cl))
+        False -> None
+      }
+    }
+    None -> None
+  }
+}
+
+fn atom_bounds(c: Ctx, d: Decl, atom: String, claim: Option(Field)) -> #(B, B) {
   let all_parts = string.split(atom, ".")
   // a filter keeps some of the items: it can only lower the count to 0
   let filtered = list.any(list.drop(all_parts, 1), fn(x) { is_upper_start(x) })
@@ -2182,12 +2600,9 @@ fn atom_bounds(c: Ctx, d: Decl, atom: String, claim: Field) -> #(B, B) {
             Some("sum"), Some(it), Some(inn) -> {
               // Induction through a fold: on a recursive field, each item's
               // value of the claimed field may be assumed to satisfy the claim.
-              let #(subject, _, _) = claim_parts(claim)
-              let #(lo, hi) = case
-                it.name == d.name && subject == Some(inn.name)
-              {
-                True -> claim_interval(claim)
-                False -> field_bounds(c, inn)
+              let #(lo, hi) = case induction(d, it, inn, claim) {
+                Some(b) -> b
+                None -> field_bounds(c, inn)
               }
               case bsign(lo) >= 0 || bsign(hi) <= 0 {
                 True -> imul(#(qlo, qhi), #(lo, hi))
@@ -2195,12 +2610,9 @@ fn atom_bounds(c: Ctx, d: Decl, atom: String, claim: Field) -> #(B, B) {
               }
             }
             None, Some(it), Some(inn) -> {
-              let #(subject, _, _) = claim_parts(claim)
-              let #(lo, hi) = case
-                it.name == d.name && subject == Some(inn.name)
-              {
-                True -> claim_interval(claim)
-                False -> def_bounds(c, it, inn)
+              let #(lo, hi) = case induction(d, it, inn, claim) {
+                Some(b) -> b
+                None -> def_bounds(c, it, inn)
               }
               case bcmp(qlo, d0()) == order.Eq {
                 True -> #(bmin(lo, d0()), bmax(hi, d0()))
@@ -2262,7 +2674,7 @@ fn prove_claim(c: Ctx, d: Decl, f: Field) -> Nil {
                 list.fold(
                   mono,
                   #(Fin(decimal.from_int(1)), Fin(decimal.from_int(1))),
-                  fn(b, atom) { imul(b, atom_bounds(c, d, atom, f)) },
+                  fn(b, atom) { imul(b, atom_bounds(c, d, atom, Some(f))) },
                 )
               let b = imul(b, #(Fin(k), Fin(k)))
               #(badd(acc.0, b.0), badd(acc.1, b.1))

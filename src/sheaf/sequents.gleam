@@ -157,6 +157,11 @@ fn computed(f: Field, me: String) -> String {
     Some(m) -> paren(e) <> " mod " <> value(m, "t")
     None -> e
   }
+  // a rounded field is its rule's rounding of the exact value (Step 5)
+  let e = case model.setting(f.preds, "round") {
+    Some(VPath([rule])) -> "round_" <> rule <> "(" <> e <> ")"
+    _ -> e
+  }
   me <> " ⊢ t." <> f.name <> " = " <> e
 }
 

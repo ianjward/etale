@@ -10,18 +10,18 @@ Bad_Name {}
 
 # 3. A field that names a field below it.
 Wrong_Order {}
-  a {Integer} calc: b + 1
+  a {Integer} value: b + 1
   b {Integer}
 
 # 4. A list used outside a fold.
 Basket {}
   items {Digit} qty: 0..
-  first {Integer} calc: items
+  first {Integer} value: items
 
 # 5. A mapping that misses a combination and overlaps.
 Grade {}
   score {Integer} value: 0..100
-  pass {Fact} from: score
+  pass {True | False} from: score
     {True} if: score >= 50
     {False} if: score < 40
     {False} if: score = 45..49
@@ -31,24 +31,24 @@ Grade {}
 Pair {}
   a {Integer} value: 0..10
   b {Integer} value: 5..20
-  diff {Integer} calc: b - a
+  diff {Integer} value: b - a
   positive {Claim} if: diff > 0
 
 # 7. A product of two reads through a recursive field.
 Tower {}
   h {Integer} value: 1..9
   rest {Tower} qty: 0..1
-  blowup {Integer} calc: rest.h * rest.h
+  blowup {Integer} value: rest.h * rest.h
 
 # 8. Rounding would be needed, and no rounding rule is named.
 Price {}
   amount {Decimal} places: 2
-  tax {Decimal} calc: amount * 0.075, places: 2
+  tax {Decimal} value: amount * 0.075, places: 2
 
 # 9. Arithmetic on text.
 Label {}
   code {Digit}
-  twice {Integer} calc: code * 2
+  twice {Integer} value: code * 2
 
 # 10. Reaching a record that is not around.
 Note {}

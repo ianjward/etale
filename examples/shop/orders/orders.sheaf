@@ -1,7 +1,7 @@
 # Sees Money (shop/), Item (catalog/'s front file) and Date (the standard library).
 Order_Line {}
   item {Item}
-  price {Decimal} calc: item.price, places: 2
+  price {Decimal} value: item.price, places: 2
   text {Text}
     1. {item}
     2. {Newline}
