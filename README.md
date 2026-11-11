@@ -32,7 +32,7 @@ gleam test                                        # Run test suite
 
 The `site/` directory contains a static site deployed to GitHub Pages via CI/CD on every push to `main`:
 * **index.html**: What Etale is for, its guarantees, and the workspace embedded in the page.
-* **workspace.html**: The prebuilt canvas IDE (`dist/workspace.html`).
+* **workspace.html**: The canvas IDE, built by CI with `tools/build_ide.sh` (`dist/workspace.html`, which is not checked in).
 
 ### Local Site Setup
 ```sh
@@ -42,7 +42,7 @@ python3 -m http.server -d _site          # Open http://localhost:8000
 
 ## The Workspace
 
-Open `dist/workspace.html` in any browser to access a self-contained, infinite, zoomable canvas IDE.
+Build it with `./tools/build_ide.sh`, then open `dist/workspace.html` in any browser to access a self-contained, infinite, zoomable canvas IDE. It is also published on the demo site.
 
 #### UI Status Indicators
 

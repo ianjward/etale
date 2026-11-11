@@ -1,5 +1,5 @@
 // Builds the demo site into _site/: the pages and assets in site/, and
-// workspace.html (the prebuilt dist/workspace.html).
+// workspace.html (dist/workspace.html, built by tools/build_ide.sh and not checked in).
 //
 //   node tools/build_site.mjs
 // Run tools/build_ide.sh first: it builds dist/workspace.html.
