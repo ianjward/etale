@@ -24,14 +24,14 @@ Byte {}
   w2 {Integer} value: b2 * 4
   w1 {Integer} value: b1 * 2
   number {Integer} value: w7 + w6 + w5 + w4 + w3 + w2 + w1 + b0
-  at_least_zero {Claim} if: number >= 0
-  fits_in_a_byte {Claim} if: number <= 255
+  at_least_zero {Claims} number >= 0
+  fits_in_a_byte {Claims} number <= 255
 
 # Exclusive or of two bits, as a checked table.
 Xor_Bit {}
   a {Binary_Digit}
   b {Binary_Digit}
-  out {Binary_Digit} from: a & b
+  out {Binary_Digit} (a, b)
     {"0"} if: a = "0" & b = "0"
     {"1"} if: a = "0" & b = "1"
     {"1"} if: a = "1" & b = "0"

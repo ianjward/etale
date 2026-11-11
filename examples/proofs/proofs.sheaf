@@ -6,7 +6,7 @@ Window {}
   start {Integer} value: 0..10
   finish {Integer} value: 20..30
   width {Integer} value: finish - start
-  wide_enough {Claim} if: width >= 10
+  wide_enough {Claims} width >= 10
   text {Text}
     1. {start}
     2. {".."}
@@ -20,7 +20,7 @@ Chain {}
   total {Integer} value: x + rest.total
   rest_count {Integer} count: rest
   links {Integer} value: rest_count + rest.links
-  nonnegative {Claim} if: total >= 0
+  nonnegative {Claims} total >= 0
   text {Text}
     1. {"+"}
     2. {x}
@@ -33,7 +33,7 @@ Tier {"light" | "heavy" | "far"}
 Parcel {}
   weight {Integer} value: 0..50
   zone {Zone}
-  tier {Tier} from: weight & zone
+  tier {Tier} (weight, zone)
     {"light"} if: weight = 0..5 & zone = "A"
     {"heavy"} if: weight = 6..50 & zone = "A"
     {"far"} if: zone = "B"

@@ -35,12 +35,12 @@ Stop {}                                  # "Drammen 09:20 +4"
   due {Time}
   delay {Integer} value: 0..120
   arrives {Integer} value: due.minutes + delay, mod: 1440
-  status {Status} from: delay
+  status {Status} (delay)
     {"on time"} if: delay = 0..1
     {"late"} if: delay = 2..9
     {"very late"} if: delay >= 10
   # a rule that reaches the Train around this stop
-  plausible {True} if: delay <= Train.max_delay | status = "on time"
+  plausible {Needs} delay <= Train.max_delay | status = "on time"
   text {Text}
     1. {station}
     2. {" "}
@@ -61,9 +61,9 @@ Train {}
   # a train has at least one stop, so the count is never 0 and divides
   stop_count {Integer} count: stops
   average_delay {Decimal} value: total_delay / stop_count, places: 1, round: Half_Even
-  average_never_early {Claim} if: average_delay >= 0
+  average_never_early {Claims} average_delay >= 0
   credit {Integer} value: Late_Stop_Credit * late_stops
-  refund {True | False} from: kind & late_stops
+  refund {True | False} (kind, late_stops)
     {True} if: kind = "fast" & late_stops >= 1
     {False} if: kind = "fast" & late_stops = 0
     {False} if: kind = "slow"
@@ -80,4 +80,4 @@ Journey {}                               # a record that holds itself
   train {Train}
   next_leg {Journey} qty: 0..1
   delay {Integer} value: train.total_delay + next_leg.delay
-  never_early {Claim} if: delay >= 0
+  never_early {Claims} delay >= 0

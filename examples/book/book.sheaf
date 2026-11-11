@@ -22,7 +22,7 @@ Order {}
   number {Natural}
   customer {Customer_Code}
   matches {Integer} count: Book.customers, filter: Its_Customer
-  known {True} if: matches = 1
+  known {Needs} matches = 1
   text {Text}
     1. {number}
     2. {" "}

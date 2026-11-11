@@ -9,4 +9,4 @@
 Clock {}
   hour {Integer} value: 0..23
   later {Integer} value: hour + 5, mod: 24
-  ahead {Claim} if: later >= hour
+  ahead {Claims} later >= hour

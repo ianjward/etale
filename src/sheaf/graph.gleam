@@ -95,16 +95,16 @@ fn rows_of(d: Decl) -> List(Row) {
     model.Record ->
       list.map(d.fields, fn(f) {
         let base = case f.mapping {
-          Some(m) -> "{" <> model.mapping_text(m) <> "}"
+          Some(m) -> model.mapping_text(m)
           None -> model.box_text(f.items, f.preds)
         }
         let preds = preds_text(f.preds)
         let detail = case f.mapping {
           Some(m) ->
             list.map(m.cases, fn(c) {
-              "| {"
+              "{"
               <> model.item_text(c.output)
-              <> "} "
+              <> "} if: "
               <> model.block_text(c.preds)
             })
             |> string.join("\n")

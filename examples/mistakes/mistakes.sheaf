@@ -1,7 +1,7 @@
 # Every declaration below breaks one rule of the spec; `check` explains each.
 
 # 1. A type used before it is declared.
-Early {Later}
+Early {Later} qty: 2
 Later {"x"}
 
 # 2. A reserved word as a field name.
@@ -21,7 +21,7 @@ Basket {}
 # 5. A mapping that misses a combination and overlaps.
 Grade {}
   score {Integer} value: 0..100
-  pass {True | False} from: score
+  pass {True | False} (score)
     {True} if: score >= 50
     {False} if: score < 40
     {False} if: score = 45..49
@@ -32,7 +32,7 @@ Pair {}
   a {Integer} value: 0..10
   b {Integer} value: 5..20
   diff {Integer} value: b - a
-  positive {Claim} if: diff > 0
+  positive {Claims} diff > 0
 
 # 7. A product of two reads through a recursive field.
 Tower {}
@@ -54,4 +54,4 @@ Label {}
 Note {}
   words {Line_Text}
   items_in {Integer} count: Basket.items
-  filled {True} if: items_in >= 1
+  filled {Needs} items_in >= 1
