@@ -10,8 +10,8 @@ Minute {Integer} value: 0..59
 Time {}                                  # "08:45"
   hour {Hour}
   minute {Minute}
-  hour_minutes {Integer} calc: hour * 60
-  minutes {Integer} calc: hour_minutes + minute
+  hour_minutes {Integer} value: hour * 60
+  minutes {Integer} value: hour_minutes + minute
   text {Text}
     1. {hour}
     2. {":"}
@@ -34,7 +34,7 @@ Stop {}                                  # "Drammen 09:20 +4"
   station {Station_Name} unique: True
   due {Time}
   delay {Integer} value: 0..120
-  arrives {Integer} calc: due.minutes + delay, mod: 1440
+  arrives {Integer} value: due.minutes + delay, mod: 1440
   status {Status} from: delay
     {"on time"} if: delay = 0..1
     {"late"} if: delay = 2..9
@@ -60,9 +60,9 @@ Train {}
   total_delay {Integer} sum: stops.delay
   # a train has at least one stop, so the count is never 0 and divides
   stop_count {Integer} count: stops
-  average_delay {Decimal} calc: total_delay / stop_count, places: 1, round: Half_Even
+  average_delay {Decimal} value: total_delay / stop_count, places: 1, round: Half_Even
   average_never_early {Claim} if: average_delay >= 0
-  credit {Integer} calc: Late_Stop_Credit * late_stops
+  credit {Integer} value: Late_Stop_Credit * late_stops
   refund {True | False} from: kind & late_stops
     {True} if: kind = "fast" & late_stops >= 1
     {False} if: kind = "fast" & late_stops = 0
@@ -79,5 +79,5 @@ Train {}
 Journey {}                               # a record that holds itself
   train {Train}
   next_leg {Journey} qty: 0..1
-  delay {Integer} calc: train.total_delay + next_leg.delay
+  delay {Integer} value: train.total_delay + next_leg.delay
   never_early {Claim} if: delay >= 0

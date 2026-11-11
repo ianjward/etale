@@ -5,7 +5,7 @@
 ////
 //// Lines have the form 'name {type} item: value, item: value' (the header of
 //// language.sheaf). The reader turns them into the model the checker knows:
-//// calc:, count:, sum: and value: become the line's own 'val' predicates, a
+//// value:, count: and sum: become the line's own 'val' predicates, a
 //// fold becomes a path ending in qty or sum, qty: becomes the qty setting, and
 //// a record's text shape orders its stored fields, with each position that
 //// holds no field kept as a field named by its number and a dot ("2.").
@@ -327,9 +327,10 @@ fn value(sc: Scan) -> R(Value) {
                           <> hi.text
                           <> case decimal.eq(hi.value, lo.value) {
                           True ->
-                            " is a single value: for a fixed value read from the text, use a literal type, {"
+                            " is a single value: for a field that is always "
                             <> lo.text
-                            <> "}"
+                            <> ", write value: "
+                            <> lo.text
                           False -> " is not ordered (high must be above low)"
                         },
                       )
@@ -375,7 +376,7 @@ fn arith_terms(sc: Scan, op: String, acc: List(Value)) -> R(List(Value)) {
   }
 }
 
-/// What follows 'calc:': a term, a calculation with one operator kind, or a
+/// A calculation after 'value:': a term, a calculation with one operator kind, or a
 /// quotient of exactly two terms.
 fn calculation(sc: Scan) -> R(Value) {
   use #(first, sc) <- result.try(term(sc))
@@ -549,8 +550,8 @@ type LineItem {
 }
 
 pub const item_names = [
-  "from", "calc", "count", "sum", "filter", "if", "qty", "value", "places",
-  "mod", "unique", "round",
+  "from", "count", "sum", "filter", "if", "qty", "value", "places", "mod",
+  "unique", "round",
 ]
 
 /// The items of a line, joined by commas.
@@ -560,6 +561,11 @@ fn line_items(
 ) -> R(List(#(String, LineItem))) {
   let #(word, after) = take_while(sc, is_lower_name_char)
   case list.contains(item_names, word) && at(after, ":") {
+    False if word == "calc" ->
+      err(
+        sc,
+        "calc: is gone: a calculation is written after value:, e.g. value: a * 2",
+      )
     False ->
       err(
         sc,
@@ -573,7 +579,22 @@ fn line_items(
         None -> err(sc2, "expected a space after '" <> word <> ":'")
       })
       use #(it, sc4) <- result.try(item_value(sc3, word))
-      let acc = [#(word, it), ..acc]
+      use _ <- result.try(
+        case
+          word == "value"
+          && list.any(acc, fn(p) { p.0 == "value" || p.0 == "calc" })
+        {
+          True -> err(sc, "the item 'value:' appears twice on this line")
+          False -> Ok(Nil)
+        },
+      )
+      // A calculation after 'value:' is the field's own value; the checks
+      // below know it as "calc".
+      let name = case it {
+        ICalc(_) -> "calc"
+        _ -> word
+      }
+      let acc = [#(name, it), ..acc]
       // a comma straight after the item, then one or more spaces
       case at(sc4, ","), gap(adv(sc4, 1)) {
         True, Some(sc5) -> line_items(sc5, acc)
@@ -620,7 +641,10 @@ fn item_value(sc: Scan, word: String) -> R(LineItem) {
     }
     "value" -> {
       use #(v, sc2) <- result.try(value(sc))
-      choices(sc2, [v])
+      case v, has_sym(sc2, "|") {
+        VRange(..), _ | _, True -> choices(sc2, [v])
+        _, False -> result.map(calculation(sc), fn(r) { #(ICalc(r.0), r.1) })
+      }
     }
     "places" -> result.map(natural(sc), fn(r) { #(IPlaces(VNum(r.0)), r.1) })
     "mod" -> result.map(natural(sc), fn(r) { #(IMod(VNum(r.0)), r.1) })
@@ -705,7 +729,7 @@ fn assemble(
     list.count(names, fn(n) { list.contains(["calc", "count", "sum", "if"], n) })
       > 1,
     sc,
-    "a line takes at most one of calc:, count:, sum: and if:",
+    "a line takes at most one of count:, sum:, if: and a calculation after value:",
   ))
   use _ <- result.try(ok_unless(
     has("filter") && !has("count") && !has("sum"),
@@ -715,7 +739,7 @@ fn assemble(
   use _ <- result.try(ok_unless(
     has("round") && !has("calc"),
     sc,
-    "round: goes beside calc:, to round its calculation",
+    "round: goes beside a calculation after value:, to round it",
   ))
   let filter =
     list.find_map(its, fn(p) {
@@ -768,7 +792,7 @@ fn item_clauses(
     ICalc(VArith("/", _)) if !rounded ->
       err(
         sc,
-        "a quotient names its rounding rule, e.g. calc: total / 3, places: 2, round: Half_Even",
+        "a quotient names its rounding rule, e.g. value: total / 3, places: 2, round: Half_Even",
       )
     ICalc(v) -> Ok([Plain(["val"], "=", v)])
     ICount(p) ->

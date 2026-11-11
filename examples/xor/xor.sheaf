@@ -33,8 +33,8 @@ Assoc {}
   c {Element}
   ab {Ab}
   bc {Bc}
-  ab_out {Integer} calc: ab.out
-  bc_out {Integer} calc: bc.out
+  ab_out {Integer} value: ab.out
+  bc_out {Integer} value: bc.out
   ab_c {Ab_C}
   a_bc {A_Bc}
   same {True} if: ab_c.out = a_bc.out

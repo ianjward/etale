@@ -1,6 +1,6 @@
 # Rounding rules, each a checked table (language.sheaf, Step 5). A rule is
 # named by round: beside a calculation, e.g.
-#   share {Decimal} calc: total / 3, places: 2, round: Half_Even
+#   share {Decimal} value: total / 3, places: 2, round: Half_Even
 # The checker gives the rule what was cut off, as a fraction of the last
 # place kept (remainder), whether the last digit kept is odd (odd), and
 # whether the exact value is below 0 (negative). When nothing was cut off,

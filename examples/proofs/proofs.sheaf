@@ -5,7 +5,7 @@
 Window {}
   start {Integer} value: 0..10
   finish {Integer} value: 20..30
-  width {Integer} calc: finish - start
+  width {Integer} value: finish - start
   wide_enough {Claim} if: width >= 10
   text {Text}
     1. {start}
@@ -17,9 +17,9 @@ Window {}
 Chain {}
   x {Integer} value: 0..9
   rest {Chain} qty: 0..1
-  total {Integer} calc: x + rest.total
+  total {Integer} value: x + rest.total
   rest_count {Integer} count: rest
-  links {Integer} calc: rest_count + rest.links
+  links {Integer} value: rest_count + rest.links
   nonnegative {Claim} if: total >= 0
   text {Text}
     1. {"+"}

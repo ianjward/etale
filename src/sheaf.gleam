@@ -22,6 +22,7 @@ import sheaf/graph
 import sheaf/model
 import sheaf/printer
 import sheaf/program.{type Program}
+import sheaf/reader
 import sheaf/sequents
 
 @external(javascript, "./sheaf/ffi.mjs", "read_file")
@@ -423,7 +424,9 @@ fn cmd_run(file: String, type_name: String, rest: List(String)) -> Int {
           case trace, out.value {
             True, Some(VRecord(r)) -> {
               io.println("\nevaluation:")
-              list.each(evaluate.trace(r), fn(t) {
+              evaluate.trace(r)
+              |> list.filter(fn(t) { !reader.is_position_field(t.field) })
+              |> list.each(fn(t) {
                 io.println(
                   "  "
                   <> t.field
@@ -452,7 +455,9 @@ fn cmd_run(file: String, type_name: String, rest: List(String)) -> Int {
 fn print_value(p: Program, v: Val, indent: String, depth: Int) -> Nil {
   case v {
     VRecord(r) ->
-      list.each(r.decl.fields, fn(f) {
+      // A shape position that holds no field ("2.") is layout, not a value.
+      list.filter(r.decl.fields, fn(f) { !reader.is_position_field(f.name) })
+      |> list.each(fn(f) {
         let x = evaluate.get(p.ev, r, f.name)
         let tag = case f.role {
           model.Stored -> ""

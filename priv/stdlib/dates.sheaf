@@ -17,9 +17,9 @@ Date {}
   year {Year}
   month {Month}
   day {Day_Of_Month}
-  r4 {Integer} calc: year * 1, mod: 4, value: 0..3
-  r100 {Integer} calc: year * 1, mod: 100, value: 0..99
-  r400 {Integer} calc: year * 1, mod: 400, value: 0..399
+  r4 {Integer} value: year * 1, mod: 4
+  r100 {Integer} value: year * 1, mod: 100
+  r400 {Integer} value: year * 1, mod: 400
   length {Month_Length} from: month
     {"31"} if: month = 1 | 3 | 5 | 7 | 8 | 10 | 12
     {"30"} if: month = 4 | 6 | 9 | 11

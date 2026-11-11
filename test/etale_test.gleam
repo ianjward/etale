@@ -162,12 +162,12 @@ fn syntax_errors() -> Outcome {
     expect(result_is_error(source("Bad {\"a\" | }\n")), "bad union"),
     expect(
       result_is_error(source(
-        "Thing {}\n  a {Integer}\n  b {Integer} calc: 1, if: a = 2 | a = 3\n",
+        "Thing {}\n  a {Integer}\n  b {Integer} value: 1, if: a = 2 | a = 3\n",
       )),
       "& mixed with |",
     ),
     expect(
-      result_is_error(source("Two {\"a\" | \"b\"} calc: \"a\"\n")),
+      result_is_error(source("Two {\"a\" | \"b\"} value: \"a\"\n")),
       "predicates on a union",
     ),
     expect(
@@ -235,7 +235,7 @@ fn geometric_mistakes() -> Outcome {
   let text = msgs(rep)
   let wrapped =
     "Clock {}\n  hour {Integer} value: 0..23\n"
-    <> "  later {Integer} calc: hour + 5, mod: 24\n  in_day {Claim} if: later <= 23\n"
+    <> "  later {Integer} value: hour + 5, mod: 24\n  in_day {Claim} if: later <= 23\n"
   let assert Ok(#(_, ok)) = source(wrapped)
   let assert Ok(#(table, _)) =
     source(
@@ -244,10 +244,10 @@ fn geometric_mistakes() -> Outcome {
   all([
     expect(
       result_is_error(source(
-        "X {}\n  h {Integer}\n  later {Integer} calc: h + 5, mod: -3\n",
+        "X {}\n  h {Integer}\n  later {Integer} value: h + 5, mod: -3\n",
       ))
         && result_is_error(source(
-        "X {}\n  h {Integer}\n  m {Integer}\n  later {Integer} calc: h + 5, mod: m\n",
+        "X {}\n  h {Integer}\n  m {Integer}\n  later {Integer} value: h + 5, mod: m\n",
       )),
       "mod: takes a number written out in digits",
     ),
@@ -530,7 +530,7 @@ fn grids() -> Outcome {
 }
 
 /// The number of declarations in priv/language.sheaf.
-const spec_decls = 154
+const spec_decls = 153
 
 const inter_src =
   "Letters {Uppercase} qty: 3
@@ -573,7 +573,7 @@ Parcel {}
   weight {Integer} value: 0..50
   zone {Zone}
   spare {Integer} value: 0..9
-  more {Integer} calc: weight +  spare+1
+  more {Integer} value: weight +  spare+1
   check {True} if: spare  >=  0 & weight <= 50
   tier {Tier} from: weight & zone
     {\"light\"} if: weight = 0..5   &  zone = \"A\"
@@ -608,7 +608,7 @@ fn spacing() -> Outcome {
       "a union takes no items",
     ),
     expect(
-      result_is_error(source("X {}\n  n {Integer} calc: 1, cost: 1\n")),
+      result_is_error(source("X {}\n  n {Integer} value: 1, cost: 1\n")),
       "cost is not an item: the checker works out every cost",
     ),
     expect(
@@ -669,7 +669,7 @@ fn printing() -> Outcome {
     )
   let base = base(False)
   let loose =
-    "X {}\n  a  {Integer}   value:  0..9   \n  b {Integer} calc: a*2 # twice\n"
+    "X {}\n  a  {Integer}   value:  0..9   \n  b {Integer} value: a*2 # twice\n"
   all([
     expect(order == Ok("order 1042\nABC-0001 x3 @ 19.90\n"), "order prints"),
     expect(leap == Ok("2024-02-29"), "dates pad their digits"),
@@ -679,7 +679,7 @@ fn printing() -> Outcome {
     expect(
       printer.format(base, loose, "x.sheaf")
         == Ok(
-        "X {}\n  a {Integer} value: 0..9\n  b {Integer} calc: a * 2 # twice\n",
+        "X {}\n  a {Integer} value: 0..9\n  b {Integer} value: a * 2 # twice\n",
       ),
       "fmt: canonical spacing, comments kept",
     ),
@@ -748,7 +748,7 @@ fn lists_and_filters() -> Outcome {
       "orders: big total",
     ),
     expect(
-      refused(filter_src <> "  bad {Integer} calc: items\n"),
+      refused(filter_src <> "  bad {Integer} value: items\n"),
       "a list outside a fold is refused",
     ),
     expect(
@@ -785,7 +785,7 @@ fn context_paths() -> Outcome {
       |> string.replace("limit {Integer}", "limit {Natural}"),
     )
   let assert Ok(#(_, not_rec)) =
-    source("Two {\"2\"}\nR {}\n  a {Integer} calc: Two.x\n")
+    source("Two {\"2\"}\nR {}\n  a {Integer} value: Two.x\n")
   let assert Ok(#(_, promised)) =
     source(
       "C {}\n  k {Natural}\n  text {Text}\n    1. {k}\n    2. {Newline}\n\nMine {C} if: k = O.k\n\n"
@@ -911,14 +911,14 @@ fn review_readings() -> Outcome {
       "a range spans more than one value",
     ),
     expect(
-      case source("X {}\n  v {Digit}\n  w {Integer} calc: 5\n") {
+      case source("X {}\n  v {Digit}\n  w {Integer} value: 5\n") {
         Ok(#(p, _)) -> {
           let x = program.check(p, "X", "7")
           x.ok && num(get(p, x.value, "w")) == "5"
         }
         Error(_) -> False
       },
-      "calc: 5 computes a fixed value",
+      "value: 5 computes a fixed value",
     ),
     expect(
       result_is_error(source("X {}\n  v {5}\n")),
@@ -933,9 +933,9 @@ const tree_src =
   kids {Node} qty: 0..
   kid_count {Integer} count: kids
   kid_nodes {Integer} sum: kids.nodes
-  nodes {Integer} calc: kid_count + kid_nodes
+  nodes {Integer} value: kid_count + kid_nodes
   kid_weight {Integer} sum: kids.weight
-  weight {Integer} calc: w + kid_weight
+  weight {Integer} value: w + kid_weight
   ok {Claim} if: weight >= 0
   text {Text}
     1. {\"(\"}
@@ -966,20 +966,80 @@ const split_src =
     1. {total}
     2. {\" \"}
     3. {people}
-  share {Decimal} calc: total / people, places: 2, round: Half_Even
+  share {Decimal} value: total / people, places: 2, round: Half_Even
   share_low {Claim} if: share >= -10
   share_high {Claim} if: share <= 10
-  down {Decimal} calc: total / people, places: 1, round: Floor
-  up {Decimal} calc: total / people, places: 1, round: Ceiling
-  whole {Integer} calc: total, round: Half_Up
+  down {Decimal} value: total / people, places: 1, round: Floor
+  up {Decimal} value: total / people, places: 1, round: Ceiling
+  whole {Integer} value: total, round: Half_Up
 "
 
 const third_src =
   "Third {}
   total {Decimal} value: 0..1, places: 2
-  third {Decimal} calc: total / 3, places: 2, round: Half_Even
+  third {Decimal} value: total / 3, places: 2, round: Half_Even
   close {Claim} if: third <= 0.33
 "
+
+// After value:, a range or a choice checks a number read from the text; a
+// number, a path or a calculation works it out, so it is not in the text.
+fn value_checks_or_works_out() -> Outcome {
+  let ticket = fn(seats) {
+    "Ticket {}\n  seats {Integer} value: "
+    <> seats
+    <> "\n  price {Integer} value: 1..500\n  total {Integer} value: seats * price\n"
+  }
+  let read = fn(seats, text) {
+    case
+      source(
+        ticket(seats)
+        <> "  text {Text}\n    1. {seats}\n    2. {\" x \"}\n    3. {price}\n",
+      )
+    {
+      Ok(#(p, _)) -> {
+        let x = program.check(p, "Ticket", text)
+        case x.ok {
+          True -> num(get(p, x.value, "total"))
+          False -> "refused"
+        }
+      }
+      Error(e) -> model.error_text(e)
+    }
+  }
+  let assert Ok(#(fixed, fixed_rep)) = source(ticket("2"))
+  let fixed_total = fn(text) {
+    let x = program.check(fixed, "Ticket", text)
+    case x.ok {
+      True -> num(get(fixed, x.value, "total"))
+      False -> "refused"
+    }
+  }
+  let old = case
+    source("X {}\n  a {Integer} value: 0..9\n  b {Integer} calc: a * 2\n")
+  {
+    Ok(_) -> ""
+    Error(e) -> model.error_text(e)
+  }
+  all([
+    expect(read("2 | 3", "2 x 40") == "80", "a choice reads the number"),
+    expect(read("2 | 3", "4 x 40") == "refused", "and checks it"),
+    expect(read("1..9", "3 x 40") == "120", "a range reads the number"),
+    expect(
+      check.errors(fixed_rep) == [],
+      "value: 2 checks clean: " <> msgs(fixed_rep),
+    ),
+    expect(fixed_total("40") == "80", "value: 2 is always 2, not in the text"),
+    expect(
+      fixed_total("2 x 40") == "refused",
+      "so the text holds only the price",
+    ),
+    expect(
+      string.contains(read("2", "2 x 40"), "computed"),
+      "a shape cannot name a worked-out field",
+    ),
+    expect(string.contains(old, "calc: is gone"), "calc: is refused: " <> old),
+  ])
+}
 
 fn division_and_rounding() -> Outcome {
   let assert Ok(#(p, rep)) = source(split_src)
@@ -1035,49 +1095,49 @@ fn division_and_rounding() -> Outcome {
     ),
     expect(
       refused_with(
-        "  q {Decimal} calc: b / a, places: 2, round: Half_Even",
+        "  q {Decimal} value: b / a, places: 2, round: Half_Even",
         "cannot prove the divisor a is never 0",
       ),
       "a divisor that may be 0",
     ),
     expect(
       !refused_with(
-        "  q {Decimal} calc: a / b, places: 2, round: Half_Even",
+        "  q {Decimal} value: a / b, places: 2, round: Half_Even",
         "divisor",
       ),
       "a choice of values that leaves out 0",
     ),
     expect(
       refused_with(
-        "  q {Decimal} calc: a / b, round: Half_Even",
+        "  q {Decimal} value: a / b, round: Half_Even",
         "says how many places it rounds to",
       ),
       "a rounded Decimal names its places",
     ),
     expect(
       refused_with(
-        "  q {Integer} calc: a + b, round: Floor",
+        "  q {Integer} value: a + b, round: Floor",
         "nothing to round",
       ),
       "round: on a calculation that never needs it",
     ),
     expect(
       refused_with(
-        "  q {Integer} calc: a / b, round: X",
+        "  q {Integer} value: a / b, round: X",
         "is not a rounding rule",
       ),
       "round: names a rule",
     ),
     expect(
       refused_with(
-        "  q {Decimal} calc: a / b, places: 2",
+        "  q {Decimal} value: a / b, places: 2",
         "names its rounding rule",
       ),
       "a quotient without round:",
     ),
     expect(
       refused_with(
-        "  q {Decimal} calc: a * b, places: 2",
+        "  q {Decimal} value: a * b, places: 2",
         "rounding never happens implicitly",
       )
         == False,
@@ -1159,6 +1219,7 @@ pub fn main() {
     #("context paths", context_paths),
     #("filter-typed fields", filter_typed_fields),
     #("division and rounding", division_and_rounding),
+    #("value: checks or works out", value_checks_or_works_out),
   ]
   let failed =
     list.fold(tests, 0, fn(failed, t) {

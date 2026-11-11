@@ -8,5 +8,5 @@
 #    it is 1. The prover bounds a wrapped field by [0, m) and cannot prove it.
 Clock {}
   hour {Integer} value: 0..23
-  later {Integer} calc: hour + 5, mod: 24
+  later {Integer} value: hour + 5, mod: 24
   ahead {Claim} if: later >= hour
