@@ -235,7 +235,7 @@ fn geometric_mistakes() -> Outcome {
   let text = msgs(rep)
   let wrapped =
     "Clock {}\n  hour {Integer} value: 0..23\n"
-    <> "  later {Integer} value: hour + 5, mod: 24\n  in_day {Claim} if: later <= 23\n"
+    <> "  later {Integer} value: hour + 5, mod: 24\n  in_day {Claims} later <= 23\n"
   let assert Ok(#(_, ok)) = source(wrapped)
   let assert Ok(#(table, _)) =
     source(
@@ -298,11 +298,11 @@ fn sequents_print() -> Outcome {
 fn mapping_outputs_and_inputs() -> Outcome {
   let assert Ok(#(_, r1)) =
     source(
-      "Two {\"x\" | \"y\"}\nM {}\n  a {True | False}\n  out {Two} from: a\n    {\"x\"} if: a = True\n    {\"x\"} if: a = False\n",
+      "Two {\"x\" | \"y\"}\nM {}\n  a {True | False}\n  out {Two} (a)\n    {\"x\"} if: a = True\n    {\"x\"} if: a = False\n",
     )
   let assert Ok(#(_, r2)) =
     source(
-      "M {}\n  t {Text}\n  out {True | False} from: t\n    {True} if: t = \"a\"\n",
+      "M {}\n  t {Text}\n  out {True | False} (t)\n    {True} if: t = \"a\"\n",
     )
   all([
     expect(
@@ -455,7 +455,7 @@ fn scope() -> Outcome {
     program.load(base(False), program.join(cwd(), "examples/cycle/a.sheaf"))
   let order = "2026-10-15\nABC123 19.99\nXYZ042 5.00\n"
   let bundle =
-    program.bundle_text([#("a/x.sheaf", "X {\"x\"}"), #("a/y.sheaf", "Y {X}\n")])
+    program.bundle_text([#("a/x.sheaf", "X {\"x\"}"), #("a/y.sheaf", "Y {\"y\" | X}\n")])
   all([
     expect(
       program.check(m, "Meeting", "2024-02-29 room_4").ok,
@@ -484,7 +484,7 @@ fn scope() -> Outcome {
     ),
     expect(
       program.bundle_entries(bundle)
-        == [#("a/x.sheaf", "X {\"x\"}\n"), #("a/y.sheaf", "Y {X}\n")],
+        == [#("a/x.sheaf", "X {\"x\"}\n"), #("a/y.sheaf", "Y {\"y\" | X}\n")],
       "a bundle splits into named texts",
     ),
     expect(
@@ -530,7 +530,7 @@ fn grids() -> Outcome {
 }
 
 /// The number of declarations in priv/language.sheaf.
-const spec_decls = 153
+const spec_decls = 161
 
 const inter_src =
   "Letters {Uppercase} qty: 3
@@ -574,8 +574,8 @@ Parcel {}
   zone {Zone}
   spare {Integer} value: 0..9
   more {Integer} value: weight +  spare+1
-  check {True} if: spare  >=  0 & weight <= 50
-  tier {Tier} from: weight & zone
+  check {Needs} spare  >=  0 & weight <= 50
+  tier {Tier} (weight, zone)
     {\"light\"} if: weight = 0..5   &  zone = \"A\"
     {\"heavy\"} if: weight = 6..50&zone = \"A\"
     {\"far\"} if: zone = \"B\"
@@ -596,7 +596,7 @@ fn spacing() -> Outcome {
     expect(num(get(p, parcel.value, "more")) == "12", "loose arithmetic"),
     expect(num(get(p, parcel.value, "tier")) == "heavy", "loose mapping"),
     expect(
-      is_ok(source("X {}\n  x {Integer}\n  r {True} if: x=1..2 & x>=1\n")),
+      is_ok(source("X {}\n  x {Integer}\n  r {Needs} x=1..2 & x>=1\n")),
       "comparisons take any spacing",
     ),
     expect(
@@ -717,7 +717,7 @@ Box {}
   items {Item} qty: 1..
   heavy {Integer} count: items, filter: Heavy
   hw {Integer} sum: items.w, filter: Heavy
-  ok {Claim} if: hw >= 0
+  ok {Claims} hw >= 0
 "
 
 /// {Type n} makes a list (no count means one); a type-named step filters it;
@@ -843,7 +843,7 @@ Tiny {Small} if: out <= 2
 
 Holder {}
   m {Small}
-  half {True} if: m.out <= 4
+  half {Needs} m.out <= 4
   ms {Tiny} qty: 0..
   total {Integer} sum: ms.out
 "
@@ -936,7 +936,7 @@ const tree_src =
   nodes {Integer} value: kid_count + kid_nodes
   kid_weight {Integer} sum: kids.weight
   weight {Integer} value: w + kid_weight
-  ok {Claim} if: weight >= 0
+  ok {Claims} weight >= 0
   text {Text}
     1. {\"(\"}
     2. {w}
@@ -967,8 +967,8 @@ const split_src =
     2. {\" \"}
     3. {people}
   share {Decimal} value: total / people, places: 2, round: Half_Even
-  share_low {Claim} if: share >= -10
-  share_high {Claim} if: share <= 10
+  share_low {Claims} share >= -10
+  share_high {Claims} share <= 10
   down {Decimal} value: total / people, places: 1, round: Floor
   up {Decimal} value: total / people, places: 1, round: Ceiling
   whole {Integer} value: total, round: Half_Up
@@ -978,7 +978,7 @@ const third_src =
   "Third {}
   total {Decimal} value: 0..1, places: 2
   third {Decimal} value: total / 3, places: 2, round: Half_Even
-  close {Claim} if: third <= 0.33
+  close {Claims} third <= 0.33
 "
 
 // After value:, a range or a choice checks a number read from the text; a
@@ -1220,6 +1220,7 @@ pub fn main() {
     #("filter-typed fields", filter_typed_fields),
     #("division and rounding", division_and_rounding),
     #("value: checks or works out", value_checks_or_works_out),
+    #("rules, claims and mapping inputs", rules_claims_and_inputs),
   ]
   let failed =
     list.fold(tests, 0, fn(failed, t) {
@@ -1244,4 +1245,91 @@ pub fn main() {
   }
   let _ = None
   Nil
+}
+
+/// Rules are 'name {Needs} condition' and claims 'name {Claims} condition';
+/// a mapping's inputs go in parentheses after its type. The old forms, a
+/// field that could only be TRUE or FALSE, and a bare alias are refused.
+fn rules_claims_and_inputs() -> Outcome {
+  let refused = fn(text, needle) {
+    case source(text) {
+      Error(e) -> string.contains(e.msg, needle)
+      Ok(_) -> False
+    }
+  }
+  let r = "R {}\n  a {Integer} value: 0..9\n  b {Integer} value: a + 1\n"
+  let assert Ok(#(p, rep)) =
+    source(
+      r
+      <> "  ok {Needs} a <= 8\n  pos {Claims} a >= 0\n  big {True | False} (a)\n"
+      <> "    {True} if: a >= 5\n    {False} if: a <= 4\n",
+    )
+  let o = program.check(p, "R", "3")
+  let refused_rule = program.check(p, "R", "9")
+  all([
+    expect(check.errors(rep) == [], "the new forms check clean"),
+    expect(o.ok && num(get(p, o.value, "ok")) == "TRUE", "a rule holds"),
+    expect(num(get(p, o.value, "big")) == "FALSE", "a mapping on (a)"),
+    expect(!refused_rule.ok, "a failed rule refuses the record"),
+    expect(list.key_find(rep.claims, "R.pos") |> is_ok, "a claim is proved"),
+    expect(refused(r <> "  ok {True} if: a <= 8\n", "{Needs}"), "old rule"),
+    expect(
+      refused(r <> "  pos {Claim} if: a >= 0\n", "{Claims}"),
+      "old claim",
+    ),
+    expect(
+      refused(r <> "  ok {Needs} if: a <= 8\n", "no if:"),
+      "{Needs} takes no if:",
+    ),
+    expect(refused(r <> "  ok {Needs}\n", "condition"), "{Needs} alone"),
+    expect(
+      refused(r <> "  pos {Claims} a >= 0 & b >= 0\n", "one comparison"),
+      "a claim holds one comparison",
+    ),
+    expect(refused(r <> "  t {True}\n", "{True | False}"), "a {True} field"),
+    expect(
+      refused(r <> "  t {False} value: a\n", "{True | False}"),
+      "a {False} field",
+    ),
+    expect(
+      refused(r <> "  t {Integer} value: a, if: a = 1\n", "refinements and cases"),
+      "if: on a field line",
+    ),
+    expect(
+      refused(
+        r <> "  big {True | False} from: a\n    {True} if: a >= 0\n",
+        "from: is gone",
+      ),
+      "from: is gone",
+    ),
+    expect(
+      refused(
+        r <> "  big {True | False} (a & b)\n    {True} if: a >= 0\n",
+        "comma",
+      ),
+      "inputs joined by &",
+    ),
+    expect(
+      refused(
+        r <> "  big {True | False} (a, b, a)\n    {True} if: a >= 0\n",
+        "one or two inputs",
+      ),
+      "three inputs",
+    ),
+    expect(
+      refused(r <> "  big {True | False} (a)\n", "needs case lines"),
+      "a mapping without cases",
+    ),
+    expect(
+      refused(
+        r <> "  t {True} (a)\n    {True} if: a >= 0\n",
+        "always gives that value",
+      ),
+      "a mapping whose only output is {True}",
+    ),
+    expect(refused("Yes {True}\n", "adds nothing"), "an alias of True"),
+    expect(refused("Must {Needs}\n", "adds nothing"), "an alias of Needs"),
+    expect(refused("Two_Digits {Digit}\n", "adds nothing"), "a bare alias"),
+    expect(is_ok(source("Two_Digits {Digit} qty: 2\n")), "a refinement adds"),
+  ])
 }

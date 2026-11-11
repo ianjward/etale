@@ -455,9 +455,9 @@ fn check_record(c: Ctx, d: Decl) -> Nil {
           f.line,
           "'"
             <> f.name
-            <> " {True}' has no predicates, so it would always hold; give it predicates, e.g. "
+            <> " {Needs}' has no condition, so it would always hold; give it one, e.g. "
             <> f.name
-            <> " {True} total >= 0",
+            <> " {Needs} total >= 0",
           where,
         )
       _ -> Nil
@@ -1946,7 +1946,8 @@ fn domain(c: Ctx, fl: Field) -> Option(Domain) {
             }
             False ->
               case model.base(fl) {
-                TypeItem("Claim") -> Some(Finite([VText("TRUE")]))
+                TypeItem("Needs") | TypeItem("Claims") ->
+                  Some(Finite([VText("TRUE")]))
                 _ -> None
               }
           }

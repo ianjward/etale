@@ -16,7 +16,7 @@ Bit {0 | 1}
 Mul {}
   left {Element}
   right {Element}
-  out {Bit} from: left & right
+  out {Bit} (left, right)
     {0} if: left = 0 & right = 0
     {1} if: left = 0 & right = 1
     {1} if: left = 1 & right = 0
@@ -37,4 +37,4 @@ Assoc {}
   bc_out {Integer} value: bc.out
   ab_c {Ab_C}
   a_bc {A_Bc}
-  same {True} if: ab_c.out = a_bc.out
+  same {Needs} ab_c.out = a_bc.out

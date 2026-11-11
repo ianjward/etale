@@ -14,8 +14,12 @@
 # but only over things that can always be decided.
 #
 # Every construction is one or more lines, which together state one or more sequents of
-# geometric logic. Each line has the form:
+# geometric logic. Most lines have the form:
 #   name {type} item: value, item: value
+# A rule or a claim has its condition straight after its type, and a mapping its inputs:
+#   name {Needs} condition
+#   name {Claims} condition
+#   name {type} (input, input)
 #
 # Example:
 #   Rectangle {}
@@ -45,10 +49,16 @@
 #     {A & B}             both, for exactly the same characters
 #                         Type names only: to use a text, name it first, C {"c"}, then {A & C}.
 #
-#   a rule or a claim (fields only)
-#     {True}              a rule: its condition must hold, or the text is refused
-#     {Claim}             a claim: one comparison, proved for every text, or the file is
+#   a rule or a claim (fields only), its condition straight after the braces
+#     {Needs}             a rule: its condition must hold, or the text is refused
+#     {Claims}            a claim: one comparison, proved for every text, or the file is
 #                         refused
+#   {True} and {False} are never a field's whole type: they are values in a union,
+#   {True | False}, in a case's output and in a condition.
+#
+#   a mapping (fields only), its one or two inputs in parentheses after the braces
+#     {Status} (delay)    and its cases below, four spaces in:
+#                           {"late"} if: delay = 2..9
 #
 #   a record
 #     {}                  its fields, on the lines below
@@ -66,9 +76,7 @@
 #     count: lines        how many items a list holds
 #     sum: lines.amount   the total of a field over a list's items
 #     filter: Late_Stop   beside count: or sum:, only the items that are a Late_Stop
-#     if: total >= 0      a condition, on a rule, a claim, a refinement or a case
-#     from: a & b         a mapping's one or two inputs, with its cases below.
-#                         from: is the only item on its line.
+#     if: delay >= 2      a condition, on a refinement or a case
 #
 #   restrictions:
 #     qty: 1..            how many items a list may hold. A field with qty is a list.
@@ -120,8 +128,8 @@
 #       2. {":"}
 #       3. {minute}
 #
-# Braces never nest, there are no parentheses, items are optional, and a line uses only
-# names declared above it, with three exceptions:
+# Braces never nest, parentheses appear only around a mapping's inputs and never nest,
+# items are optional, and a line uses only names declared above it, with three exceptions:
 #   1. a record may hold itself as a field, as a list from 0 (Step 3)
 #   2. a path may start with a record this one sits inside (Step 3)
 #   3. names may come from other files in scope (Step 10)
@@ -157,10 +165,10 @@ Newline {"\n"}
 Quote {"\""}
 Backslash {"\\"}
 
-Operator_Symbol_A {"{" | "}" | "|" | "&" | "=" | "<" | ">" | "."}
+Operator_Symbol_A {"{" | "}" | "(" | ")" | "|" | "&" | "=" | "<" | ">" | "."}
 Operator_Symbol_B {"," | ":" | "#" | "*" | "+" | "-" | "/"}
 Operator_Symbol {Operator_Symbol_A | Operator_Symbol_B}
-Other_Symbol_A {";" | "!" | "?" | "'" | "(" | ")"}
+Other_Symbol_A {";" | "!" | "?" | "'"}
 Other_Symbol_B {"@" | "%" | "[" | "]" | "^" | "~" | "`" | "$"}
 Other_Symbol {Other_Symbol_A | Other_Symbol_B}
 Reserved {Operator_Symbol | Quote | Backslash}
@@ -179,9 +187,13 @@ Character {Line_Character | Newline}
 True {"TRUE"}
 False {"FALSE"}
 
-# A claim's value is always TRUE: the checker proves it before any
-# text is read (Step 3).
-Claim {True}
+# A rule's value is TRUE, or the record is refused; a claim's value is
+# always TRUE, because the checker proves it before any text is read
+# (Step 3). These two are the only types that are another type's name
+# with nothing added: any other declaration adds a literal, a
+# condition, items, positions, a union or an intersection.
+Needs {True}
+Claims {True}
 
 
 # ---------- Step 3: Lists, Literals and Names ----------
@@ -234,7 +246,7 @@ Claim {True}
 # the item that asks:
 #   Its_Customer {Customer} if: code = Order.customer
 # and, in Order, 'matches {Integer} count: Book.customers, filter:
-# Its_Customer' with the rule 'known {True} if: matches = 1'.
+# Its_Customer' with the rule 'known {Needs} matches = 1'.
 #
 # Context. A path that starts with a type name and goes on to a field
 # reaches the nearest record of that type around this one: inside a
@@ -279,7 +291,8 @@ Number_Literal {Decimal_Literal | Integer_Literal}
 # A record is a header 'Name {}' followed by its fields at two spaces.
 # Its text is its text shape, or with no shape its stored fields in
 # declaration order. Computed fields (a calculation after value:,
-# count:, sum:, from:, a rule or a claim) contribute no text. A field may name only fields of the
+# count:, sum:, a mapping, a rule or a claim) contribute no text. A
+# field may name only fields of the
 # same record declared above it. No stored field holds only one possible
 # text: a separator such as " " goes in the text shape.
 #
@@ -290,19 +303,22 @@ Number_Literal {Decimal_Literal | Integer_Literal}
 # qty there. A shape lays out the text only: values, conditions, unique,
 # claims and sequents see only fields.
 #
-# A rule is a field with base {True} and an 'if:'. If its condition does
-# not hold, the field is INVALID. A {True} field with no 'if:' is an
-# error: it would always hold, so it says nothing.
+# A rule is a field with base {Needs} and its condition straight after
+# the braces: 'plausible {Needs} delay <= 60'. If its condition does
+# not hold, the field is INVALID, never FALSE. {Needs} with no condition
+# is an error: it would always hold, so it says nothing. A field whose
+# whole type is {True} or {False} is an error for the same reason.
 # Every field evaluates to a value or to INVALID. Anything computed from
 # an INVALID field is INVALID. A record with any INVALID field is
 # refused, and every failed rule is reported by name.
 # When a type used in this grammar carries a rule, a text inhabits the
 # type only if the rule holds on it.
 #
-# A claim is a field with base {Claim} and an 'if:' with one
-# comparison. It narrows nothing: the checker must prove it holds for
-# every value, by one fixed method. Expand both sides into sums of
-# stored fields by substituting each calculation and fold; move everything
+# A claim is a field with base {Claims} and one comparison straight
+# after the braces: 'nonnegative {Claims} total >= 0'. It narrows
+# nothing: the checker must prove it holds for every value, by one
+# fixed method. Expand both sides into sums of stored fields by
+# substituting each calculation and fold; move everything
 # to one side and cancel; bound what is left using each field's
 # 'value:', its choice of values, or its count. On a recursive type, the
 # claim itself may be assumed for the recursive field (induction). A
@@ -322,7 +338,7 @@ Number_Literal {Decimal_Literal | Integer_Literal}
 Bounded_Range {}
   low {Number_Literal}
   high {Number_Literal}
-  ordered {True} if: high > low
+  ordered {Needs} high > low
   text {Text}
     1. {low}
     2. {".."}
@@ -688,7 +704,7 @@ Unique_Item {}                           # unique: True
 #   Half_Even {}
 #     remainder {Decimal} value: 0..1
 #     odd {True | False}
-#     direction {Direction} from: remainder & odd
+#     direction {Direction} (remainder, odd)
 #       {"toward_zero"} if: remainder < 0.5
 #       {"away_from_zero"} if: remainder > 0.5
 #       {"toward_zero"} if: remainder = 0.5 & odd = False
@@ -726,34 +742,55 @@ Items {}                                 # e.g. value: hour + 5, mod: 24
     2. {first}
     3. {rest}
 
+# A field line takes every item but 'if:': a field's condition is a
+# rule or a claim, written after {Needs} or {Claims} (Step 7).
+Field_Source {Count_Item | Sum_Item}
+Field_Named_Item {Field_Source | Filter_Item | Restriction | Unique_Item}
+
+Field_Item_Tail {}
+  next {Field_Named_Item}
+  text {Text}
+    1. {","}
+    2. {Gap}
+    3. {next}
+
+Field_Items {}                           # e.g. count: stops, filter: Late_Stop
+  first {Field_Named_Item}
+  rest {Field_Item_Tail} qty: 0..
+  text {Text}
+    1. {Gap}
+    2. {first}
+    3. {rest}
+
 
 # ---------- Step 6: Bases ----------
 
 # A mapping's inputs: one or two fields declared above it, of a finite
-# union type or a numeric type, joined by '&'. Text and list inputs are
-# not allowed. With at most two inputs, k cases give at most 2k
-# boundaries per input, so at most (2k + 1) x (2k + 1) cells to check:
-# every mapping is a two-dimensional table. Logic over more inputs is
-# written as a chain, where one mapping's output field is an input of
-# the next. 'from:' is the only item on its line, and always has cases
-# below.
+# union type or a numeric type, in parentheses after the output type
+# and joined by a comma. Text and list inputs are not allowed. With at
+# most two inputs, k cases give at most 2k boundaries per input, so at
+# most (2k + 1) x (2k + 1) cells to check: every mapping is a
+# two-dimensional table. Logic over more inputs is written as a chain,
+# where one mapping's output field is an input of the next.
+# Parentheses appear nowhere else, and never nest. No space goes inside
+# them or before the comma. Nothing follows them on the line, and cases
+# always follow below.
 Input_Tail {}
   next {Field_Name}
   text {Text}
-    1. {Pad}
-    2. {"&"}
-    3. {Pad}
-    4. {next}
+    1. {","}
+    2. {Gap}
+    3. {next}
 
-Inputs {}                                # from: kind & late_stops
+Inputs {}                                # (kind, late_stops)
   first {Field_Name}
   second {Input_Tail} qty: 0..1
   text {Text}
     1. {Gap}
-    2. {"from:"}
-    3. {Gap}
-    4. {first}
-    5. {second}
+    2. {"("}
+    3. {first}
+    4. {second}
+    5. {")"}
 
 # Inside braces, '|' is union. A union takes no qty: to repeat one,
 # name it, then give the name a qty.
@@ -822,8 +859,9 @@ Intersection_Box {}
 # types of a record line up in a column.
 # A refinement line has a single-item base and optional items. A union
 # line has two or more items in its base and no items after it, so
-# conditions on a union do not read. A mapping line has 'from:' and
-# nothing else after its type.
+# conditions on a union do not read. A mapping line has its inputs in
+# parentheses and nothing else after its type. A rule or claim line has
+# its condition and nothing else after its type.
 # A refinement of a record is a filter: its condition may name the
 # record's fields, e.g. 'Late_Stop {Stop} if: delay >= 2'.
 Refinement_Line {}                       # Single-item base, optional items
@@ -875,7 +913,7 @@ Record_Header {}
 Field_Line {}
   name {Field_Name}
   base {Item_Box}
-  items {Items} qty: 0..1
+  items {Field_Items} qty: 0..1
   finish {Line_End}
   text {Text}
     1. {Indent_2}
@@ -896,7 +934,27 @@ Union_Field_Line {}
     4. {base}
     5. {finish}
 
-Mapping_Line {}                          # refund {True | False} from: kind & late_stops
+# A rule or a claim: {Needs} or {Claims}, then its condition. A claim
+# holds one comparison.
+Condition_Kind {"Needs" | "Claims"}
+
+Condition_Line {}                        # plausible {Needs} delay <= 60
+  name {Field_Name}
+  kind {Condition_Kind}
+  conditions {Conditions}
+  finish {Line_End}
+  text {Text}
+    1. {Indent_2}
+    2. {name}
+    3. {Gap}
+    4. {"{"}
+    5. {kind}
+    6. {"}"}
+    7. {Gap}
+    8. {conditions}
+    9. {finish}
+
+Mapping_Line {}                          # refund {True | False} (kind, late_stops)
   name {Field_Name}
   base {Output_Box}
   inputs {Inputs}
@@ -914,7 +972,7 @@ Mapping_Line {}                          # refund {True | False} from: kind & la
 # inhabitant such as True. A case condition compares one input to a
 # literal or a range, with no arithmetic and no other fields, so every
 # case is a box: one interval or literal set per input. A case may name
-# only the inputs after 'from:'.
+# only the inputs in the parentheses.
 # Left side: the cases cover every input combination. Right side: every
 # value of the output type is produced by some case. Cases are disjoint.
 # All three checks are decidable by splitting each input at the case
@@ -1043,7 +1101,8 @@ Mapped_Field {}
   head {Mapping_Line}
   cases {Case_Line} qty: 1..
 
-Body_Content {Field_Line | Union_Field_Line | Mapped_Field | Shape | Body_Comment_Line}
+Field_Content {Field_Line | Union_Field_Line | Condition_Line | Mapped_Field}
+Body_Content {Field_Content | Shape | Body_Comment_Line}
 
 Body_Item {}                             # Blank lines only before more body
   gap {Blank_Line} qty: 0..
@@ -1082,7 +1141,7 @@ File {Blocks & Short_Lines}
 
 # Evaluation. Fields are evaluated lazily, each at most once.
 # A mapping keeps a candidate set, starting with all cases. For each
-# input in the order listed after 'from:': if no remaining candidate
+# input in the order listed in the parentheses: if no remaining candidate
 # mentions it (names it in a condition), stop. Otherwise evaluate it.
 # If it is INVALID, the result is INVALID. Otherwise drop every
 # candidate that constrains it and fails. Coverage and disjointness
@@ -1098,7 +1157,7 @@ File {Blocks & Short_Lines}
 And_Gate {}                              # Short-circuit AND over TRUE and FALSE
   left {True | False}
   right {True | False}
-  out {True | False} from: left & right
+  out {True | False} (left, right)
     {True} if: left = True & right = True
     {False} if: left = True & right = False
     {False} if: left = False             # No remaining case mentions right

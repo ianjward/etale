@@ -60,9 +60,9 @@ Only `= ∧ ∨ ∃ ⊢` appear, with `≤ < ≥ >` between numbers.
 | Type-named filter `lines.Big_Line` | The recursion needs both `T(x) ⊢ …` and `not T(x) ⊢ …`; `not T(x)` is positive because T is decidable | GEOMETRIC IF DECIDABLE |
 | `qty = 0`, "every item" (`xs.T.qty = xs.qty`) | Hidden `¬∃` / `∀` over a finite list; safe because the filter is decidable | GEOMETRIC IF DECIDABLE |
 | Context path `Order.customer` | `around(t, Order).customer`. "Nearest" hides "no closer Order", decidable on a finite parse tree. Total because the checker proves the type always sits inside an Order. | GEOMETRIC IF DECIDABLE; see Open 2 |
-| `{True}` rule field | a conjunct of the type's definition: texts that break it do not inhabit | GEOMETRIC |
-| `{True}` with no predicates | would say nothing; refused | META |
-| `{Claim}` claim | `N(t) ⊢ φ`, proved by the checker for every value | GEOMETRIC (a theorem) |
+| `{Needs}` rule field | a conjunct of the type's definition: texts that break it do not inhabit | GEOMETRIC |
+| `{Needs}` with no condition, a field whose whole type is `{True}` or `{False}`, a bare alias | would say nothing; refused | META |
+| `{Claims}` claim | `N(t) ⊢ φ`, proved by the checker for every value | GEOMETRIC (a theorem) |
 | Mapping field and its cases | one sequent per case; coverage and disjointness (checked by splitting at case boundaries) make the cases define a total function | GEOMETRIC IF DECIDABLE |
 | `unique` | `N(t) ∧ N(u) ∧ rows_of_one_list(t, u) ∧ t.f = u.f ⊢ t = u`, a Horn sequent; `=` is the language's equality (numbers by value) | GEOMETRIC IF DECIDABLE |
 | `places = p` | `places(x) ≤ p`, i.e. `∃ n. x * 10^p = n`. "No implicit rounding" is META. | GEOMETRIC |

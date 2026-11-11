@@ -10,7 +10,7 @@
 Half_Even {}
   remainder {Decimal} value: 0..1
   odd {True | False}
-  direction {Direction} from: remainder & odd
+  direction {Direction} (remainder, odd)
     {"toward_zero"} if: remainder < 0.5
     {"away_from_zero"} if: remainder > 0.5
     {"toward_zero"} if: remainder = 0.5 & odd = False
@@ -19,20 +19,20 @@ Half_Even {}
 # Round half up: a tie goes away from zero, so 2.5 is 3 and -2.5 is -3.
 Half_Up {}
   remainder {Decimal} value: 0..1
-  direction {Direction} from: remainder
+  direction {Direction} (remainder)
     {"toward_zero"} if: remainder < 0.5
     {"away_from_zero"} if: remainder >= 0.5
 
 # Round down, toward the lower neighbour: 2.7 is 2 and -2.3 is -3.
 Floor {}
   negative {True | False}
-  direction {Direction} from: negative
+  direction {Direction} (negative)
     {"toward_zero"} if: negative = False
     {"away_from_zero"} if: negative = True
 
 # Round up, toward the higher neighbour: 2.3 is 3 and -2.7 is -2.
 Ceiling {}
   negative {True | False}
-  direction {Direction} from: negative
+  direction {Direction} (negative)
     {"away_from_zero"} if: negative = False
     {"toward_zero"} if: negative = True

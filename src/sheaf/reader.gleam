@@ -3,8 +3,10 @@
 //// included, must then match File in exactly one way. The program cross-checks
 //// the two block by block, so the reader cannot silently disagree with the spec.
 ////
-//// Lines have the form 'name {type} item: value, item: value' (the header of
-//// language.sheaf). The reader turns them into the model the checker knows:
+//// Most lines have the form 'name {type} item: value, item: value' (the header
+//// of language.sheaf); a rule or claim is 'name {Needs} condition' or
+//// 'name {Claims} condition', and a mapping 'name {type} (input, input)'.
+//// The reader turns them into the model the checker knows:
 //// value:, count: and sum: become the line's own 'val' predicates, a
 //// fold becomes a path ending in qty or sum, qty: becomes the qty setting, and
 //// a record's text shape orders its stored fields, with each position that
@@ -540,7 +542,6 @@ type LineItem {
   ISum(List(String))
   IFilter(String)
   IIf(Block)
-  IFrom(List(String))
   IQty(Value)
   IValue(Value)
   IPlaces(Value)
@@ -550,8 +551,8 @@ type LineItem {
 }
 
 pub const item_names = [
-  "from", "count", "sum", "filter", "if", "qty", "value", "places", "mod",
-  "unique", "round",
+  "count", "sum", "filter", "if", "qty", "value", "places", "mod", "unique",
+  "round",
 ]
 
 /// The items of a line, joined by commas.
@@ -566,6 +567,25 @@ fn line_items(
         sc,
         "calc: is gone: a calculation is written after value:, e.g. value: a * 2",
       )
+    False if word == "from" ->
+      err(
+        sc,
+        "from: is gone: a mapping's inputs go in parentheses after the type, e.g. refund {True | False} (kind, late_stops)",
+      )
+    False if word == "" ->
+      case peek(sc) {
+        "(" ->
+          err(
+            sc,
+            "inputs in parentheses belong to a mapping: a field of a record, with its cases below",
+          )
+        _ ->
+          err(
+            sc,
+            "expected an item, 'name: value', named one of "
+              <> string.join(item_names, " "),
+          )
+      }
     False ->
       err(
         sc,
@@ -619,19 +639,6 @@ fn item_value(sc: Scan, word: String) -> R(LineItem) {
         #(IRound(r.0), r.1)
       })
     "if" -> result.map(block(sc), fn(r) { #(IIf(r.0), r.1) })
-    "from" -> {
-      use #(a, sc) <- result.try(field_name(sc, "an input field"))
-      case sym(sc, "&") {
-        Some(sc2) -> {
-          use #(b, sc3) <- result.try(field_name(sc2, "a second input field"))
-          case has_sym(sc3, "&") {
-            True -> err(sc3, "a mapping has one or two inputs")
-            False -> Ok(#(IFrom([a, b]), sc3))
-          }
-        }
-        None -> Ok(#(IFrom([a]), sc))
-      }
-    }
     "qty" -> {
       use #(v, sc2) <- result.try(value(sc))
       case v {
@@ -816,7 +823,7 @@ fn item_clauses(
     IMod(v) -> Ok([Setting("mod", v)])
     IUnique(True) -> Ok([Flag("unique")])
     IRound(rule) -> Ok([Setting("round", VPath([rule]))])
-    IUnique(False) | IFilter(_) | IIf(_) | IFrom(_) -> Ok([])
+    IUnique(False) | IFilter(_) | IIf(_) -> Ok([])
   }
 }
 
@@ -1005,11 +1012,6 @@ fn read_lines(
           let d =
             Decl(name, model.Union, n, file, [], model.empty, [], [], "", docs)
           use #(#(its, c), _) <- result.try(line_tail(sc))
-          use _ <- result.try(ok_unless(
-            list.any(its, fn(p) { p.0 == "from" }),
-            sc,
-            "from: belongs to a mapping, which is a field of a record",
-          ))
           case bx {
             EmptyBox -> {
               use _ <- result.try(no_items(sc, its, "a record line"))
@@ -1031,6 +1033,7 @@ fn read_lines(
               use #(positions, rest2, n2) <- result.try(
                 read_positions(rest, n + 1, file, []),
               )
+              use _ <- result.try(bare_alias(sc, name, one, its, positions))
               let kind = case positions {
                 [] -> model.Refine
                 _ -> model.Layout
@@ -1390,77 +1393,243 @@ fn field_line(
   ))
   use sc <- result.try(spaces_then(sc))
   use #(bx, sc) <- result.try(box(sc))
-  use #(#(its, c), _) <- result.try(line_tail(sc))
   let f = Field(name, [], model.empty, None, line, "", model.Stored)
-  let inputs =
-    list.find_map(its, fn(p) {
-      case p.1 {
-        IFrom(ins) -> Ok(ins)
-        _ -> Error(Nil)
-      }
-    })
-  case bx, inputs {
+  let after = skip_spaces(sc)
+  case bx, peek(after) {
     EmptyBox, _ -> err(sc, "a field needs a type")
     InterBox(_), _ ->
       err(sc, "an intersection is a top-level line: name it, then use the name")
-    ItemsBox(outs), Ok(ins) -> {
-      use _ <- result.try(ok_unless(
-        list.length(its) > 1,
-        sc,
-        "from: is the only item on its line",
-      ))
-      use #(cases, rest2, n2) <- result.try(
-        read_cases(rest, line + 1, file, []),
-      )
-      case cases {
-        [] ->
-          Error(MapError(
-            "the mapping '"
-              <> name
-              <> "' needs case lines, '    {output} if: conditions'",
-            file,
-            line,
-            1,
-          ))
+    ItemsBox(outs), "(" if after.i > sc.i ->
+      mapping_line(f, outs, adv(after, 1), rest, line, file)
+    ItemsBox([TypeItem(kind)]), _ if kind == "Needs" || kind == "Claims" ->
+      condition_line(f, kind, sc, rest, line)
+    ItemsBox(outs), _ -> {
+      use #(#(its, c), _) <- result.try(line_tail(sc))
+      use _ <- result.try(old_forms(sc, outs, its))
+      case outs {
+        [one] -> {
+          use _ <- result.try(case one, its {
+            StrItem(_), [] | NumItem(..), [] ->
+              err(
+                sc,
+                "this field can hold only one text, so it holds no data: put the text in the record's text shape",
+              )
+            _, _ -> Ok(Nil)
+          })
+          use b <- result.try(assemble(sc, its))
+          let f = Field(..f, items: [one], preds: b, comment: c)
+          Ok(#(Field(..f, role: model.classify(f)), rest, line + 1))
+        }
         _ -> {
-          let f =
-            Field(
-              ..f,
-              items: outs,
-              comment: c,
-              mapping: Some(Mapping(ins, outs, cases)),
-            )
-          Ok(#(Field(..f, role: model.classify(f)), rest2, n2))
+          use _ <- result.try(no_items(
+            sc,
+            its,
+            "a union field (to restrict it, name the union as a type first)",
+          ))
+          let f = Field(..f, items: outs, comment: c)
+          Ok(#(Field(..f, role: model.classify(f)), rest, line + 1))
         }
       }
     }
-    ItemsBox([one]), Error(_) -> {
-      use _ <- result.try(ok_unless(
-        one == TypeItem("Claim") && list.any(its, fn(p) { p.0 != "if" }),
+  }
+}
+
+/// A field line that is not a rule, a claim or a mapping: refuse the forms
+/// that are gone, and a field that could only ever be TRUE or FALSE.
+fn old_forms(
+  sc: Scan,
+  outs: List(Item),
+  its: List(#(String, LineItem)),
+) -> Result(Nil, MapError) {
+  let has_if = list.any(its, fn(p) { p.0 == "if" })
+  case outs, has_if {
+    [TypeItem("True")], True ->
+      err(
         sc,
-        "a claim has one item, if:",
-      ))
-      use _ <- result.try(case one, its {
-        StrItem(_), [] | NumItem(..), [] ->
-          err(
-            sc,
-            "this field can hold only one text, so it holds no data: put the text in the record's text shape",
-          )
-        _, _ -> Ok(Nil)
-      })
-      use b <- result.try(assemble(sc, its))
-      let f = Field(..f, items: [one], preds: b, comment: c)
-      Ok(#(Field(..f, role: model.classify(f)), rest, line + 1))
-    }
-    ItemsBox(outs), Error(_) -> {
-      use _ <- result.try(no_items(
+        "a rule is written name {Needs} condition, e.g. plausible {Needs} delay <= 60",
+      )
+    [TypeItem("Claim")], True ->
+      err(
         sc,
-        its,
-        "a union field (to restrict it, name the union as a type first)",
+        "a claim is written name {Claims} condition, e.g. nonnegative {Claims} total >= 0",
+      )
+    [TypeItem("True")], _ | [TypeItem("False")], _ ->
+      err(
+        sc,
+        "a field whose whole type is {True} or {False} always holds that value, so it says nothing: a rule is name {Needs} condition, and a TRUE or FALSE value is {True | False}",
+      )
+    _, True ->
+      err(
+        sc,
+        "if: is for refinements and cases: a field's condition is a rule, name {Needs} condition, or a claim, name {Claims} condition",
+      )
+    _, _ -> Ok(Nil)
+  }
+}
+
+/// 'name {Needs} condition' or 'name {Claims} condition': the condition comes
+/// straight after the type, and nothing else is on the line. A claim holds one
+/// comparison.
+fn condition_line(
+  f: Field,
+  kind: String,
+  sc: Scan,
+  rest: List(String),
+  line: Int,
+) -> Result(#(Field, List(String), Int), MapError) {
+  let example = case kind {
+    "Needs" -> "plausible {Needs} delay <= 60"
+    _ -> "nonnegative {Claims} total >= 0"
+  }
+  case gap(sc) {
+    None ->
+      err(
+        sc,
+        "{" <> kind <> "} takes its condition straight after it, e.g. " <> example,
+      )
+    Some(sc2) ->
+      case looks_like_condition(sc2) {
+        False -> {
+          let #(word, after) = take_while(sc2, is_lower_name_char)
+          case word == "if" && at(after, ":") {
+            True ->
+              err(
+                sc2,
+                "{"
+                  <> kind
+                  <> "} takes its condition with no if:, e.g. "
+                  <> example,
+              )
+            False ->
+              err(
+                sc2,
+                "{"
+                  <> kind
+                  <> "} takes a condition and nothing else, e.g. "
+                  <> example,
+              )
+          }
+        }
+        True -> {
+          use #(b, sc3) <- result.try(block(sc2))
+          use #(c, _) <- result.try(line_end(sc3))
+          use _ <- result.try(case kind, b {
+            "Claims", Block(AndConn, [Plain(..)]) -> Ok(Nil)
+            "Claims", _ ->
+              err(sc2, "a claim holds one comparison, e.g. " <> example)
+            _, _ -> Ok(Nil)
+          })
+          let f =
+            Field(..f, items: [TypeItem(kind)], preds: b, comment: c)
+          Ok(#(Field(..f, role: model.classify(f)), rest, line + 1))
+        }
+      }
+  }
+}
+
+/// '(a)' or '(a, b)' after a mapping's output type, then its cases. The scan
+/// starts just after '('.
+fn mapping_line(
+  f: Field,
+  outs: List(Item),
+  sc: Scan,
+  rest: List(String),
+  line: Int,
+  file: String,
+) -> Result(#(Field, List(String), Int), MapError) {
+  use _ <- result.try(case peek(sc) {
+    " " -> spaced_inputs(sc)
+    _ -> Ok(Nil)
+  })
+  use #(a, sc) <- result.try(field_name(sc, "an input field"))
+  use #(ins, sc) <- result.try(case peek(sc) {
+    "," ->
+      case gap(adv(sc, 1)) {
+        Some(sc2) -> {
+          use #(b, sc3) <- result.try(field_name(sc2, "a second input field"))
+          Ok(#([a, b], sc3))
+        }
+        None -> err(adv(sc, 1), "expected a space after ','")
+      }
+    _ -> Ok(#([a], sc))
+  })
+  use sc <- result.try(case peek(sc), peek(skip_spaces(sc)) {
+    ")", _ -> Ok(adv(sc, 1))
+    ",", _ -> err(sc, "a mapping has one or two inputs")
+    " ", "&" | "&", _ ->
+      err(sc, "a mapping's inputs are joined by a comma: (kind, late_stops)")
+    " ", _ -> spaced_inputs(sc)
+    _, _ -> err(sc, "expected ')' after a mapping's inputs")
+  })
+  use #(c, _) <- result.try(case line_end(sc) {
+    Ok(r) -> Ok(r)
+    Error(_) -> err(sc, "nothing follows a mapping's inputs on its line")
+  })
+  use _ <- result.try(case outs {
+    [TypeItem("True")] | [TypeItem("False")] ->
+      err(
+        sc,
+        "a mapping whose only output is {True} or {False} always gives that value, so it says nothing",
+      )
+    _ -> Ok(Nil)
+  })
+  use #(cases, rest2, n2) <- result.try(read_cases(rest, line + 1, file, []))
+  case cases {
+    [] ->
+      Error(MapError(
+        "the mapping '"
+          <> f.name
+          <> "' needs case lines, '    {output} if: conditions'",
+        file,
+        line,
+        1,
       ))
-      let f = Field(..f, items: outs, comment: c)
-      Ok(#(Field(..f, role: model.classify(f)), rest, line + 1))
+    _ -> {
+      let f =
+        Field(
+          ..f,
+          items: outs,
+          comment: c,
+          mapping: Some(Mapping(ins, outs, cases)),
+        )
+      Ok(#(Field(..f, role: model.classify(f)), rest2, n2))
     }
+  }
+}
+
+fn spaced_inputs(sc: Scan) -> Result(a, MapError) {
+  err(
+    sc,
+    "no space goes inside a mapping's parentheses or before its comma, e.g. (kind, late_stops)",
+  )
+}
+
+/// A top-level 'Name {Other}' with nothing after it adds no constraint, so two
+/// names would mean one thing. Needs and Claims, the two names for TRUE that
+/// language.sheaf declares, are the only exceptions.
+fn bare_alias(
+  sc: Scan,
+  name: String,
+  one: Item,
+  its: List(#(String, LineItem)),
+  positions: List(Position),
+) -> Result(Nil, MapError) {
+  case one, its, positions {
+    TypeItem("True"), [], [] if name == "Needs" || name == "Claims" -> Ok(Nil)
+    TypeItem(t), [], [] ->
+      err(
+        sc,
+        "'"
+          <> name
+          <> " {"
+          <> t
+          <> "}' adds nothing to "
+          <> t
+          <> ", so two names would mean one thing: use "
+          <> t
+          <> ", or add a condition or items",
+      )
+    _, _, _ -> Ok(Nil)
   }
 }
 

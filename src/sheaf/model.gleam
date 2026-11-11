@@ -221,10 +221,13 @@ pub fn box_text(items: List(Item), b: Block) -> String {
   }
 }
 
+/// A mapping's head as written after its name: '{Out} (a, b)'.
 pub fn mapping_text(m: Mapping) -> String {
-  string.join(m.inputs, " & ")
-  <> " -> "
+  "{"
   <> { list.map(m.outputs, item_text) |> string.join(" | ") }
+  <> "} ("
+  <> string.join(m.inputs, ", ")
+  <> ")"
 }
 
 pub fn kind_text(k: Kind) -> String {
@@ -340,9 +343,10 @@ pub fn classify(f: Field) -> Role {
     None -> {
       let ps = plains(f.preds)
       case f.items, ps, settings(f.preds) {
-        [TypeItem("True")], [], _ -> Constant
-        [TypeItem("True")], _, _ -> Rule
-        [TypeItem("Claim")], [Plain(path, _, _)], [] if path != ["val"] -> Claim
+        [TypeItem("Needs")], [], _ -> Constant
+        [TypeItem("Needs")], _, _ -> Rule
+        [TypeItem("Claims")], [Plain(path, _, _)], [] if path != ["val"] ->
+          Claim
         _, _, _ ->
           case definition(f) {
             Some(_) -> Computed
