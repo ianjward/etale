@@ -39,7 +39,7 @@ jobs:
       - name: Print the compiled JavaScript (temporary)
         run: |
           echo "===JS-BEGIN==="
-          tar czf - build/dev/javascript | base64 -w 0
+          tar czf - build/dev/javascript | base64 -w 1000
           echo
           echo "===JS-END==="
       - run: gleam test
