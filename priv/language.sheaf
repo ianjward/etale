@@ -232,7 +232,10 @@ Claims {True}
 # A collected list takes one field of each item:
 #   delays {Integer...} (stops.delay)
 # A kept list holds the item type of its source. To sum the delays of
-# the late stops, keep first, then collect from the kept list. A
+# the late stops, keep first, then collect from the kept list. A kept
+# list may keep from a kept list, and their conditions are joined by
+# '&'. When that would mix '&' with '|', it is refused: give the item a
+# field worked out by cases and keep by that field instead. A
 # condition is one comparison, or several joined by '&' or by '|'. Each
 # comparison tests a field of the items against a number, a text, a
 # range, a choice, a constant or another field of the same item, as in
