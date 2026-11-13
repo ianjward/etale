@@ -1716,14 +1716,14 @@ fn timetable() -> Outcome {
 /// 'order:' on a text field names the mapping that ranks its characters.
 fn ordered_texts() -> Outcome {
   let lib =
-    "Name_Character {\" \" | Uppercase}\nName {Name_Character...} count: 1..9\n"
-    <> "Name_Order {}\n  character {Name_Character}\n  rank {Integer} (character)\n"
+    "Pair_Character {\" \" | Uppercase}\nPair_Name {Pair_Character...} count: 1..9\n"
+    <> "Pair_Order {}\n  character {Pair_Character}\n  rank {Integer} (character)\n"
     <> "    {0} (\" \")\n    {1..26} (\"A\"..\"Z\")\n"
   let pair = fn(order, rule) {
     lib
-    <> "Pair {}\n  a {Name}"
+    <> "Pair {}\n  a {Pair_Name}"
     <> order
-    <> "\n  b {Name}"
+    <> "\n  b {Pair_Name}"
     <> order
     <> "\n"
     <> rule
@@ -1736,7 +1736,7 @@ fn ordered_texts() -> Outcome {
     }
   }
   let assert Ok(#(p, rep)) =
-    source(pair(" order: Name_Order.rank", "  in_order {Needs} (a <= b)\n"))
+    source(pair(" order: Pair_Order.rank", "  in_order {Needs} (a <= b)\n"))
   all([
     expect(check.errors(rep) == [], "ordered texts check clean: " <> msgs(rep)),
     expect(program.check(p, "Pair", "AB,AC").ok, "AB before AC"),
@@ -1749,14 +1749,14 @@ fn ordered_texts() -> Outcome {
     ),
     expect(
       flagged(
-        lib <> "X {}\n  a {Name} order: Name_Order\n",
+        lib <> "X {}\n  a {Pair_Name} order: Pair_Order\n",
         "names the mapping that gives the rank",
       ),
       "order: names the mapping",
     ),
     expect(
       flagged(
-        lib <> "X {}\n  a {Integer} order: Name_Order.rank\n",
+        lib <> "X {}\n  a {Integer} order: Pair_Order.rank\n",
         "already ordered",
       ),
       "a number is already ordered",
@@ -1764,8 +1764,8 @@ fn ordered_texts() -> Outcome {
     expect(
       flagged(
         lib
-          <> "Wide {Character...} count: 1..9\nX {}\n  a {Wide} order: Name_Order.rank\n",
-        "which Name_Order does not rank",
+          <> "Wide {Character...} count: 1..9\nX {}\n  a {Wide} order: Pair_Order.rank\n",
+        "which Pair_Order does not rank",
       ),
       "an order that does not rank every character",
     ),

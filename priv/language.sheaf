@@ -752,11 +752,12 @@ Wrap_Property {}                         # Example: 'wrap_at: Minutes_Per_Day'
     2. {Gap}
     3. {modulus}
 
-# 'unique:' goes on a list and names a field of its items: no two items
-# of the list have the same value in that field. Its opposite, two equal
-# items, is positive and always decidable.
+# 'unique:' goes on a list and names a key of its items, a field or one
+# dot from it: no two items of the list have the same value there. It
+# holds on that list only, not on other lists of the same items. Its
+# opposite, two equal items, is positive and always decidable.
 Unique_Property {}                       # Example: 'unique: station'
-  key {Field_Name}
+  key {Path}
   text {Text}
     1. {"unique:"}
     2. {Gap}
