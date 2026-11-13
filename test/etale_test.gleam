@@ -437,7 +437,20 @@ fn ambiguity() -> Outcome {
   let assert Ok(#(p, _)) =
     source("Piece {\"a\" | \"aa\"}\nTwo {}\n  x {Piece}\n  y {Piece}\n")
   let o = program.check(p, "Two", "aaa")
-  expect(!o.ok && o.ambiguous, "aaa splits two ways")
+  // A record's rules are checked before at most two readings are kept, so a
+  // reading that fails a rule cannot hide two that hold: "1020" reads as 1020,
+  // as 10 then 20, and as 1 then 20.
+  let assert Ok(#(q, _)) =
+    source(
+      "Chain {}\n  key {Integer}\n  rest {Chain} qty: 0..1\n  later {Integer} count: rest\n  in_order {Needs} later = 0 | key <= rest.key\n",
+    )
+  let chain = program.check(q, "Chain", "1020")
+  let single = program.check(q, "Chain", "5")
+  all([
+    expect(!o.ok && o.ambiguous, "aaa splits two ways"),
+    expect(!chain.ok && chain.ambiguous, "1020 reads three ways that hold"),
+    expect(single.ok, "5 reads one way"),
+  ])
 }
 
 /// No imports: a file sees its folder, the folders above, each subfolder's
