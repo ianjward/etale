@@ -1674,10 +1674,11 @@ fn check_rounding(c: Ctx, d: Decl, f: Field, rule: Value) -> Nil {
       )
     Some(_) -> Nil
   }
+  let unit = model.setting(f.preds, "round_unit") != None
   case definition(f), n {
     Some(VArith("/", [_, divisor])), _ -> check_divisor(c, d, f, divisor)
     // a unit such as 0.05 can round a value of the same places
-    _, _ if model.setting(f.preds, "round_unit") != None -> Nil
+    _, _ if unit -> Nil
     Some(def), Some(n) ->
       case places(c, d, def, []) {
         Some(got) if got <= n ->
