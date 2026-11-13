@@ -298,9 +298,19 @@ pub fn verify_file(
           }
         })
       let want =
-        list.map(entries, fn(e) {
+        list.filter_map(entries, fn(e) {
           case e {
-            DeclEntry(d) -> #(block_kind(d.kind), d.name)
+            DeclEntry(d) ->
+              case reader.is_hidden_decl(d.name) {
+                True -> Error(Nil)
+                False -> Ok(#(block_kind(d.kind), d.name))
+              }
+          }
+        })
+      let entries =
+        list.filter(entries, fn(e) {
+          case e {
+            DeclEntry(d) -> !reader.is_hidden_decl(d.name)
           }
         })
       case list.map(got, fn(g) { #(g.0, g.1) }) == want {
@@ -342,7 +352,10 @@ pub fn verify_file(
                   == {
                     d.fields
                     |> list.map(fn(f) { f.name })
-                    |> list.filter(fn(n) { !reader.is_position_field(n) })
+                    |> list.filter(fn(n) {
+                      !reader.is_position_field(n) && !reader.is_hidden_field(n)
+                    })
+                    |> list.append(d.worked)
                     |> list.sort(string.compare)
                   }
                 }
@@ -739,8 +752,11 @@ pub fn check(p: Program, type_name: String, text: String) -> Outcome {
           evaluate.settle(p.ev, v)
           let recs = evaluate.all_records(p.ev, v)
           list.each(recs, fn(r) { evaluate.evaluate_all(p.ev, r) })
-          // fields that reach a record around their own are decided only now
-          case record_failures(recs) {
+          // fields that reach a record around their own are decided only now,
+          // and so is the order of each ordered list
+          case
+            list.append(record_failures(recs), evaluate.order_violations(p.ev, v))
+          {
             [] -> Outcome(True, type_name, Some(v), [], "", False, recs)
             fails ->
               Outcome(
@@ -775,6 +791,7 @@ pub fn check(p: Program, type_name: String, text: String) -> Outcome {
               let fails =
                 record_failures(recs)
                 |> list.append(evaluate.unique_violations(p.ev, v))
+                |> list.append(evaluate.order_violations(p.ev, v))
               let fails =
                 list.append(
                   list.filter(fails, fn(x) { !string.contains(x, "INVALID") }),

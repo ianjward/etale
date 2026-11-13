@@ -1,15 +1,14 @@
 # An operation as a mapping in one record, tied to its inputs by rules in the record that holds
 # the products. Mul is exclusive or on 0 and 1: its text is the two inputs, and out is
 # computed. Assoc holds four Muls and says what each one takes: 'ab_takes_a_and_b' needs the
-# inputs of ab to be the a and b of this Assoc, so 'ab.out' is a times b. A path has one dot,
-# so Assoc names each product ('ab_out') before a rule reads it.
+# inputs of ab to be the a and b of this Assoc, so 'ab.out' is a times b. Each path in a
+# rule has one dot, so a rule can tie one product's output to another's input.
 #
 # An Assoc is eleven digits, with no newline at the end: a, b and c, then the inputs of ab, bc,
 # (ab)c and a(bc). Exclusive or is associative, so every text whose products fit their rules
 # is accepted (xor.txt); a product that does not fit is refused, naming its rule
 # (xor_bc.txt, xor_ab_c.txt).
-Element {Integer} value: 0..1
-  1. {Digit}
+Element {Integer} (0..1)
 
 Bit {0 | 1}
 
@@ -17,10 +16,13 @@ Mul {}
   left {Element}
   right {Element}
   out {Bit} (left, right)
-    {0} if: left = 0 & right = 0
-    {1} if: left = 0 & right = 1
-    {1} if: left = 1 & right = 0
-    {0} if: left = 1 & right = 1
+    {0} (left = 0 & right = 0)
+    {1} (left = 0 & right = 1)
+    {1} (left = 1 & right = 0)
+    {0} (left = 1 & right = 1)
+  text {Text}
+    1. {left} digits: 1
+    2. {right} digits: 1
 
 Assoc {}
   a {Element}
@@ -28,12 +30,18 @@ Assoc {}
   c {Element}
   ab {Mul}
   bc {Mul}
-  ab_out {Integer} value: ab.out
-  bc_out {Integer} value: bc.out
   ab_c {Mul}
   a_bc {Mul}
-  ab_takes_a_and_b {Needs} ab.left = a & ab.right = b
-  bc_takes_b_and_c {Needs} bc.left = b & bc.right = c
-  ab_c_takes_ab_out_and_c {Needs} ab_c.left = ab_out & ab_c.right = c
-  a_bc_takes_a_and_bc_out {Needs} a_bc.left = a & a_bc.right = bc_out
-  same {Needs} ab_c.out = a_bc.out
+  ab_takes_a_and_b {Needs} (ab.left = a & ab.right = b)
+  bc_takes_b_and_c {Needs} (bc.left = b & bc.right = c)
+  ab_c_takes_ab_and_c {Needs} (ab_c.left = ab.out & ab_c.right = c)
+  a_bc_takes_a_and_bc {Needs} (a_bc.left = a & a_bc.right = bc.out)
+  same {Needs} (ab_c.out = a_bc.out)
+  text {Text}
+    1. {a} digits: 1
+    2. {b} digits: 1
+    3. {c} digits: 1
+    4. {ab}
+    5. {bc}
+    6. {ab_c}
+    7. {a_bc}

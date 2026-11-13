@@ -1,12 +1,12 @@
 # Orders that belong to customers. A relation between the items of two lists is stated in
 # the record that holds both: every order's customer is the code of one customer in the
-# book, and 'unique: True' on the code makes it one.
+# book, and 'unique: code' on the customers list makes it one.
 Customer_Code {Text}
   1. {"C"}
-  2. {Digit} qty: 3
+  2. {Digit...} count: 3
 
 Customer {}
-  code {Customer_Code} unique: True
+  code {Customer_Code}
   name {Line_Text}
   text {Text}
     1. {code}
@@ -24,9 +24,9 @@ Order {}
     4. {Newline}
 
 Book {}
-  customers {Customer} qty: 1..
-  orders {Order} qty: 1..
-  each_order_has_its_customer {Needs} orders.customer = customers.code
+  customers {Customer...} count: 1.., unique: code
+  orders {Order...} count: 1..
+  each_order_has_its_customer {Needs} (orders.customer in customers.code)
   text {Text}
     1. {customers}
     2. {"---"}

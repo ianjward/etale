@@ -3,15 +3,15 @@
 # A lowercase identifier: a letter, then letters, digits or '_'.
 Identifier {Text}
   1. {Lowercase}
-  2. {Lower_Name_Character} qty: 0..
+  2. {Lower_Name_Character...}
 
 # A word of letters.
 Letter {Uppercase | Lowercase}
-Word {Letter} qty: 1..
+Word {Letter...} count: 1..
 
 # A domain name label and an email address, e.g. "ana@mail.example".
 Host_Character {Lowercase | Digit | "-"}
-Host_Label {Host_Character} qty: 1..63
+Host_Label {Host_Character...} count: 1..63
 Dot_Label {Text}
   1. {"."}
   2. {Host_Label}
@@ -20,7 +20,7 @@ Email_Address {Text}
   1. {Identifier}
   2. {"@"}
   3. {Host_Label}
-  4. {Dot_Label} qty: 1..
+  4. {Dot_Label...} count: 1..
 
 # One line of text and a block of lines.
 Text_Line {}
@@ -30,5 +30,5 @@ Text_Line {}
     2. {Newline}
 
 Paragraph {}
-  lines {Text_Line} qty: 1..
-  line_count {Integer} count: lines
+  lines {Text_Line...} count: 1..
+  line_count {Integer} (lines.count)

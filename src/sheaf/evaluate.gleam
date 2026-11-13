@@ -8,6 +8,7 @@
 import gleam/dict.{type Dict}
 import gleam/int
 import gleam/list
+import gleam/order
 import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/set
@@ -1394,6 +1395,25 @@ fn fold(_ev: Ev, s: Val, kind: String) -> Val {
           Error(_) -> VInvalid
         }
       }
+    // the checker allows .min and .max only on a list that is never empty
+    "min" | "max" ->
+      list.try_fold(items, None, fn(acc, x) {
+        case x, acc {
+          VNumber(d), None -> Ok(Some(d))
+          VNumber(d), Some(a) ->
+            Ok(Some(case decimal.compare(d, a), kind {
+              order.Lt, "min" | order.Gt, "max" -> d
+              _, _ -> a
+            }))
+          _, _ -> Error(Nil)
+        }
+      })
+      |> fn(r) {
+        case r {
+          Ok(Some(d)) -> VNumber(d)
+          _ -> VInvalid
+        }
+      }
     _ -> VInvalid
   }
 }
@@ -1594,6 +1614,85 @@ fn all_loop(ev: Ev, v: Val, acc: List(Rec)) -> List(Rec) {
       })
     VSeqv(xs, _, _) -> list.fold(xs, acc, fn(a, x) { all_loop(ev, x, a) })
     _ -> acc
+  }
+}
+
+/// Every list with 'order: key' whose items' keys go down somewhere: the
+/// first such pair in each list.
+pub fn order_violations(ev: Ev, v: Val) -> List(String) {
+  ov_loop(ev, v, []) |> list.reverse
+}
+
+fn ov_loop(ev: Ev, v: Val, acc: List(String)) -> List(String) {
+  case v {
+    VRecord(r) ->
+      list.fold(r.decl.fields, acc, fn(acc, f) {
+        case model.is_stored(f) {
+          False -> acc
+          True -> {
+            let inner = get(ev, r, f.name)
+            let acc = case model.setting(f.preds, "order"), inner {
+              Some(VStr(key)), VSeqv(xs, _, _) ->
+                case first_out_of_order(ev, xs, string.split(key, "."), 1) {
+                  Some(#(i, a, b)) -> [
+                    r.decl.name
+                      <> "."
+                      <> f.name
+                      <> " is ordered by "
+                      <> key
+                      <> ", but item "
+                      <> int.to_string(i + 1)
+                      <> " has "
+                      <> show(b)
+                      <> ", below item "
+                      <> int.to_string(i)
+                      <> "'s "
+                      <> show(a),
+                    ..acc
+                  ]
+                  None -> acc
+                }
+              _, _ -> acc
+            }
+            ov_loop(ev, inner, acc)
+          }
+        }
+      })
+    VSeqv(xs, _, _) -> list.fold(xs, acc, fn(a, x) { ov_loop(ev, x, a) })
+    _ -> acc
+  }
+}
+
+/// An item's key: a field, or a field of a field's record.
+fn key_of(ev: Ev, x: Val, key: List(String)) -> Val {
+  list.fold(key, x, fn(v, step) {
+    case v {
+      VRecord(r) -> get(ev, r, step)
+      _ -> VInvalid
+    }
+  })
+}
+
+fn first_out_of_order(
+  ev: Ev,
+  xs: List(Val),
+  key: List(String),
+  i: Int,
+) -> Option(#(Int, Val, Val)) {
+  case xs {
+    [a, b, ..rest] -> {
+      let ka = key_of(ev, a, key)
+      let kb = key_of(ev, b, key)
+      case ka, kb {
+        VNumber(x), VNumber(y) ->
+          case decimal.compare(x, y) {
+            order.Gt -> Some(#(i, ka, kb))
+            _ -> first_out_of_order(ev, [b, ..rest], key, i + 1)
+          }
+        _, _ -> first_out_of_order(ev, [b, ..rest], key, i + 1)
+      }
+    }
+    _ -> None
   }
 }
 

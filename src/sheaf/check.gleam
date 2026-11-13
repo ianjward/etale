@@ -190,8 +190,24 @@ fn holders(c: Ctx, x: String) -> List(String) {
     || list.any(d.fields, fn(f) { typed(f.items) })
     || list.any(decl_paths(d), fn(p) { list.contains(list.drop(p, 1), x) })
   })
-  |> list.map(fn(d) { d.name })
+  // a named list of records, 'Stops {Stop...}', is not around its items:
+  // whatever holds the list holds them
+  |> list.flat_map(fn(d) {
+    case named_list(c, d) {
+      True -> holders(c, d.name)
+      False -> [d.name]
+    }
+  })
+  |> list.unique
   |> list.sort(string.compare)
+}
+
+fn named_list(c: Ctx, d: Decl) -> Bool {
+  d.kind == model.Refine
+  && case d.items {
+    [TypeItem(t)] -> option.is_some(model.record_of(c.decls, t))
+    _ -> False
+  }
 }
 
 /// A type that holds x without a u around it, if there is one.
@@ -282,7 +298,7 @@ fn type_ok(
             line,
             "'"
               <> d.name
-              <> "' refers to itself; only a record field may, as a sequence whose qty starts at 0",
+              <> "' refers to itself; only a record field may, as a list whose count starts at 0",
             d.name,
           )
         _, _, True -> {
@@ -386,8 +402,8 @@ fn check_settings(
 }
 
 fn mod_message() -> String {
-  "'mod =' needs a positive number written out, e.g. mod = 7: "
-  <> "a zero, negative or computed divisor has no guard"
+  "wrap_at: needs a constant above 0, e.g. wrap_at: Hours_Per_Day: "
+  <> "a zero or negative wrap has no guard"
 }
 
 /// The written divisor of a field's 'mod', when it has one.
@@ -473,7 +489,7 @@ fn check_record(c: Ctx, d: Decl) -> Nil {
             <> f.name
             <> " {Needs}' has no condition, so it would always hold; give it one, e.g. "
             <> f.name
-            <> " {Needs} total >= 0",
+            <> " {Needs} (total >= 0)",
           where,
         )
       _ -> Nil
@@ -513,7 +529,7 @@ fn check_record(c: Ctx, d: Decl) -> Nil {
                 c,
                 d,
                 f.line,
-                "a record may use its own type only as a list whose count starts at 0, e.g. {Node 0..} or {Chain 0..1}",
+                "a record may use its own type only as a list whose count starts at 0, e.g. children {Node...} or next {Chain} count: 0..1",
                 where,
               )
             False -> type_ok(c, d, n, f.line, rec_ok)
@@ -573,7 +589,7 @@ fn check_record(c: Ctx, d: Decl) -> Nil {
                   c,
                   d,
                   f.line,
-                  "a range or a choice of values is compared with '=' (membership)",
+                  "a range or a choice of values is compared with in, e.g. (delay in 2..9)",
                   where,
                 )
               _, _ -> Nil
@@ -590,6 +606,8 @@ fn check_record(c: Ctx, d: Decl) -> Nil {
       None -> Nil
     }
     check_numbers(c, d, f)
+    check_wraps(c, d, f)
+    check_list_order(c, d, f)
     case f.role {
       model.Claim -> prove_claim(c, d, f)
       model.Computed -> {
@@ -606,25 +624,27 @@ fn check_record(c: Ctx, d: Decl) -> Nil {
   cost_record(c, d)
 }
 
-/// A relation is a rule on a line of its own, '{Needs} orders.customer =
-/// customers.code': each item of the left list equals exactly one item of the
-/// right list, which the right field's 'unique: True' guarantees.
+/// A relation is a rule on a line of its own, '{Needs} (orders.customer in
+/// customers.code)': each item of the left list matches some item of the
+/// right list, and exactly one when the right list has 'unique: code'.
 fn check_relation(c: Ctx, d: Decl, f: Field, rel: model.Relation) -> Nil {
   let where = d.name <> "." <> f.name
   let left = rel.left_list.name <> "." <> rel.left_field
   let right = rel.right_list.name <> "." <> rel.right_field
   let bad = fn(msg) { err(c, d, f.line, msg, where) }
-  let example = f.name <> " {Needs} " <> left <> " = " <> right
+  let example = f.name <> " {Needs} (" <> left <> " in " <> right <> ")"
   let item_of = fn(l: Field) { model.record_of(c.decls, item_name(l)) }
   case f.role, rel.op, list.length(f.preds.clauses) {
     model.Claim, _, _ ->
       bad("a relation between two lists is a rule, not a claim: " <> example)
     _, o, _ if o != "=" ->
       bad(
-        "a relation between two lists uses = only: each item of "
+        "two lists are related with in only: each item of "
         <> rel.left_list.name
-        <> " equals one item of "
-        <> rel.right_list.name,
+        <> " matches an item of "
+        <> rel.right_list.name
+        <> ", "
+        <> example,
       )
     _, _, n if n != 1 ->
       bad(
@@ -674,20 +694,7 @@ fn check_relation(c: Ctx, d: Decl, f: Field, rel: model.Relation) -> Nil {
                         <> model.item_text(model.base(rf))
                         <> ": a relation compares fields of the same type",
                       )
-                    _, _ ->
-                      case model.has_flag(rf.preds, "unique") {
-                        True -> Nil
-                        False ->
-                          bad(
-                            right
-                            <> " must be unique, so that each item of "
-                            <> rel.left_list.name
-                            <> " matches exactly one: add 'unique: True' to "
-                            <> rel.right_field
-                            <> " in "
-                            <> ri.name,
-                          )
-                      }
+                    _, _ -> Nil
                   }
                 }
                 None, _ ->
@@ -776,6 +783,7 @@ fn check_filter(
               [],
               "",
               "",
+              [],
             )
           list.each(model.plains(conditions), fn(cl) {
             let assert Plain(cp, _, _) = cl
@@ -788,7 +796,7 @@ fn check_filter(
             c,
             d,
             line,
-            "filter: keeps some items of a list of records, and '"
+            "a kept list keeps some items of a list of records, and '"
               <> list_name
               <> "' is not one",
             where,
@@ -979,8 +987,8 @@ fn walk(
                     d,
                     line,
                     "'."
-                      <> step
-                      <> "' folds a sequence, but "
+                      <> method_name(step)
+                      <> "' reads a list, but "
                       <> string.join(list.take(p, i), ".")
                       <> " is not one",
                     where,
@@ -993,16 +1001,22 @@ fn walk(
                     c,
                     d,
                     line,
-                    "a fold ends the path ('." <> step <> "')",
+                    "a method ends the path ('." <> method_name(step) <> "')",
                     where,
                   )
                 False -> Nil
               }
               case step, fld {
-                "sum", Some(fl) ->
+                "sum", Some(fl) | "min", Some(fl) | "max", Some(fl) ->
                   case evaluate.items_numeric(c.ev, fl.items) {
                     False ->
-                      err(c, d, line, "'.sum' totals a numeric field", where)
+                      err(
+                        c,
+                        d,
+                        line,
+                        "'." <> step <> "' takes a list of numbers",
+                        where,
+                      )
                     True -> Nil
                   }
                 _, _ -> Nil
@@ -1029,11 +1043,11 @@ fn walk(
                     line,
                     "'"
                       <> string.join(list.take(p, i + 1), ".")
-                      <> "' is gone: a path holds only fields, and a type cannot narrow a list. To keep some of the items, give "
+                      <> "': a path holds only fields, and a type cannot narrow a list. To keep some of the items, give "
                       <> rd.name
-                      <> " a field with cases and write filter: in the count: or sum:, e.g. filter: "
+                      <> " a field with cases and keep the items on a line of their own, e.g. ("
                       <> string.join(list.take(p, i), ".")
-                      <> ".field = True",
+                      <> ".field = True)",
                     where,
                   )
                   #(None, None, NotSeq, True)
@@ -1059,7 +1073,7 @@ fn walk(
         d,
         line,
         string.join(p, ".")
-          <> " is a list: end the path in .qty or .sum (a list appears only inside a fold)",
+          <> " is a list: read it with a method, .count or .sum",
         where,
       )
     False -> Nil
@@ -1236,7 +1250,7 @@ type Kind {
 /// a field is a number when its type is numeric.
 fn path_kind(c: Ctx, d: Decl, parts: List(String)) -> Kind {
   case list.last(parts) {
-    Ok("qty") | Ok("sum") -> Number
+    Ok("qty") | Ok("sum") | Ok("min") | Ok("max") -> Number
     _ ->
       case parts {
         ["val", ..] -> Unknown
@@ -1426,7 +1440,7 @@ fn check_places(c: Ctx, d: Decl, f: Field) -> Nil {
                   <> int.to_string(got)
                   <> " decimal places but the field holds "
                   <> pl.text
-                  <> "; rounding never happens implicitly",
+                  <> "; rounding never happens implicitly: add round: with the unit to round to, e.g. round: 0.01",
                 d.name <> "." <> f.name,
               )
             False -> Nil
@@ -1464,13 +1478,13 @@ fn check_rounding(c: Ctx, d: Decl, f: Field, rule: Value) -> Nil {
         Ok(_) -> Nil
         Error(why) -> complain(why)
       }
-    _ -> complain("round: names a rounding rule, e.g. round: Half_Even")
+    _ -> complain("round: takes the unit to round to, e.g. round: 0.01")
   }
   let n = rounded_places(c, f)
   case n {
     None ->
       complain(
-        "a rounded field says how many places it rounds to, e.g. places: 2",
+        "a rounded field takes its places from its round: unit, e.g. round: 0.01",
       )
     Some(_) -> Nil
   }
@@ -1498,7 +1512,7 @@ fn rounding_rule(c: Ctx, name: String) -> Result(model.Mapping, String) {
   let not_rule =
     "'"
     <> name
-    <> "' is not a rounding rule: a rule is a record whose field direction {Direction} is a mapping on remainder, odd and negative (Half_Even, Half_Up, Floor and Ceiling are in the standard library)"
+    <> "' is not a rounding rule: a rule is a record whose field direction {Direction} is a mapping on remainder, odd and negative (Half_Even, Half_Up, Half_Lower and Half_Higher are in the standard library)"
   case dict.get(c.decls, name) {
     Error(_) -> Error("round: names " <> name <> ", which is not declared")
     Ok(rd) ->
@@ -1538,7 +1552,7 @@ fn check_divisor(c: Ctx, d: Decl, f: Field, divisor: Value) -> Nil {
           <> bfmt(lo)
           <> ", "
           <> bfmt(hi)
-          <> "]; give it a value: or a type that leaves out 0",
+          <> "]; give it allowed values or a type that leaves out 0",
         d.name <> "." <> f.name,
       )
     }
@@ -1922,6 +1936,19 @@ fn field_bounds(c: Ctx, fl: Field) -> #(B, B) {
 /// So a total of delays that are each 0..120 is never below 0.
 fn def_bounds(c: Ctx, rec: Decl, fl: Field) -> #(B, B) {
   let #(lo, hi) = field_bounds(c, fl)
+  // a calculation over fields of this record (no dots, so no recursion)
+  // lies within the bounds of its terms; a wrap keeps its own bounds
+  let #(lo, hi) = case definition(fl), mod_of(fl) {
+    Some(VArith(op, _) as def), None if op == "+" || op == "-" || op == "*" ->
+      case list.all(rhs_paths(def), fn(p) { list.length(p) == 1 }) {
+        True -> {
+          let #(vlo, vhi) = value_bounds(c, rec, def, 0)
+          #(bmax(lo, vlo), bmin(hi, vhi))
+        }
+        False -> #(lo, hi)
+      }
+    _, _ -> #(lo, hi)
+  }
   case model.setting(fl.preds, "round"), definition(fl) {
     Some(VPath([rule])), Some(def) -> {
       let #(rlo, rhi) = rounded_bounds(c, rec, fl, def, rule)
@@ -1935,6 +1962,31 @@ fn def_bounds(c: Ctx, rec: Decl, fl: Field) -> #(B, B) {
           let #(qlo, qhi) = atom_bounds(c, rec, string.join(parts, "."), None)
           #(bmax(lo, qlo), bmin(hi, qhi))
         }
+        // the least or greatest item lies within the items' own bounds
+        Ok("min") | Ok("max") ->
+          case parts {
+            [list_name, name, _] ->
+              case model.field(rec, list_name) {
+                Some(lf) ->
+                  case model.base(lf) {
+                    TypeItem(t) ->
+                      case model.record_of(c.decls, t) {
+                        Some(it) ->
+                          case model.field(it, name) {
+                            Some(inn) -> {
+                              let #(ilo, ihi) = def_bounds(c, it, inn)
+                              #(bmax(lo, ilo), bmin(hi, ihi))
+                            }
+                            None -> #(lo, hi)
+                          }
+                        None -> #(lo, hi)
+                      }
+                    _ -> #(lo, hi)
+                  }
+                None -> #(lo, hi)
+              }
+            _ -> #(lo, hi)
+          }
         _ -> sum_bounds(c, rec, fl, lo, hi)
       }
     _, _ -> sum_bounds(c, rec, fl, lo, hi)
@@ -2723,6 +2775,14 @@ fn induction(
 }
 
 fn atom_bounds(c: Ctx, d: Decl, atom: String, claim: Option(Field)) -> #(B, B) {
+  // a method the reader gave a field of its own is named by its path
+  case string.contains(atom, "."), model.field(d, atom) {
+    True, Some(fl) -> def_bounds(c, d, fl)
+    _, _ -> path_bounds(c, d, atom, claim)
+  }
+}
+
+fn path_bounds(c: Ctx, d: Decl, atom: String, claim: Option(Field)) -> #(B, B) {
   let all_parts = string.split(atom, ".")
   // a filter keeps some of the items: it can only lower the count to 0
   let filtered = list.any(list.drop(all_parts, 1), fn(x) { is_upper_start(x) })
@@ -2989,7 +3049,7 @@ fn cost_path(
           let var = case recursive, hi {
             True, _ -> Some("nodes(" <> name <> ")")
             False, Some(_) -> None
-            False, None -> Some(name <> ".qty")
+            False, None -> Some(name <> ".count")
           }
           let item = case model.base(fl) {
             TypeItem(t) -> model.record_of(c.decls, t)
@@ -3106,7 +3166,9 @@ pub fn cost_text(cp: CPoly) -> String {
         |> list.map(fn(m) {
           case m {
             [] -> "1"
-            _ -> string.join(m, " * ")
+            _ ->
+              list.map(m, fn(x) { string.replace(x, ".qty", ".count") })
+              |> string.join(" * ")
           }
         })
         |> string.join(" + ")
@@ -3376,5 +3438,205 @@ pub fn cases_for(
           }
       }
     }
+  }
+}
+
+/// A fold step as the language writes it: the model's qty is '.count'.
+fn method_name(step: String) -> String {
+  case step {
+    "qty" -> "count"
+    other -> other
+  }
+}
+
+/// The field a path names, from this record: a field, a field of a field's
+/// record, or a field of a record around this one ('Train.max_delay').
+fn path_field(c: Ctx, d: Decl, p: List(String)) -> Option(Field) {
+  case p {
+    [x] -> model.field(d, x)
+    [x, y] ->
+      case model.field(d, x) {
+        Some(fl) ->
+          case model.base(fl) {
+            TypeItem(t) ->
+              case model.record_of(c.decls, t) {
+                Some(rd) -> model.field(rd, y)
+                None -> None
+              }
+            _ -> None
+          }
+        None ->
+          case model.record_of(c.decls, x) {
+            Some(rd) -> model.field(rd, y)
+            None -> None
+          }
+      }
+    _ -> None
+  }
+}
+
+fn wraps(c: Ctx, d: Decl, p: List(String)) -> Bool {
+  case path_field(c, d, p) {
+    Some(fl) -> option.is_some(model.setting(fl.preds, "mod"))
+    None -> False
+  }
+}
+
+/// Wraps (language.sheaf, Step 5). A value from a 'wrap_at:' calculation is
+/// compared with another field by '=' only: after the wrap, 00:10 is below
+/// 23:50. A wrap that can never happen is refused, and a calculation that may
+/// not fit its field's type must say what to do: wrap, or a wider type.
+fn check_wraps(c: Ctx, d: Decl, f: Field) -> Nil {
+  let where = d.name <> "." <> f.name
+  let ordering = ["<", "<=", ">", ">="]
+  let compare = fn(b: model.Block, line: Int) {
+    list.each(model.plains(b), fn(cl) {
+      case cl {
+        Plain(p, op, VPath(q)) ->
+          case list.contains(ordering, op) {
+            False -> Nil
+            True ->
+              case wraps(c, d, p), wraps(c, d, q) {
+                False, False -> Nil
+                wp, _ -> {
+                  let name = case wp {
+                    True -> string.join(p, ".")
+                    False -> string.join(q, ".")
+                  }
+                  err(
+                    c,
+                    d,
+                    line,
+                    name
+                      <> " comes from a wrap_at: calculation, so after the wrap 00:10 compares below 23:50. Compare the values before the wrap",
+                    where,
+                  )
+                }
+              }
+          }
+        _ -> Nil
+      }
+    })
+  }
+  compare(f.preds, f.line)
+  case f.mapping {
+    Some(m) -> list.each(m.cases, fn(cs) { compare(cs.preds, cs.line) })
+    None -> Nil
+  }
+  case f.role, definition(f) {
+    model.Computed, Some(VArith(op, _) as def)
+      if op == "+" || op == "-" || op == "*"
+    -> {
+      let #(lo, hi) = value_bounds(c, d, def, 0)
+      case mod_of(f) {
+        Some(m) ->
+          case bcmp(lo, d0()) != order.Lt && bcmp(hi, Fin(m)) == order.Lt {
+            True ->
+              err(
+                c,
+                d,
+                f.line,
+                f.name
+                  <> " is at most "
+                  <> bfmt(hi)
+                  <> ", so it never wraps. Remove wrap_at:",
+                where,
+              )
+            False -> Nil
+          }
+        None -> {
+          let #(tlo, thi) = type_bounds(c, model.base(f), [])
+          let fits = fn(b: B, t: B) {
+            case b, t {
+              Fin(_), Fin(_) -> True
+              _, Fin(_) -> False
+              _, _ -> True
+            }
+          }
+          let reach = case
+            bcmp(hi, thi) == order.Gt || !fits(hi, thi),
+            bcmp(lo, tlo) == order.Lt || !fits(lo, tlo)
+          {
+            True, _ -> Some(hi)
+            _, True -> Some(lo)
+            _, _ -> None
+          }
+          case reach {
+            Some(b) ->
+              err(
+                c,
+                d,
+                f.line,
+                f.name
+                  <> " can reach "
+                  <> bfmt(b)
+                  <> ", but "
+                  <> model.item_text(model.base(f))
+                  <> " holds "
+                  <> bfmt(tlo)
+                  <> ".."
+                  <> bfmt(thi)
+                  <> ". Choose one: wrap_at:, or a wider type",
+                where,
+              )
+            None -> Nil
+          }
+        }
+      }
+    }
+    _, _ -> Nil
+  }
+}
+
+/// 'order: key' on a list: the key is a number field of the items, or one dot
+/// from them, that does not come from a wrap. Ordering by a text needs an
+/// order on its field, which this build does not have yet.
+fn check_list_order(c: Ctx, d: Decl, f: Field) -> Nil {
+  let where = d.name <> "." <> f.name
+  let bad = fn(msg) { err(c, d, f.line, msg, where) }
+  case model.setting(f.preds, "order") {
+    Some(VStr(key)) -> {
+      let parts = string.split(key, ".")
+      case model.record_of(c.decls, item_name(f)) {
+        None ->
+          bad(
+            f.name
+            <> " holds "
+            <> item_name(f)
+            <> " items, not records, so there is no key. Order the list it is collected from",
+          )
+        Some(it) ->
+          case parts, path_field(c, it, parts) {
+            [first, ..], None ->
+              case model.field(it, first) {
+                None -> bad(it.name <> " has no field " <> first)
+                Some(_) -> bad(it.name <> " has no field " <> key)
+              }
+            _, Some(kf) ->
+              case field_kind(c, kf, []), wraps(c, it, parts) {
+                _, True ->
+                  bad(
+                    key
+                    <> " wraps, so 00:10 orders before 23:50. Order by a value that does not wrap",
+                  )
+                Number, False -> Nil
+                NotNumber("a record"), False ->
+                  bad(
+                    key
+                    <> " is "
+                    <> model.item_text(model.base(kf))
+                    <> ", a record, which has no order. Name one of its number fields, e.g. order: due.minutes",
+                  )
+                _, False ->
+                  bad(
+                    key
+                    <> " is not a number: ordering a list by a text is not built yet in this build",
+                  )
+              }
+            [], None -> bad("order: names a key of the list's items")
+          }
+      }
+    }
+    _ -> Nil
   }
 }

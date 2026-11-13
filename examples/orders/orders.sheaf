@@ -1,22 +1,22 @@
-# Orders: stored and computed fields, folds, a mapping, a rule and a filter.
+# Orders: stored and worked-out fields, kept and collected lists, a mapping and a rule.
 # Check:  node bin/sheaf.mjs check examples/orders/orders.sheaf
 # Run:    node bin/sheaf.mjs run examples/orders/orders.sheaf Order examples/orders/order_1042.txt
 
 # A stock-keeping unit: three capital letters, a dash, four digits.
 Sku {Text}
-  1. {Uppercase} qty: 3
+  1. {Uppercase...} count: 3
   2. {"-"}
-  3. {Digit} qty: 4
+  3. {Digit...} count: 4
 
 # One order line, e.g. "ABC-0001 x3 @ 19.99".
 Line {}
   sku {Sku}
-  units {Integer} value: 1..1000
-  price {Decimal} places: 2, value: 0.00..
-  line_total {Decimal} value: units * price, places: 2
+  units {Integer} (1..1000)
+  price {Decimal} (0.00..) places: 2
+  line_total {Decimal} (units * price) places: 2
   big {True | False} (line_total)
-    {True} if: line_total >= 500.00
-    {False} if: line_total < 500.00
+    {True} (>= 500.00)
+    {False} (< 500.00)
   text {Text}
     1. {sku}
     2. {" x"}
@@ -28,12 +28,15 @@ Line {}
 # An order: a header line, then one or more lines.
 Order {}
   number {Natural}
-  lines {Line} qty: 1..
-  total {Decimal} sum: lines.line_total
-  big_lines {Integer} count: lines, filter: lines.big = True
-  big_total {Decimal} sum: lines.line_total, filter: lines.big = True, places: 2
-  line_count {Integer} count: lines
-  not_all_big {Needs} big_lines <= line_count
+  lines {Line...} count: 1..
+  big_lines {Line...} (lines.big = True)
+  line_count {Integer} (lines.count)
+  big_line_count {Integer} (big_lines.count)
+  line_totals {Decimal...} (lines.line_total)
+  big_line_totals {Decimal...} (big_lines.line_total)
+  total {Decimal} (line_totals.sum)
+  big_total {Decimal} (big_line_totals.sum) places: 2
+  not_all_big {Needs} (big_line_count <= line_count)
   text {Text}
     1. {"order "}
     2. {number}

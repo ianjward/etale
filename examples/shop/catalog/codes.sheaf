@@ -1,4 +1,4 @@
 # Private to catalog/: only files in this folder see Code.
 Code {Text}
-  1. {Uppercase} qty: 3
-  2. {Digit} qty: 3
+  1. {Uppercase...} count: 3
+  2. {Digit...} count: 3

@@ -3,8 +3,16 @@
 Binary_Digit {"0" | "1"}
 
 # A bit as a number, 0 or 1.
-Bit {Integer} value: 0..1
-  1. {Binary_Digit}
+Bit {Integer} (0..1)
+
+# The value of each place of a byte.
+Place_7 {Integer} (128)
+Place_6 {Integer} (64)
+Place_5 {Integer} (32)
+Place_4 {Integer} (16)
+Place_3 {Integer} (8)
+Place_2 {Integer} (4)
+Place_1 {Integer} (2)
 
 # A byte written as eight bits, most significant first, e.g. "01000001" (65).
 Byte {}
@@ -16,23 +24,32 @@ Byte {}
   b2 {Bit}
   b1 {Bit}
   b0 {Bit}
-  w7 {Integer} value: b7 * 128
-  w6 {Integer} value: b6 * 64
-  w5 {Integer} value: b5 * 32
-  w4 {Integer} value: b4 * 16
-  w3 {Integer} value: b3 * 8
-  w2 {Integer} value: b2 * 4
-  w1 {Integer} value: b1 * 2
-  number {Integer} value: w7 + w6 + w5 + w4 + w3 + w2 + w1 + b0
-  at_least_zero {Claims} number >= 0
-  fits_in_a_byte {Claims} number <= 255
+  w7 {Integer} (b7 * Place_7)
+  w6 {Integer} (b6 * Place_6)
+  w5 {Integer} (b5 * Place_5)
+  w4 {Integer} (b4 * Place_4)
+  w3 {Integer} (b3 * Place_3)
+  w2 {Integer} (b2 * Place_2)
+  w1 {Integer} (b1 * Place_1)
+  number {Integer} (w7 + w6 + w5 + w4 + w3 + w2 + w1 + b0)
+  at_least_zero {Claims} (number >= 0)
+  fits_in_a_byte {Claims} (number <= 255)
+  text {Text}
+    1. {b7} digits: 1
+    2. {b6} digits: 1
+    3. {b5} digits: 1
+    4. {b4} digits: 1
+    5. {b3} digits: 1
+    6. {b2} digits: 1
+    7. {b1} digits: 1
+    8. {b0} digits: 1
 
 # Exclusive or of two bits, as a checked table.
 Xor_Bit {}
   a {Binary_Digit}
   b {Binary_Digit}
   out {Binary_Digit} (a, b)
-    {"0"} if: a = "0" & b = "0"
-    {"1"} if: a = "0" & b = "1"
-    {"1"} if: a = "1" & b = "0"
-    {"0"} if: a = "1" & b = "1"
+    {"0"} (a = "0" & b = "0")
+    {"1"} (a = "0" & b = "1")
+    {"1"} (a = "1" & b = "0")
+    {"0"} (a = "1" & b = "1")
