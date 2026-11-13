@@ -1,16 +1,16 @@
-//// The declarations of a language.sheaf program. Every type here is one line
-//// form of language.sheaf (Steps 5-7): unions, refinements, layouts, records,
+//// The declarations of a language.etale program. Every type here is one line
+//// form of language.etale (Steps 5-7): unions, refinements, layouts, records,
 //// fields, mappings and cases.
 
 import gleam/dict.{type Dict}
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/string
-import sheaf/decimal.{type Decimal}
+import etale/decimal.{type Decimal}
 
 pub const folds = ["qty", "sum", "min", "max"]
 
-/// Names no field may take (the header of language.sheaf). Inside the model the
+/// Names no field may take (the header of language.etale). Inside the model the
 /// line's own value is the path 'val', and folds end a path in qty or sum.
 pub const reserved = ["value", "text", "count", "sum", "min", "max"]
 

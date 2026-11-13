@@ -1,6 +1,6 @@
 # A train journey: one or more trains, each with its stops.
-# Check:  node bin/sheaf.mjs check examples/train/train.sheaf
-# Run:    node bin/sheaf.mjs run examples/train/train.sheaf Journey examples/train/journey.txt
+# Check:  node bin/etale.mjs check examples/train/train.etale
+# Run:    node bin/etale.mjs run examples/train/train.etale Journey examples/train/journey.txt
 
 # Clock numbers, each named once.
 Hours_Per_Day {Integer} (24)

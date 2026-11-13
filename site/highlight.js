@@ -1,4 +1,4 @@
-// A small Sheaf highlighter for the landing page's code samples.
+// A small Etale highlighter for the landing page's code samples.
 export function highlight(text) {
   const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   return text.split("\n").map((line) => {

@@ -8,28 +8,28 @@ import gleam/io
 import gleam/list
 import gleam/option.{None, Some}
 import gleam/string
-import sheaf/check
-import sheaf/decimal
-import sheaf/evaluate.{VNumber, VRecord, VText}
-import sheaf/graph
-import sheaf/model
-import sheaf/printer
-import sheaf/program.{type Program}
-import sheaf/sequents
+import etale/check
+import etale/decimal
+import etale/evaluate.{VNumber, VRecord, VText}
+import etale/graph
+import etale/model
+import etale/printer
+import etale/program.{type Program}
+import etale/sequents
 
-@external(javascript, "../etale/sheaf/ffi.mjs", "read_file")
+@external(javascript, "../etale/etale/ffi.mjs", "read_file")
 fn read_file(p: String) -> Result(String, Nil)
 
-@external(javascript, "../etale/sheaf/ffi.mjs", "cwd")
+@external(javascript, "../etale/etale/ffi.mjs", "cwd")
 fn cwd() -> String
 
-@external(javascript, "../etale/sheaf/ffi.mjs", "list_dir")
+@external(javascript, "../etale/etale/ffi.mjs", "list_dir")
 fn list_dir(dir: String) -> List(#(String, Bool))
 
-@external(javascript, "../etale/sheaf/ffi.mjs", "exit")
+@external(javascript, "../etale/etale/ffi.mjs", "exit")
 fn exit(code: Int) -> Nil
 
-@external(javascript, "../etale/sheaf/ffi.mjs", "now_ms")
+@external(javascript, "../etale/etale/ffi.mjs", "now_ms")
 fn now_ms() -> Float
 
 type Outcome {
@@ -51,7 +51,7 @@ fn all(results: List(Outcome)) -> Outcome {
 }
 
 fn prelude() -> String {
-  let assert Ok(t) = read_file("priv/language.sheaf")
+  let assert Ok(t) = read_file("priv/language.etale")
   t
 }
 
@@ -70,7 +70,7 @@ fn load(path: String) -> #(Program, check.Report) {
 }
 
 fn source(text: String) -> Result(#(Program, check.Report), model.MapError) {
-  program.load_text(base(False), text, cwd() <> "/test.sheaf")
+  program.load_text(base(False), text, cwd() <> "/test.etale")
 }
 
 fn msgs(r: check.Report) -> String {
@@ -216,7 +216,7 @@ fn bounded_range_rule() -> Outcome {
 }
 
 fn mistakes() -> Outcome {
-  let #(_, rep) = load("examples/mistakes/mistakes.sheaf")
+  let #(_, rep) = load("examples/mistakes/mistakes.etale")
   let text = msgs(rep)
   list.map(
     [
@@ -231,7 +231,7 @@ fn mistakes() -> Outcome {
 }
 
 fn geometric_mistakes() -> Outcome {
-  let #(_, rep) = load("examples/mistakes/geometric.sheaf")
+  let #(_, rep) = load("examples/mistakes/geometric.etale")
   let text = msgs(rep)
   let wrapped =
     "Hours_Per_Day {Integer} (24)\nFive {Integer} (5)\nClock {}\n  hour {Integer} (0..23)\n"
@@ -274,8 +274,8 @@ fn sequents_print() -> Outcome {
     let #(p, _) = load(path)
     sequents.file(p, option.unwrap(p.main_file, path))
   }
-  let orders = theory("examples/orders/orders.sheaf")
-  let book = theory("examples/book/book.sheaf")
+  let orders = theory("examples/orders/orders.etale")
+  let book = theory("examples/book/book.etale")
   let has = fn(text, needle) { expect(string.contains(text, needle), needle) }
   all([
     has(orders, "Order(t) ⊢ t.total = t.lines.line_total.sum"),
@@ -318,8 +318,8 @@ fn mapping_outputs_and_inputs() -> Outcome {
 }
 
 fn claims_and_costs() -> Outcome {
-  let #(_, rep) = load("examples/proofs/proofs.sheaf")
-  let #(_, orders) = load("examples/orders/orders.sheaf")
+  let #(_, rep) = load("examples/proofs/proofs.etale")
+  let #(_, orders) = load("examples/orders/orders.etale")
   all([
     expect(
       list.key_find(rep.claims, "Window.wide_enough") |> is_ok,
@@ -351,12 +351,12 @@ fn is_ok(r: Result(a, b)) -> Bool {
 fn libraries_clean() -> Outcome {
   list.map(
     [
-      "priv/stdlib/logic.sheaf", "priv/stdlib/bits.sheaf",
-      "priv/stdlib/dates.sheaf", "priv/stdlib/text.sheaf",
-      "priv/stdlib/rounding.sheaf", "examples/orders/orders.sheaf",
-      "examples/proofs/proofs.sheaf", "examples/meeting/meeting.sheaf",
-      "examples/xor/xor.sheaf", "examples/train/train.sheaf",
-      "examples/book/book.sheaf", "examples/temperature/temperature.sheaf",
+      "priv/stdlib/logic.etale", "priv/stdlib/bits.etale",
+      "priv/stdlib/dates.etale", "priv/stdlib/text.etale",
+      "priv/stdlib/rounding.etale", "examples/orders/orders.etale",
+      "examples/proofs/proofs.etale", "examples/meeting/meeting.etale",
+      "examples/xor/xor.etale", "examples/train/train.etale",
+      "examples/book/book.etale", "examples/temperature/temperature.etale",
     ],
     fn(f) {
       let #(_, rep) = load(f)
@@ -367,7 +367,7 @@ fn libraries_clean() -> Outcome {
 }
 
 fn orders() -> Outcome {
-  let #(p, _) = load("examples/orders/orders.sheaf")
+  let #(p, _) = load("examples/orders/orders.etale")
   let assert Ok(t) = read_file("examples/orders/order_1042.txt")
   let o = program.check(p, "Order", t)
   let small = "order 7\nABC-0001 x1 @ 1.00\n"
@@ -391,7 +391,7 @@ fn orders() -> Outcome {
 }
 
 fn dates() -> Outcome {
-  let #(p, _) = load("priv/stdlib/dates.sheaf")
+  let #(p, _) = load("priv/stdlib/dates.etale")
   let o = program.check(p, "Date", "2026-13-01")
   all([
     expect(program.check(p, "Date", "2024-02-29").ok, "2024 leap day"),
@@ -413,9 +413,9 @@ fn dates() -> Outcome {
 }
 
 fn recursion_mapping_bytes() -> Outcome {
-  let #(p, _) = load("examples/proofs/proofs.sheaf")
-  let #(q, _) = load("priv/stdlib/bits.sheaf")
-  let #(l, _) = load("priv/stdlib/logic.sheaf")
+  let #(p, _) = load("examples/proofs/proofs.etale")
+  let #(q, _) = load("priv/stdlib/bits.etale")
+  let #(l, _) = load("priv/stdlib/logic.etale")
   let chain = program.check(p, "Chain", "+3+4+5")
   all([
     expect(num(get(p, chain.value, "total")) == "12", "chain total"),
@@ -463,16 +463,16 @@ fn ambiguity() -> Outcome {
 /// No imports: a file sees its folder, the folders above, each subfolder's
 /// front file and the standard library (Step 10).
 fn scope() -> Outcome {
-  let #(m, _) = load("examples/meeting/meeting.sheaf")
-  let #(shop, shop_rep) = load("examples/shop/orders/orders.sheaf")
-  let #(_, peek) = load("examples/shop/orders/peek.sheaf")
+  let #(m, _) = load("examples/meeting/meeting.etale")
+  let #(shop, shop_rep) = load("examples/shop/orders/orders.etale")
+  let #(_, peek) = load("examples/shop/orders/peek.etale")
   let cycle =
-    program.load(base(False), program.join(cwd(), "examples/cycle/a.sheaf"))
+    program.load(base(False), program.join(cwd(), "examples/cycle/a.etale"))
   let order = "2026-10-15\nABC123 19.99\nXYZ042 5.00\n"
   let bundle =
     program.bundle_text([
-      #("a/x.sheaf", "X {\"x\"}"),
-      #("a/y.sheaf", "Y {\"y\" | X}\n"),
+      #("a/x.etale", "X {\"x\"}"),
+      #("a/y.etale", "Y {\"y\" | X}\n"),
     ])
   all([
     expect(
@@ -502,7 +502,7 @@ fn scope() -> Outcome {
     ),
     expect(
       program.bundle_entries(bundle)
-        == [#("a/x.sheaf", "X {\"x\"}\n"), #("a/y.sheaf", "Y {\"y\" | X}\n")],
+        == [#("a/x.etale", "X {\"x\"}\n"), #("a/y.etale", "Y {\"y\" | X}\n")],
       "a bundle splits into named texts",
     ),
     expect(
@@ -510,15 +510,15 @@ fn scope() -> Outcome {
       "a bundle inhabits Project",
     ),
     expect(
-      result_is_error(source("import \"a.sheaf\"\n")),
+      result_is_error(source("import \"a.etale\"\n")),
       "import lines are gone",
     ),
   ])
 }
 
 fn graphs() -> Outcome {
-  let #(p, _) = load("examples/orders/orders.sheaf")
-  let g = graph.build(p, "examples/orders/orders.sheaf")
+  let #(p, _) = load("examples/orders/orders.etale")
+  let g = graph.build(p, "examples/orders/orders.etale")
   let svg = graph.to_svg(g, graph.layout(g), "orders")
   let wires = list.length(g.edges)
   all([
@@ -533,7 +533,7 @@ fn graphs() -> Outcome {
 }
 
 fn grids() -> Outcome {
-  let #(p, _) = load("priv/stdlib/bits.sheaf")
+  let #(p, _) = load("priv/stdlib/bits.etale")
   let assert Ok(d) = dict.get(p.decls, "Xor_Bit")
   let assert Some(f) = model.field(d, "out")
   case check.mapping_grid(p.decls, p.index, d, f) {
@@ -547,7 +547,7 @@ fn grids() -> Outcome {
   }
 }
 
-/// The number of declarations in priv/language.sheaf.
+/// The number of declarations in priv/language.etale.
 const spec_decls = 167
 
 const inter_src =
@@ -651,8 +651,8 @@ fn json(text: String) -> printer.PV {
 
 /// Printing is parsing run backwards, checked by reading the text back.
 fn printing() -> Outcome {
-  let #(o, _) = load("examples/orders/orders.sheaf")
-  let #(d, _) = load("priv/stdlib/dates.sheaf")
+  let #(o, _) = load("examples/orders/orders.etale")
+  let #(d, _) = load("priv/stdlib/dates.etale")
   let order =
     printer.print(
       o,
@@ -695,15 +695,15 @@ fn printing() -> Outcome {
     expect(result_is_error(rounding), "printing never rounds"),
     expect(result_is_error(typo), "unknown fields are refused"),
     expect(
-      printer.format(base, loose, "x.sheaf")
+      printer.format(base, loose, "x.etale")
         == Ok(
         "Two {Integer} (2)\nX {}\n  a {Integer} (0..9)\n  b {Integer} (a * Two) # twice\n",
       ),
       "fmt: canonical spacing, comments kept",
     ),
     expect(
-      printer.format(base, prelude(), "language.sheaf") == Ok(prelude()),
-      "language.sheaf is formatted",
+      printer.format(base, prelude(), "language.etale") == Ok(prelude()),
+      "language.etale is formatted",
     ),
     expect(
       printer.print_text(o, "Line", "ABC-0001 x3 @ 19.90\n")
@@ -744,7 +744,7 @@ Box {}
 fn lists_and_filters() -> Outcome {
   let assert Ok(#(p, rep)) = source(filter_src)
   let b = program.check(p, "Box", "1726")
-  let #(o, _) = load("examples/orders/orders.sheaf")
+  let #(o, _) = load("examples/orders/orders.etale")
   let assert Ok(order) = read_file(cwd() <> "/examples/orders/order_1042.txt")
   let ord = program.check(o, "Order", order)
   let refused = fn(src) {
@@ -780,7 +780,7 @@ fn lists_and_filters() -> Outcome {
 /// Readings settled in the syntax review: a "-" position is a sign, places
 /// on a refinement line is enforced, and a bare {True} field is an error.
 fn context_paths() -> Outcome {
-  let #(p, rep) = load("examples/book/book.sheaf")
+  let #(p, rep) = load("examples/book/book.etale")
   let assert Ok(good) = read_file("examples/book/book.txt")
   let assert Ok(unknown) = read_file("examples/book/book_unknown.txt")
   let ok = program.check(p, "Book", good)
@@ -866,7 +866,7 @@ fn tied_by_rules() -> Outcome {
   let assert Ok(#(p, rep)) = source(tied_src)
   let good = program.check(p, "Holder", "123")
   let half = program.check(p, "Holder", "125")
-  let #(x, xrep) = load("examples/xor/xor.sheaf")
+  let #(x, xrep) = load("examples/xor/xor.etale")
   let run = fn(name) {
     let assert Ok(text) = read_file("examples/xor/" <> name <> ".txt")
     program.check(x, "Assoc", text)
@@ -892,9 +892,9 @@ fn tied_by_rules() -> Outcome {
 }
 
 fn review_readings() -> Outcome {
-  let #(t, trep) = load("examples/temperature/temperature.sheaf")
+  let #(t, trep) = load("examples/temperature/temperature.etale")
   let reading = program.check(t, "Reading", "oslo -12")
-  let #(m, _) = load("examples/shop/money.sheaf")
+  let #(m, _) = load("examples/shop/money.etale")
   let refused = fn(src) {
     case source(src) {
       Ok(#(_, r)) -> check.errors(r) != []
@@ -1183,13 +1183,13 @@ fn timed(f: fn() -> a) -> #(a, Float) {
 /// Parsing and checking stay linear: a deep chain, a wide tree and a long
 /// sequence, each within a time budget generous enough for a slow machine.
 fn speed() -> Outcome {
-  let #(p, _) = load("examples/proofs/proofs.sheaf")
+  let #(p, _) = load("examples/proofs/proofs.etale")
   let #(chain, t1) =
     timed(fn() { program.check(p, "Chain", string.repeat("+1", 200)) })
   let assert Ok(#(tp, trep)) = source(tree_src)
   let wide = "(1" <> string.repeat("(2)", 5000) <> ")"
   let #(tree, t2) = timed(fn() { program.check(tp, "Node", wide) })
-  let #(o, _) = load("examples/orders/orders.sheaf")
+  let #(o, _) = load("examples/orders/orders.etale")
   let lines = string.repeat("ABC-0001 x3 @ 19.99\n", 2000)
   let #(order, t3) =
     timed(fn() { program.check(o, "Order", "order 7\n" <> lines) })
@@ -1647,7 +1647,7 @@ fn ordered_lists_and_wraps() -> Outcome {
 }
 
 fn timetable() -> Outcome {
-  let #(p, rep) = load("examples/timetable/timetable.sheaf")
+  let #(p, rep) = load("examples/timetable/timetable.etale")
   let assert Ok(good) = read_file("examples/timetable/timetable.txt")
   let trains =
     "R10 60\nAsker 09:41 +0\nDrammen 23:50 +20\nR11 30\nOslo S 10:05 +12\n---\n"

@@ -1,7 +1,7 @@
 name = "etale"
 version = "0.4.0"
 target = "javascript"
-description = "Checker, evaluator and infinite-canvas workspace for language.sheaf"
+description = "Checker, evaluator and infinite-canvas workspace for language.etale"
 
 [javascript]
 runtime = "node"

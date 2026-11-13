@@ -1273,7 +1273,7 @@ And_Gate {}                              # AND over TRUE and FALSE, with a short
 #
 # One rule covers data and code. Data prints its values, and a type
 # prints its code, because a declaration is itself a text of the types
-# in 'language.sheaf'. Printing a declaration gives its canonical form
+# in 'language.etale'. Printing a declaration gives its canonical form
 # with the comment lines directly above it.
 #
 # Formatting a file is printing it from its own reading. Spacing holds
@@ -1284,7 +1284,7 @@ And_Gate {}                              # AND over TRUE and FALSE, with a short
 # ---------- Step 10: Projects ----------
 
 # A project is a list of texts, each with a name such as
-# 'shop/dates/dates.sheaf'. You can store it as folders and files, in
+# 'shop/dates/dates.etale'. You can store it as folders and files, in
 # memory, or as one text. In that text each entry is a name line and
 # then the file. No line of a file starts with '=', so a name line can only start
 # the next entry. The part of a name before its last '/' is its group.
@@ -1292,12 +1292,12 @@ And_Gate {}                              # AND over TRUE and FALSE, with a short
 #
 # Scope. There are no imports. A text sees these.
 #
-# - 'language.sheaf' and the standard library.
+# - 'language.etale' and the standard library.
 # - every text in its own group and in every group above it.
 # - the front text of each group directly below a group that the text sees.
 #
 # The front text of a group is the text named after that group. So
-# 'shop/dates/dates.sheaf' counts as a text of 'shop'. The other texts
+# 'shop/dates/dates.etale' counts as a text of 'shop'. The other texts
 # of 'shop/dates' stay private to it.
 #
 # A name declared in a text means that declaration within the text.
@@ -1305,7 +1305,7 @@ And_Gate {}                              # AND over TRUE and FALSE, with a short
 # an error, and the checker names both. Texts may use the types of each
 # other, but not in a cycle. Within a text, a name refers only to
 # declarations above.
-Entry_Name {}                            # Example: '=== shop/dates/dates.sheaf'
+Entry_Name {}                            # Example: '=== shop/dates/dates.etale'
   path {Line_Text}
   text {Text}
     1. {"=== "}

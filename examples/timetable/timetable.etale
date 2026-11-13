@@ -1,7 +1,7 @@
 # A timetable: trains with their stops, then an index of the stations in
 # name order (the decisions of 13 November).
-# Check:  node bin/sheaf.mjs check examples/timetable/timetable.sheaf
-# Run:    node bin/sheaf.mjs run examples/timetable/timetable.sheaf Timetable \
+# Check:  node bin/etale.mjs check examples/timetable/timetable.etale
+# Run:    node bin/etale.mjs run examples/timetable/timetable.etale Timetable \
 #           examples/timetable/timetable.txt
 
 # Clock numbers, each named once.

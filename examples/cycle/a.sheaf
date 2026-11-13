@@ -1,2 +1,0 @@
-# a.sheaf and b.sheaf use each other's types, which is a cycle: an error.
-A_Type {B_Type...} count: 2

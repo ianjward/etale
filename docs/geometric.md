@@ -6,8 +6,8 @@ a theorem.** So the actual texts are always a model (the theory is consistent), 
 Barr's theorem the prover may reason classically about geometric claims.
 
 This page maps each construct to the formula it means and says whether it is geometric.
-`sheaf sequents FILE` prints a file's theory in the notation below. Every new construct
-adds its row here and its case to `src/sheaf/sequents.gleam`.
+`etale sequents FILE` prints a file's theory in the notation below. Every new construct
+adds its row here and its case to `src/etale/sequents.gleam`.
 
 ## The base theory
 
@@ -18,11 +18,11 @@ adds its row here and its case to `src/sheaf/sequents.gleam`.
   `x < y ∨ y < x`; on texts it is "they differ at some position, or one is longer",
   an existential over positions. So a hidden negation over these atoms (`count = 0`,
   `<`, "no closer record") can always be rewritten without `¬`. This is the condition
-  for every row marked GEOMETRIC IF DECIDABLE, and in Sheaf it always holds: every
+  for every row marked GEOMETRIC IF DECIDABLE, and in Etale it always holds: every
   type is a positive combination of these atoms over a finite text, so whether a text
   inhabits a type is decidable too.
 
-## Notation (as `sheaf sequents` prints it)
+## Notation (as `etale sequents` prints it)
 
 | Form | Meaning |
 |---|---|
@@ -85,7 +85,7 @@ Exceptions found:
 
 - **Unguarded `mod`** (fixed). `mod = m` was accepted with a field as divisor, or with
   0 or a negative number; 0 silently meant "no wrap". It is now refused unless m is a
-  positive number written out (`examples/mistakes/geometric.sheaf`).
+  positive number written out (`examples/mistakes/geometric.etale`).
 - **Left recursion** (open, lang-6). `Loop {}  more {Loop 0..}` compiles. Its equation
   `Loop(t) ⊣⊢ Loop{0..}(t)` has many solutions (the empty text only, or every text), so
   it is not a definition; the parser picks the least.
@@ -124,7 +124,7 @@ instead of showing a false TRUE.
    `parent` and `text` functions, and `around` defined by recursion up the tree.
 3. **The fold and conversion functions are named, not printed.** `count`, `sum`, kept lists,
    `digits`, `sign` and `mod` are defined once, in this page, rather than per file.
-   `sheaf sequents` could print them as a fixed preamble for the Lean export.
+   `etale sequents` could print them as a fixed preamble for the Lean export.
 4. **Claims are checked by the prover, not by a separate checker.** Evaluating claims on
    data catches a wrong proof only on the data at hand. pt-1 (proofs as `Proof` texts)
    and a small proof checker give the independent check.

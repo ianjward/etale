@@ -13,17 +13,17 @@ import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/set
 import gleam/string
-import sheaf/decimal.{type Decimal}
-import sheaf/grammar.{
+import etale/decimal.{type Decimal}
+import etale/grammar.{
   type Cell, type Check, type Store, CheckPosition, CheckRecord, CheckRefine,
   CheckUnique,
 }
-import sheaf/model.{
+import etale/model.{
   type Block, type Clause, type Decl, type Field, type Item, type Value, AndConn,
   NumItem, OrConn, Plain, StrItem, TypeItem, VArith, VMulti, VNum, VPath, VRange,
   VStr,
 }
-import sheaf/node.{type Node, NAlt, NRec, NSeq}
+import etale/node.{type Node, NAlt, NRec, NSeq}
 
 pub type Val {
   VNumber(Decimal)

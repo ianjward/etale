@@ -1,8 +1,23 @@
 # Etale
 
-**Etale** is an extremely rough outline for an experimental typed language that aims to be a human-readable version of positive (geometric) logic, with proofs and drawn graphs (eventually). This repository contains its checker, evaluator and infinite-canvas IDE workspace. Its core grammar is in priv/language.sheaf.
+**Etale** is an extremely rough outline for an experimental typed language that aims to be a human-readable version of positive (geometric) logic, with proofs and drawn graphs (eventually). This repository contains its checker, evaluator and infinite-canvas IDE workspace. Its core grammar is in priv/language.etale.
 
 The bigger picture is a fair, distributed network of verified OS level proof machines sharing knowledge repositories. No machine is in charge. Each machine’s history is a proof of its state, and every message carries a proof its receiver checks, so trust comes from checking, not from the sender. The repositories hold versioned theories and proved claims that anyone can publish, extend and check on equal terms.
+
+The name: a sheaf and its étale space are one thing seen two ways.
+
+## Layout
+
+The Etale tree, read top-down in the order things are stated:
+- `priv/language.etale`: the language, which parses itself as `File` in exactly one way.
+- `priv/stdlib/`: the standard library.
+- `examples/`: theories, with the data texts that inhabit them beside them.
+
+The host, scaffolding in Gleam and JavaScript that self-hosting replaces:
+- `src/`: the reader, checker, evaluator, printer, sequents, graph and workspace.
+- `test/`: the test suite.
+- `bin/etale.mjs`: the command line.
+- `tools/`, `site/`: the workspace and site builds.
 
 ## Quick Start
 - An overview of the language: https://ianjward.github.io/etale
@@ -11,17 +26,17 @@ The bigger picture is a fair, distributed network of verified OS level proof mac
 ## Local Development
 ```sh
 gleam build                                       # Requires Gleam ≥ 1.14 and Node ≥ 22
-node bin/sheaf.mjs bootstrap                    # Self-parses language.sheaf
-node bin/sheaf.mjs check examples/orders/orders.sheaf    # Parse and check a file
-node bin/sheaf.mjs check examples/shop                # Check a project folder
-node bin/sheaf.mjs bundle examples/shop -o shop.txt   # Bundle project into one text file
-node bin/sheaf.mjs run examples/orders/orders.sheaf Order examples/orders/order_1042.txt --trace
-node bin/sheaf.mjs run priv/stdlib/dates.sheaf Date --text 2024-02-29
-node bin/sheaf.mjs graph examples/orders/orders.sheaf -o orders.svg
-node bin/sheaf.mjs sequents examples/orders/orders.sheaf  # Its theory as geometric sequents (docs/geometric.md)
-node bin/sheaf.mjs fmt examples/orders/orders.sheaf --check   # Validate spacing
-node bin/sheaf.mjs print examples/orders/orders.sheaf Line          # Print type source
-node bin/sheaf.mjs print examples/orders/orders.sheaf Order examples/orders/order_1042.txt   # Print values
+node bin/etale.mjs bootstrap                    # Self-parses language.etale
+node bin/etale.mjs check examples/orders/orders.etale    # Parse and check a file
+node bin/etale.mjs check examples/shop                # Check a project folder
+node bin/etale.mjs bundle examples/shop -o shop.txt   # Bundle project into one text file
+node bin/etale.mjs run examples/orders/orders.etale Order examples/orders/order_1042.txt --trace
+node bin/etale.mjs run priv/stdlib/dates.etale Date --text 2024-02-29
+node bin/etale.mjs graph examples/orders/orders.etale -o orders.svg
+node bin/etale.mjs sequents examples/orders/orders.etale  # Its theory as geometric sequents (docs/geometric.md)
+node bin/etale.mjs fmt examples/orders/orders.etale --check   # Validate spacing
+node bin/etale.mjs print examples/orders/orders.etale Line          # Print type source
+node bin/etale.mjs print examples/orders/orders.etale Order examples/orders/order_1042.txt   # Print values
 gleam test                                        # Run test suite
 ./tools/build_ide.sh                              # Build dist/workspace.html
 ```
