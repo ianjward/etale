@@ -190,8 +190,24 @@ fn holders(c: Ctx, x: String) -> List(String) {
     || list.any(d.fields, fn(f) { typed(f.items) })
     || list.any(decl_paths(d), fn(p) { list.contains(list.drop(p, 1), x) })
   })
-  |> list.map(fn(d) { d.name })
+  // a named list of records, 'Stops {Stop...}', is not around its items:
+  // whatever holds the list holds them
+  |> list.flat_map(fn(d) {
+    case named_list(c, d) {
+      True -> holders(c, d.name)
+      False -> [d.name]
+    }
+  })
+  |> list.unique
   |> list.sort(string.compare)
+}
+
+fn named_list(c: Ctx, d: Decl) -> Bool {
+  d.kind == model.Refine
+  && case d.items {
+    [TypeItem(t)] -> option.is_some(model.record_of(c.decls, t))
+    _ -> False
+  }
 }
 
 /// A type that holds x without a u around it, if there is one.
@@ -1920,6 +1936,19 @@ fn field_bounds(c: Ctx, fl: Field) -> #(B, B) {
 /// So a total of delays that are each 0..120 is never below 0.
 fn def_bounds(c: Ctx, rec: Decl, fl: Field) -> #(B, B) {
   let #(lo, hi) = field_bounds(c, fl)
+  // a calculation over fields of this record (no dots, so no recursion)
+  // lies within the bounds of its terms; a wrap keeps its own bounds
+  let #(lo, hi) = case definition(fl), mod_of(fl) {
+    Some(VArith(op, _) as def), None if op == "+" || op == "-" || op == "*" ->
+      case list.all(rhs_paths(def), fn(p) { list.length(p) == 1 }) {
+        True -> {
+          let #(vlo, vhi) = value_bounds(c, rec, def, 0)
+          #(bmax(lo, vlo), bmin(hi, vhi))
+        }
+        False -> #(lo, hi)
+      }
+    _, _ -> #(lo, hi)
+  }
   case model.setting(fl.preds, "round"), definition(fl) {
     Some(VPath([rule])), Some(def) -> {
       let #(rlo, rhi) = rounded_bounds(c, rec, fl, def, rule)
@@ -2746,6 +2775,14 @@ fn induction(
 }
 
 fn atom_bounds(c: Ctx, d: Decl, atom: String, claim: Option(Field)) -> #(B, B) {
+  // a method the reader gave a field of its own is named by its path
+  case string.contains(atom, "."), model.field(d, atom) {
+    True, Some(fl) -> def_bounds(c, d, fl)
+    _, _ -> path_bounds(c, d, atom, claim)
+  }
+}
+
+fn path_bounds(c: Ctx, d: Decl, atom: String, claim: Option(Field)) -> #(B, B) {
   let all_parts = string.split(atom, ".")
   // a filter keeps some of the items: it can only lower the count to 0
   let filtered = list.any(list.drop(all_parts, 1), fn(x) { is_upper_start(x) })

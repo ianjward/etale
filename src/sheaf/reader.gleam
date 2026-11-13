@@ -2052,7 +2052,7 @@ fn single_line(
             ["count", "unique", "order"],
             "a list",
           ))
-          use order <- result.try(list_order(sc, t.props))
+          use ordering <- result.try(list_order(sc, t.props))
           let qty = case count_value(t.props) {
             Some(v) -> [Setting("qty", v)]
             None -> []
@@ -2067,7 +2067,7 @@ fn single_line(
               items: [one],
               preds: Block(
                 AndConn,
-                list.flatten([qty, [Flag("list")], unique, order]),
+                list.flatten([qty, [Flag("list")], unique, ordering]),
               ),
               comment: t.comment,
             ),
