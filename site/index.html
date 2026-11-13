@@ -77,8 +77,8 @@ section.why { padding-block: 40px 44px; border-top: 1px solid var(--stroke); }
       </div>
     </div>
     <div class="card hero-card" style="border-color: var(--st-proved)">
-      <header><span>forecast.sheaf</span><span class="state" style="color: var(--st-proved)">claims proved</span></header>
-      <pre class="sheaf"># A low and a high, each from -20 to 40.
+      <header><span>forecast.etale</span><span class="state" style="color: var(--st-proved)">claims proved</span></header>
+      <pre class="etale"># A low and a high, each from -20 to 40.
 Forecast {}
   low {Integer} (-20..40)
   high {Integer} (-20..40)
@@ -156,7 +156,7 @@ Forecast {}
 </div>
 <script type="module">
 import { highlight } from "./highlight.js";
-for (const pre of document.querySelectorAll("pre.sheaf")) pre.innerHTML = highlight(pre.textContent);
+for (const pre of document.querySelectorAll("pre.etale")) pre.innerHTML = highlight(pre.textContent);
 // the workspace loads into the page only when asked, so it does not slow the page or catch its scrolling
 document.getElementById("start").addEventListener("click", () => {
   const f = document.createElement("iframe");

@@ -17,10 +17,10 @@ import gleam/option.{type Option, None, Some}
 import gleam/order
 import gleam/result
 import gleam/string
-import sheaf/decimal.{type Decimal}
-import sheaf/evaluate.{type Ev, type Val, VNumber, VText}
-import sheaf/grammar.{type Cell}
-import sheaf/model.{
+import etale/decimal.{type Decimal}
+import etale/evaluate.{type Ev, type Val, VNumber, VText}
+import etale/grammar.{type Cell}
+import etale/model.{
   type Case, type Decl, type Field, type Item, type Value, Decl, NumItem, OrConn,
   Plain, Setting, StrItem, TypeItem, VArith, VFilter, VMulti, VNum, VPath,
   VRange, VStr,
@@ -3696,7 +3696,7 @@ fn wraps(c: Ctx, d: Decl, p: List(String)) -> Bool {
   }
 }
 
-/// Wraps (language.sheaf, Step 5). A value from a 'wrap_at:' calculation is
+/// Wraps (language.etale, Step 5). A value from a 'wrap_at:' calculation is
 /// compared with another field by '=' only: after the wrap, 00:10 is below
 /// 23:50. A wrap that can never happen is refused, and a calculation that may
 /// not fit its field's type must say what to do: wrap, or a wider type.

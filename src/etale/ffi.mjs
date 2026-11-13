@@ -56,8 +56,8 @@ export function write_file(p, text) {
 export const argv = () => toList(typeof process === "undefined" ? [] : process.argv.slice(2));
 export const cwd = () => (typeof process === "undefined" ? "/" : process.cwd());
 export const exit = (code) => { if (typeof process !== "undefined") process.exitCode = code; return undefined; };
-// the folder holding priv/ (language.sheaf and the standard library); set by bin/sheaf.mjs
-export const home_dir = () => globalThis.SHEAF_HOME ?? (typeof process === "undefined" ? "/" : process.cwd());
+// the folder holding priv/ (language.etale and the standard library); set by bin/etale.mjs
+export const home_dir = () => globalThis.ETALE_HOME ?? (typeof process === "undefined" ? "/" : process.cwd());
 
 // One record per parse node. Parse nodes are shared by every candidate that
 // contains them, so a sub-record is evaluated once however many parents read it.
@@ -68,7 +68,7 @@ export function node_rec_get(node) {
 }
 export function node_rec_set(node, rec) { node_recs.set(node, rec); return undefined; }
 
-// ASCII fast paths (language.sheaf text is ASCII by construction).
+// ASCII fast paths (language.etale text is ASCII by construction).
 export const all_digits = (s) => /^[0-9]+$/.test(s);
 export const first_is_lower = (s) => { const c = s.charCodeAt(0); return c >= 97 && c <= 122; };
 export const first_is_upper = (s) => { const c = s.charCodeAt(0); return c >= 65 && c <= 90; };

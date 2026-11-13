@@ -85,10 +85,10 @@ let js = "(function(){\nconst __defs = {}, __cache = {};\n" +
 for (const [path, body] of modules) {
   js += `__defs[${JSON.stringify(key(path))}] = function(__exports){\n${body}\n};\n`;
 }
-js += `window.__sheaf = __load(${JSON.stringify(key(resolve(entry)))});\n})();\n`;
+js += `window.__etale = __load(${JSON.stringify(key(resolve(entry)))});\n})();\n`;
 const files = filesJson ? readFileSync(filesJson, "utf8") : "{}";
 let html = readFileSync(template, "utf8");
-html = html.replace("/*__FILES__*/", () => `window.SHEAF_FILES = ${files};`);
+html = html.replace("/*__FILES__*/", () => `window.ETALE_FILES = ${files};`);
 html = html.replace("/*__BUNDLE__*/", () => js.replace(/<\/script/gi, "<\\/script"));
 writeFileSync(out, html);
 console.log(`bundled ${modules.size} modules into ${out} (${(html.length / 1024).toFixed(0)} KB)`);

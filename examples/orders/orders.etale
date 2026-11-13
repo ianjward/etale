@@ -1,6 +1,6 @@
 # Orders: stored and worked-out fields, kept and collected lists, a mapping and a rule.
-# Check:  node bin/sheaf.mjs check examples/orders/orders.sheaf
-# Run:    node bin/sheaf.mjs run examples/orders/orders.sheaf Order examples/orders/order_1042.txt
+# Check:  node bin/etale.mjs check examples/orders/orders.etale
+# Run:    node bin/etale.mjs run examples/orders/orders.etale Order examples/orders/order_1042.txt
 
 # A stock-keeping unit: three capital letters, a dash, four digits.
 Sku {Text}

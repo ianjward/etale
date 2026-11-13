@@ -1,14 +1,22 @@
 //// Command line (runs on Node):
 ////
-////   sheaf bootstrap                          language.sheaf parses itself, exactly one way
-////   sheaf check FILE.sheaf | FOLDER | BUNDLE    parse, find the files it needs, run every check
-////   sheaf run FILE.sheaf TYPE DATA [--trace]   does the text in DATA inhabit TYPE?
-////   sheaf run FILE.sheaf TYPE --text "..."     the same, with the text inline (\n for newlines)
-////   sheaf graph FILE.sheaf -o OUT.svg          the data-flow graph of a file, as SVG
-////   sheaf fmt FILE.sheaf [--write | --check]   the file in canonical spacing (Step 9)
-////   sheaf print FILE.sheaf TYPE VALUE.json     the canonical text of a value (Step 9)
-////   sheaf bundle FOLDER [-o OUT]             a project as one text (Step 10)
+////   etale bootstrap                          language.etale parses itself, exactly one way
+////   etale check FILE.etale | FOLDER | BUNDLE    parse, find the files it needs, run every check
+////   etale run FILE.etale TYPE DATA [--trace]   does the text in DATA inhabit TYPE?
+////   etale run FILE.etale TYPE --text "..."     the same, with the text inline (\n for newlines)
+////   etale graph FILE.etale -o OUT.svg          the data-flow graph of a file, as SVG
+////   etale fmt FILE.etale [--write | --check]   the file in canonical spacing (Step 9)
+////   etale print FILE.etale TYPE VALUE.json     the canonical text of a value (Step 9)
+////   etale bundle FOLDER [-o OUT]             a project as one text (Step 10)
 
+import etale/check
+import etale/evaluate.{type Val, VRecord, VSeqv}
+import etale/graph
+import etale/model
+import etale/printer
+import etale/program.{type Program}
+import etale/reader
+import etale/sequents
 import gleam/dict
 import gleam/float
 import gleam/int
@@ -16,40 +24,32 @@ import gleam/io
 import gleam/list
 import gleam/option.{None, Some}
 import gleam/string
-import sheaf/check
-import sheaf/evaluate.{type Val, VRecord, VSeqv}
-import sheaf/graph
-import sheaf/model
-import sheaf/printer
-import sheaf/program.{type Program}
-import sheaf/reader
-import sheaf/sequents
 
-@external(javascript, "./sheaf/ffi.mjs", "read_file")
+@external(javascript, "./etale/ffi.mjs", "read_file")
 fn read_file(p: String) -> Result(String, Nil)
 
-@external(javascript, "./sheaf/ffi.mjs", "write_file")
+@external(javascript, "./etale/ffi.mjs", "write_file")
 fn write_file(p: String, text: String) -> Result(Nil, String)
 
-@external(javascript, "./sheaf/ffi.mjs", "cwd")
+@external(javascript, "./etale/ffi.mjs", "cwd")
 fn cwd() -> String
 
-@external(javascript, "./sheaf/ffi.mjs", "list_dir")
+@external(javascript, "./etale/ffi.mjs", "list_dir")
 fn list_dir(dir: String) -> List(#(String, Bool))
 
-@external(javascript, "./sheaf/ffi.mjs", "is_dir")
+@external(javascript, "./etale/ffi.mjs", "is_dir")
 fn is_dir(path: String) -> Bool
 
-@external(javascript, "./sheaf/ffi.mjs", "home_dir")
+@external(javascript, "./etale/ffi.mjs", "home_dir")
 fn home_dir() -> String
 
-@external(javascript, "./sheaf/ffi.mjs", "argv")
+@external(javascript, "./etale/ffi.mjs", "argv")
 fn argv() -> List(String)
 
-@external(javascript, "./sheaf/ffi.mjs", "exit")
+@external(javascript, "./etale/ffi.mjs", "exit")
 fn exit(code: Int) -> Nil
 
-@external(javascript, "./sheaf/ffi.mjs", "now_ms")
+@external(javascript, "./etale/ffi.mjs", "now_ms")
 fn now() -> Float
 
 pub fn main() {
@@ -80,23 +80,23 @@ pub fn main() {
 }
 
 const usage =
-  "sheaf: checker and evaluator for language.sheaf
+  "etale: checker and evaluator for language.etale
 
-  sheaf bootstrap                          language.sheaf parses itself, exactly one way
-  sheaf check FILE.sheaf | FOLDER | BUNDLE    parse, find the files it needs, run every check
-  sheaf run FILE.sheaf TYPE DATA [--trace]   does the text in DATA inhabit TYPE?
-  sheaf run FILE.sheaf TYPE --text \"...\"     the same, with the text inline (\\n for newlines)
-  sheaf graph FILE.sheaf -o OUT.svg          the data-flow graph of a file, as SVG
-  sheaf fmt FILE.sheaf [--write | --check]   the file in canonical spacing
-  sheaf sequents FILE.sheaf                  the file's theory as geometric sequents
-  sheaf print FILE.sheaf                     the file's code, in canonical form
-  sheaf print FILE.sheaf TYPE                a type's code
-  sheaf print FILE.sheaf TYPE DATA           data's values, in canonical form (DATA: a text or JSON)
-  sheaf print FILE.sheaf TYPE --text \"...\"   the same, inline (--json '{...}' for JSON)
-  sheaf bundle FOLDER [-o OUT]             a project as one text; check works on it too"
+  etale bootstrap                          language.etale parses itself, exactly one way
+  etale check FILE.etale | FOLDER | BUNDLE    parse, find the files it needs, run every check
+  etale run FILE.etale TYPE DATA [--trace]   does the text in DATA inhabit TYPE?
+  etale run FILE.etale TYPE --text \"...\"     the same, with the text inline (\\n for newlines)
+  etale graph FILE.etale -o OUT.svg          the data-flow graph of a file, as SVG
+  etale fmt FILE.etale [--write | --check]   the file in canonical spacing
+  etale sequents FILE.etale                  the file's theory as geometric sequents
+  etale print FILE.etale                     the file's code, in canonical form
+  etale print FILE.etale TYPE                a type's code
+  etale print FILE.etale TYPE DATA           data's values, in canonical form (DATA: a text or JSON)
+  etale print FILE.etale TYPE --text \"...\"   the same, inline (--json '{...}' for JSON)
+  etale bundle FOLDER [-o OUT]             a project as one text; check works on it too"
 
 pub fn prelude_path() -> String {
-  home_dir() <> "/priv/language.sheaf"
+  home_dir() <> "/priv/language.etale"
 }
 
 pub fn std_dir() -> String {
@@ -189,7 +189,7 @@ fn cmd_bootstrap() -> Int {
     Ok(p) -> {
       let assert Ok(text) = read_file(prelude_path())
       io.println(
-        "language.sheaf: "
+        "language.etale: "
         <> int.to_string(list.length(string.split(text, "\n")))
         <> " lines, "
         <> int.to_string(list.length(p.order))
@@ -237,14 +237,14 @@ fn cmd_check(file: String) -> Int {
   }
 }
 
-/// Every .sheaf text in a folder and the folders below it.
+/// Every .etale text in a folder and the folders below it.
 fn texts_under(dir: String) -> List(String) {
   list.flat_map(list_dir(dir), fn(e) {
     let path = dir <> "/" <> e.0
     case e.1 {
       True -> texts_under(path)
       False ->
-        case string.ends_with(e.0, ".sheaf") && e.0 != program.prelude_name {
+        case string.ends_with(e.0, ".etale") && e.0 != program.prelude_name {
           True -> [path]
           False -> []
         }
@@ -555,7 +555,7 @@ fn cmd_graph(file: String, out: String) -> Int {
 
 /// Print a file's theory as geometric sequents (docs/geometric.md).
 fn cmd_sequents(file: String) -> Int {
-  // language.sheaf is already loaded as the prelude: print its own theory
+  // language.etale is already loaded as the prelude: print its own theory
   let loaded = case abs(file) == prelude_path() {
     True ->
       case start(False) {
@@ -607,7 +607,7 @@ fn cmd_fmt(file: String, opts: List(String)) -> Int {
                   0
                 }
                 False -> {
-                  io.println(file <> ": not formatted (run sheaf fmt --write)")
+                  io.println(file <> ": not formatted (run etale fmt --write)")
                   1
                 }
               }
@@ -675,7 +675,7 @@ fn cmd_print(
   }
 }
 
-/// A file named as the program shows it: relative to here, or language.sheaf.
+/// A file named as the program shows it: relative to here, or language.etale.
 fn source(fname: String) -> Result(String, Nil) {
   case fname == program.prelude_name {
     True -> read_file(prelude_path())
@@ -696,8 +696,8 @@ fn done(r: Result(String, String)) -> Int {
   }
 }
 
-/// Every .sheaf text under a folder, as one text: '=== name' lines, each
-/// followed by its file. 'sheaf check' reads it back the same way.
+/// Every .etale text under a folder, as one text: '=== name' lines, each
+/// followed by its file. 'etale check' reads it back the same way.
 fn cmd_bundle(dir: String, out: option.Option(String)) -> Int {
   let root = abs(dir)
   let entries =

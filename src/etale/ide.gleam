@@ -1,7 +1,7 @@
 //// The workspace: an infinite, zoomable canvas where code, the data-flow graph
 //// and live output sit side by side.
 ////
-////   code panels   the .sheaf source, editable; every pause re-parses and re-checks
+////   code panels   the .etale source, editable; every pause re-parses and re-checks
 ////   node graph    one node per type, one row (with pins) per field; type wires
 ////                 run from a type to the rows that use it, data wires between
 ////                 the fields a computed field, rule or mapping reads
@@ -19,12 +19,12 @@ import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/order
 import gleam/string
-import sheaf/check.{type Grid, type Report}
-import sheaf/decimal
-import sheaf/evaluate.{type Val, VInvalid, VNumber, VRecord, VSeqv, VText}
-import sheaf/graph.{type GNode, type Graph, DataWire, TypeWire}
-import sheaf/model
-import sheaf/program.{type Outcome, type Program}
+import etale/check.{type Grid, type Report}
+import etale/decimal
+import etale/evaluate.{type Val, VInvalid, VNumber, VRecord, VSeqv, VText}
+import etale/graph.{type GNode, type Graph, DataWire, TypeWire}
+import etale/model
+import etale/program.{type Outcome, type Program}
 
 // ---------------------------------------------------------------- host
 
@@ -227,7 +227,7 @@ fn load_created() -> List(#(String, String))
 @external(javascript, "./ide_ffi.mjs", "save_created")
 fn save_created(files: List(#(String, String))) -> Nil
 
-/// The browser entry point: window.SHEAF_FILES holds language.sheaf, the
+/// The browser entry point: window.ETALE_FILES holds language.etale, the
 /// standard library and the examples as an in-memory folder.
 pub fn main() -> Nil {
   ffi_start(app(), files_global())
@@ -361,7 +361,7 @@ pub type Model {
     hover_type: String,
     /// A line to scroll to and highlight, per file, after following a link.
     marks: Dict(String, Int),
-    /// Files opened by following a link (language.sheaf, say).
+    /// Files opened by following a link (language.etale, say).
     opened: List(String),
     /// Files typed in whose text has not reached the model yet.
     dirty: List(String),
@@ -415,7 +415,7 @@ const probe_w = 380.0
 fn presets() -> List(#(String, String, List(#(String, String)))) {
   [
     #(
-      "/examples/orders/orders.sheaf",
+      "/examples/orders/orders.etale",
       "Orders: folds, a mapping, a filtered list",
       [
         #("Order", "order 1042\nABC-0001 x3 @ 19.99\nXYZ-0420 x10 @ 120.00\n"),
@@ -423,7 +423,7 @@ fn presets() -> List(#(String, String, List(#(String, String)))) {
       ],
     ),
     #(
-      "/examples/proofs/proofs.sheaf",
+      "/examples/proofs/proofs.etale",
       "Proofs: claims, induction, a two-input table",
       [
         #("Window", "3..25"),
@@ -431,42 +431,42 @@ fn presets() -> List(#(String, String, List(#(String, String)))) {
         #("Parcel", "7 A"),
       ],
     ),
-    #("/priv/stdlib/dates.sheaf", "Dates: leap years as chained tables", [
+    #("/priv/stdlib/dates.etale", "Dates: leap years as chained tables", [
       #("Date", "2024-02-29"),
     ]),
-    #("/priv/stdlib/bits.sheaf", "Bits and bytes: proved bounds", [
+    #("/priv/stdlib/bits.etale", "Bits and bytes: proved bounds", [
       #("Byte", "01000001"),
     ]),
-    #("/priv/stdlib/logic.sheaf", "Logic gates as tables", [
+    #("/priv/stdlib/logic.etale", "Logic gates as tables", [
       #("Implies_Gate", "TRUEFALSE"),
     ]),
     #(
-      "/examples/shop/orders/orders.sheaf",
+      "/examples/shop/orders/orders.etale",
       "Shop: a project in folders, no imports",
       [
         #("Order", "2026-10-15\nABC123 19.99\nXYZ042 5.00\n"),
       ],
     ),
-    #("/examples/book/book.sheaf", "Book: an order belongs to a customer", [
+    #("/examples/book/book.etale", "Book: an order belongs to a customer", [
       #(
         "Book",
         "C001 Ada Lovelace\nC002 Alan Turing\n---\n1041 C001\n1042 C009\n",
       ),
     ]),
     #(
-      "/examples/shop/orders/peek.sheaf",
+      "/examples/shop/orders/peek.etale",
       "Shop: reaching for a private type (outside scope)",
       [],
     ),
     #(
-      "/examples/meeting/meeting.sheaf",
+      "/examples/meeting/meeting.etale",
       "The standard library needs no import",
       [
         #("Meeting", "2024-02-29 room_4"),
       ],
     ),
     #(
-      "/examples/mistakes/mistakes.sheaf",
+      "/examples/mistakes/mistakes.etale",
       "Mistakes: what the checker reports",
       [],
     ),
@@ -482,7 +482,7 @@ fn init(
 ) -> Model {
   let #(files, created) = restore_created(dict.from_list(files), load_created())
   let t0 = now()
-  let base = case dict.get(files, "/priv/language.sheaf") {
+  let base = case dict.get(files, "/priv/language.etale") {
     Ok(text) ->
       case
         program.new(text, program.memory_fs(dict.new(), "/", "/", ""), True)
@@ -490,7 +490,7 @@ fn init(
         Ok(p) -> Ok(p)
         Error(e) -> Error(model.error_text(e))
       }
-    Error(_) -> Error("language.sheaf is missing")
+    Error(_) -> Error("language.etale is missing")
   }
   let boot = now() -. t0
   let m =
@@ -560,7 +560,7 @@ fn init(
       created,
       [],
     )
-  open(m, "/examples/orders/orders.sheaf") |> fit(False)
+  open(m, "/examples/orders/orders.etale") |> fit(False)
 }
 
 /// Bring back the files made with New in an earlier visit. They join the
@@ -576,7 +576,7 @@ fn restore_created(
       let #(path, text) = f
       case
         string.starts_with(path, "/")
-        && string.ends_with(path, ".sheaf")
+        && string.ends_with(path, ".etale")
         && !string.contains(path, "/../")
       {
         False -> acc
@@ -727,7 +727,7 @@ fn new_file(m: Model, name: String) -> Model {
     string.trim(name)
     |> string.replace("\\", "/")
     |> string.replace(" ", "_")
-  let name = case string.ends_with(name, ".sheaf") {
+  let name = case string.ends_with(name, ".etale") {
     True -> string.drop_end(name, 6)
     False -> name
   }
@@ -746,7 +746,7 @@ fn new_file(m: Model, name: String) -> Model {
       let text =
         "# "
         <> base
-        <> ".sheaf: a new file. Types from the other files in "
+        <> ".etale: a new file. Types from the other files in "
         <> program.display_path(folder)
         <> "/\n# and the core library can be used here.\n"
         <> string.capitalise(title)
@@ -766,8 +766,8 @@ fn new_file(m: Model, name: String) -> Model {
 
 fn free_path(files: Dict(String, String), stem: String, n: Int) -> String {
   let path = case n {
-    1 -> stem <> ".sheaf"
-    _ -> stem <> "_" <> int.to_string(n) <> ".sheaf"
+    1 -> stem <> ".etale"
+    _ -> stem <> "_" <> int.to_string(n) <> ".etale"
   }
   case dict.has_key(files, path) {
     True -> free_path(files, stem, n + 1)
@@ -1154,7 +1154,7 @@ fn file_state(m: Model, path: String) -> Status {
   }
 }
 
-/// language.sheaf is always locked; the rest of the core library starts
+/// language.etale is always locked; the rest of the core library starts
 /// locked; any file can be locked by hand.
 fn is_locked(m: Model, path: String) -> Bool {
   is_prelude(path)
@@ -1386,7 +1386,7 @@ fn peeks_for(m: Model, line: Int) -> List(Peek) {
     dict.to_list(m.files)
     |> list.find_map(fn(f) {
       let #(path, body) = f
-      case string.ends_with(path, ".sheaf") && path != m.main {
+      case string.ends_with(path, ".etale") && path != m.main {
         False -> Error(Nil)
         True ->
           string.split(body, "\n")
@@ -1548,7 +1548,7 @@ fn goto(m: Model, t: String, from: Loc) -> Model {
 }
 
 /// Go to a line of a file, remembering where from. The working file
-/// scrolls; language.sheaf and files outside the scope open beside; any
+/// scrolls; language.etale and files outside the scope open beside; any
 /// other file becomes the working file, the canvas gliding over to it.
 fn jump(
   m: Model,
@@ -1617,7 +1617,7 @@ fn search(m: Model, q: String) -> List(Hit) {
       }
       let files =
         dict.keys(m.files)
-        |> list.filter(fn(f) { string.ends_with(f, ".sheaf") })
+        |> list.filter(fn(f) { string.ends_with(f, ".etale") })
         |> list.sort(fn(a, b) {
           case int.compare(rank(a), rank(b)) {
             order.Eq -> string.compare(a, b)
@@ -1703,13 +1703,13 @@ fn text_hit(hits: List(Hit), l: String, lq: String, path: String, n: Int) {
 }
 
 fn is_prelude(path: String) -> Bool {
-  path == "/priv/language.sheaf"
+  path == "/priv/language.etale"
 }
 
 /// Where a type is declared: (file, line, outside the working file's scope).
 fn find_decl(m: Model, t: String) -> Option(#(String, Int, Bool)) {
   case list.contains(model.builtin_numeric, t) {
-    True -> Some(#("/priv/language.sheaf", builtin_line(m), False))
+    True -> Some(#("/priv/language.etale", builtin_line(m), False))
     False -> find_declared(m, t)
   }
 }
@@ -1720,7 +1720,7 @@ fn find_declared(m: Model, t: String) -> Option(#(String, Int, Bool)) {
       case dict.get(p.decls, t) {
         Ok(d) ->
           case d.file == program.prelude_name {
-            True -> Some(#("/priv/language.sheaf", d.line, False))
+            True -> Some(#("/priv/language.etale", d.line, False))
             False -> Some(#("/" <> d.file, d.line, False))
           }
         Error(_) -> None
@@ -1760,7 +1760,7 @@ fn peeks_for_name(m: Model, t: String) -> Option(Peek) {
   dict.to_list(m.files)
   |> list.find_map(fn(f) {
     let #(path, body) = f
-    case string.ends_with(path, ".sheaf") {
+    case string.ends_with(path, ".etale") {
       False -> Error(Nil)
       True ->
         string.split(body, "\n")
@@ -1784,10 +1784,10 @@ fn link_names(m: Model) -> List(String) {
   }
 }
 
-/// Integer and Decimal are built in: language.sheaf describes them in a
+/// Integer and Decimal are built in: language.etale describes them in a
 /// comment, which is where their links lead.
 fn builtin_line(m: Model) -> Int {
-  string.split(file_text(m, "/priv/language.sheaf"), "\n")
+  string.split(file_text(m, "/priv/language.etale"), "\n")
   |> list.index_fold(0, fn(acc, l, i) {
     case acc, string.starts_with(l, "# Built-in numbers") {
       0, True -> i + 1
@@ -2640,7 +2640,7 @@ fn command(m: Model, name: String) -> Model {
     "theme" -> Model(..m, dark: !m.dark)
     "svg" -> {
       download(
-        string.replace(program.display_path(m.main), ".sheaf", "")
+        string.replace(program.display_path(m.main), ".etale", "")
           <> "-dataflow.svg",
         graph.to_svg(shown_graph(m), m.pos, program.display_path(m.main)),
       )
@@ -3515,7 +3515,7 @@ fn draw_panels(c: Ctx, m: Model) -> Nil {
   })
 }
 
-/// A lock toggle for a file; language.sheaf has none, it is always locked.
+/// A lock toggle for a file; language.etale has none, it is always locked.
 fn lock_button(m: Model, path: String) -> List(#(String, String)) {
   case is_prelude(path), is_locked(m, path) {
     True, _ -> []
@@ -3572,7 +3572,7 @@ fn notes_for(m: Model, path: String) -> List(#(Int, String, String)) {
   }
 }
 
-/// The file and its folder, enough to tell two orders.sheaf files apart.
+/// The file and its folder, enough to tell two orders.etale files apart.
 fn short_path(path: String) -> String {
   string.split(path, "/")
   |> list.reverse
@@ -3666,7 +3666,7 @@ fn hud(c: Ctx, m: Model) -> Nil {
   )
   let boot = case m.base {
     Ok(_) ->
-      "language.sheaf parsed itself in "
+      "language.etale parsed itself in "
       <> int.to_string(float.round(m.boot_ms))
       <> " ms"
     Error(e) -> "bootstrap failed: " <> e

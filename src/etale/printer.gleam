@@ -1,4 +1,4 @@
-//// Printing: parsing run backwards (language.sheaf, Step 9).
+//// Printing: parsing run backwards (language.etale, Step 9).
 ////
 //// print(type, value) builds the canonical text for a value, then parses it
 //// back and refuses to return it unless it reads back to that same value in
@@ -6,21 +6,21 @@
 //// every position of a text shape that holds no field printed as its type's
 //// first form (so Pad and Gap print as one space), and trailing spaces dropped.
 
+import etale/decimal.{type Decimal}
+import etale/evaluate.{type Val, VNumber, VRecord, VSeqv, VText}
+import etale/grammar
+import etale/model.{
+  type Decl, type Field, type Item, NumItem, StrItem, TypeItem, VNum,
+}
+import etale/node.{type Node, NAlt, NChar, NLay, NLit, NRec, NSeq}
+import etale/program.{type Program}
+import etale/reader
 import gleam/dict
 import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
-import sheaf/decimal.{type Decimal}
-import sheaf/evaluate.{type Val, VNumber, VRecord, VSeqv, VText}
-import sheaf/grammar
-import sheaf/model.{
-  type Decl, type Field, type Item, NumItem, StrItem, TypeItem, VNum,
-}
-import sheaf/node.{type Node, NAlt, NChar, NLay, NLit, NRec, NSeq}
-import sheaf/program.{type Program}
-import sheaf/reader
 
 /// A value to print: numbers, texts, records by field name, sequences.
 pub type PV {

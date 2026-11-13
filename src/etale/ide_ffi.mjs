@@ -830,8 +830,8 @@ function paint_highlights() {
     if (el._ranges) all.push(...el._ranges);
     if (el._now) now.push(el._now);
   }
-  CSS.highlights.set("sheaf-find", new Highlight(...all));
-  CSS.highlights.set("sheaf-find-now", new Highlight(...now));
+  CSS.highlights.set("etale-find", new Highlight(...all));
+  CSS.highlights.set("etale-find-now", new Highlight(...now));
 }
 
 // The card waits a moment after the pointer leaves a link, so the pointer can
@@ -962,10 +962,37 @@ export function cursor(c, kind) {
 // pairs, in the order they were made, so a reload brings them back. Storage
 // may be missing or refuse (a private window, a full quota, the claude.ai
 // artifact, Node): then nothing is kept and nothing breaks.
-const CREATED_KEY = "sheaf.workspace.created.v1";
+const CREATED_KEY = "etale.workspace.created.v1";
 let warned = false;
 
+// Before the rename to Etale the files were kept under the old key, with
+// .sheaf paths. On the first load they move to the new key, as .etale paths,
+// and the old key is removed. A file already kept under the new path wins.
+const OLD_CREATED_KEY = "sheaf.workspace.created.v1";
+
+function migrate_created() {
+  try {
+    const store = globalThis.localStorage;
+    const old = store?.getItem(OLD_CREATED_KEY);
+    if (old == null) return;
+    const moved = JSON.parse(old);
+    const kept = JSON.parse(store.getItem(CREATED_KEY) ?? "[]");
+    if (Array.isArray(moved) && Array.isArray(kept)) {
+      const renamed = moved
+        .filter((e) => Array.isArray(e) && typeof e[0] === "string")
+        .map((e) => [e[0].replace(/\.sheaf$/, ".etale"), e[1]]);
+      const known = new Set(kept.map((e) => Array.isArray(e) && e[0]));
+      const all = kept.concat(renamed.filter((e) => !known.has(e[0])));
+      store.setItem(CREATED_KEY, JSON.stringify(all));
+    }
+    store.removeItem(OLD_CREATED_KEY);
+  } catch (e) {
+    // storage missing or refused: the old files stay where they are
+  }
+}
+
 export function load_created() {
+  migrate_created();
   try {
     const raw = globalThis.localStorage?.getItem(CREATED_KEY);
     const data = raw ? JSON.parse(raw) : [];
@@ -987,7 +1014,7 @@ export function save_created(items) {
   return undefined;
 }
 
-export const files = () => globalThis.SHEAF_FILES ?? {};
+export const files = () => globalThis.ETALE_FILES ?? {};
 export const sin = Math.sin;
 export const cos = Math.cos;
 export const exp = Math.exp;

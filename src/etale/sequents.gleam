@@ -11,17 +11,17 @@
 //// that type around t: 'around(t, Order).customer'. '.qty', '.sum' and type
 //// filters are the folds of docs/geometric.md, defined by recursion on lists.
 
-import gleam/int
-import gleam/list
-import gleam/option.{type Option, None, Some}
-import gleam/string
-import sheaf/evaluate
-import sheaf/model.{
+import etale/evaluate
+import etale/model.{
   type Block, type Clause, type Decl, type Field, type Item, type Num,
   type Value, Flag, NumItem, OrConn, Plain, Setting, StrItem, TypeItem, VArith,
   VMulti, VNum, VPath, VRange, VStr,
 }
-import sheaf/program.{type Program}
+import etale/program.{type Program}
+import gleam/int
+import gleam/list
+import gleam/option.{type Option, None, Some}
+import gleam/string
 
 /// The theory of one file: its declarations, in order, as sequents.
 pub fn file(p: Program, path: String) -> String {

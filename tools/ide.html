@@ -181,8 +181,8 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); c
 .panel .find .fc { font: 12px var(--font-code); color: var(--muted); min-width: 44px; text-align: center; font-variant-numeric: tabular-nums; }
 .panel .find button { font: 600 12px var(--font-ui); color: var(--ink); background: var(--panel); border: 1px solid var(--stroke);
   border-radius: 5px; padding: 1px 7px; cursor: pointer; }
-::highlight(sheaf-find) { background-color: color-mix(in srgb, var(--st-changed) 40%, transparent); }
-::highlight(sheaf-find-now) { background-color: var(--st-changed); color: var(--panel); }
+::highlight(etale-find) { background-color: color-mix(in srgb, var(--st-changed) 40%, transparent); }
+::highlight(etale-find-now) { background-color: var(--st-changed); color: var(--panel); }
 #bar button.toggle[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--panel); }
 .seg { display: inline-flex; border: 1px solid var(--stroke); border-radius: 7px; overflow: hidden; }
 #bar .seg button { border: 0; border-radius: 0; }
@@ -212,7 +212,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); c
 <body>
 <form id="newfile" hidden autocomplete="off">
   <label for="newname">New file</label>
-  <div class="row"><input id="newname" spellcheck="false" placeholder="folder/name.sheaf"><button type="button" id="newgo">Create</button></div>
+  <div class="row"><input id="newname" spellcheck="false" placeholder="folder/name.etale"><button type="button" id="newgo">Create</button></div>
   <p>A file in the working file's folder can use that folder's types. Enter creates it, Esc cancels.</p>
 </form>
 <script>
@@ -221,7 +221,7 @@ function openNewFile() {
   if (!f.hidden) { f.hidden = true; return; }
   const cur = (document.getElementById("file").value || "/").replace(/^\//, "");
   const dir = cur.includes("/") ? cur.slice(0, cur.lastIndexOf("/") + 1) : "";
-  i.value = dir + "untitled.sheaf";
+  i.value = dir + "untitled.etale";
   const r = b.getBoundingClientRect();
   f.style.top = (r.bottom + 6) + "px";
   f.style.left = Math.max(12, Math.min(r.left, innerWidth - Math.min(380, innerWidth - 24) - 12)) + "px";
@@ -253,7 +253,7 @@ document.addEventListener("DOMContentLoaded", () => {
   <h1>Etale</h1>
   <label for="file" style="position:absolute;left:-9999px">Example</label>
   <select id="file" onchange="__ide.command('open:' + this.value)"></select>
-  <button id="newbtn" onclick="openNewFile()" title="Make a new .sheaf file (N)">New</button>
+  <button id="newbtn" onclick="openNewFile()" title="Make a new .etale file (N)">New</button>
   <button onclick="__ide.command('fit')" title="Fit everything (F)">Fit</button>
   <button onclick="__ide.command('zoom_out')" title="Zoom out (−)" aria-label="Zoom out">−</button>
   <button onclick="__ide.command('zoom_in')" title="Zoom in (+)" aria-label="Zoom in">+</button>
@@ -295,6 +295,6 @@ document.addEventListener("DOMContentLoaded", () => {
 </div></div>
 <script>/*__FILES__*/</script>
 <script>/*__BUNDLE__*/</script>
-<script>window.__sheaf.main();</script>
+<script>window.__etale.main();</script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-# The language's own rounding rules, each a checked table (language.sheaf,
+# The language's own rounding rules, each a checked table (language.etale,
 # Step 5). 'round:' picks one by its word, e.g.
 #   share {Decimal} (total / Parts) round: 0.01
 # rounds with Half_Even, 'round: 0.01 away' with Half_Up, 'round: 0.01 lower'

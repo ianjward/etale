@@ -1,11 +1,11 @@
-//// A program: the language.sheaf prelude plus user files, compiled and checked.
+//// A program: the language.etale prelude plus user files, compiled and checked.
 ////
-//// Bootstrapping: language.sheaf is read by the line reader, its declarations are
-//// compiled into a grammar, and language.sheaf itself must then match File in
+//// Bootstrapping: language.etale is read by the line reader, its declarations are
+//// compiled into a grammar, and language.etale itself must then match File in
 //// exactly one way under that grammar. Every user file goes through the same
 //// gate, then through the static checker. There are no imports: a file sees
 //// its own folder, the folders above it, the front file of each folder below
-//// those, and the standard library (language.sheaf, Step 10). The files a file
+//// those, and the standard library (language.etale, Step 10). The files a file
 //// needs are found from the names it uses and loaded first.
 
 import gleam/dict.{type Dict}
@@ -14,12 +14,12 @@ import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
-import sheaf/check.{type Report}
-import sheaf/evaluate.{type Ev, type Rec, type Val}
-import sheaf/grammar.{type Grammar, type Parser}
-import sheaf/model.{type Decl, type Entry, type MapError, DeclEntry, MapError}
-import sheaf/node.{type Node}
-import sheaf/reader
+import etale/check.{type Report}
+import etale/evaluate.{type Ev, type Rec, type Val}
+import etale/grammar.{type Grammar, type Parser}
+import etale/model.{type Decl, type Entry, type MapError, DeclEntry, MapError}
+import etale/node.{type Node}
+import etale/reader
 
 /// Where files come from: the disk on Node, an in-memory folder in the browser.
 /// Where texts come from: the disk on Node, an in-memory folder in the browser,
@@ -62,7 +62,7 @@ pub type Outcome {
   )
 }
 
-pub const prelude_name = "language.sheaf"
+pub const prelude_name = "language.etale"
 
 // ---------------------------------------------------------------- paths
 
@@ -402,7 +402,7 @@ fn group_chain(root: String, dir: String, acc: List(String)) -> List(String) {
 }
 
 fn is_text(name: String) -> Bool {
-  string.ends_with(name, ".sheaf") && name != prelude_name
+  string.ends_with(name, ".etale") && name != prelude_name
 }
 
 /// The texts of a group: its own files, plus the front file of each folder
@@ -417,7 +417,7 @@ fn group_texts(fs: Fs, g: String) -> List(String) {
           False -> []
         }
       True -> {
-        let front = join(g, name <> "/" <> name <> ".sheaf")
+        let front = join(g, name <> "/" <> name <> ".etale")
         case fs.read(front) {
           Ok(_) -> [front]
           Error(_) -> []
@@ -436,7 +436,7 @@ fn std_texts(fs: Fs) -> List(String) {
   })
 }
 
-/// Every text that a text sees, besides language.sheaf (Step 10).
+/// Every text that a text sees, besides language.etale (Step 10).
 pub fn scope(p: Program, abspath: String) -> List(String) {
   let mine = case under(abspath, p.fs.std) && p.fs.std != "" {
     True -> []

@@ -1,5 +1,5 @@
 # Logic gates over TRUE and FALSE, each a checked truth table.
-# (And_Gate is in language.sheaf itself, Step 8.)
+# (And_Gate is in language.etale itself, Step 8.)
 
 Not_Gate {}
   x {True | False}

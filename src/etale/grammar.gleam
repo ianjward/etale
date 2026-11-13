@@ -12,9 +12,9 @@ import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/set.{type Set}
 import gleam/string
-import sheaf/decimal
-import sheaf/model.{type Decl, type Item, NumItem, StrItem, TypeItem}
-import sheaf/node.{type Node, NAlt, NChar, NLay, NLit, NRec, NSeq, Node}
+import etale/decimal
+import etale/model.{type Decl, type Item, NumItem, StrItem, TypeItem}
+import etale/node.{type Node, NAlt, NChar, NLay, NLit, NRec, NSeq, Node}
 
 pub const cap = 2
 

@@ -10,21 +10,21 @@
 ////   data wires  between rows of one record: a computed field, rule or mapping
 ////               reads the fields its wire comes from
 ////
-//// Types declared in language.sheaf itself (Digit, Text, True, ...) are left
+//// Types declared in language.etale itself (Digit, Text, True, ...) are left
 //// out: they are the alphabet every file uses, not part of its theory.
 ////
 //// Because a name resolves only to a type declared above it, type wires never
 //// form a cycle, so the layout reads left to right: base types first.
 
+import etale/evaluate
+import etale/model.{type Decl, type Item, TypeItem}
+import etale/program.{type Program}
 import gleam/dict.{type Dict}
 import gleam/float
 import gleam/int
 import gleam/list
 import gleam/option.{None, Some}
 import gleam/string
-import sheaf/evaluate
-import sheaf/model.{type Decl, type Item, TypeItem}
-import sheaf/program.{type Program}
 
 pub type Row {
   Row(name: String, label: String, role: String, detail: String)

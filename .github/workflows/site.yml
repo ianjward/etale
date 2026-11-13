@@ -36,7 +36,7 @@ jobs:
           echo "$HOME/.gleam/bin" >> "$GITHUB_PATH"
       - run: gleam --version
       - run: gleam test
-      - run: node bin/sheaf.mjs bootstrap
+      - run: node bin/etale.mjs bootstrap
       - run: sh tools/build_ide.sh
       - run: node tools/build_site.mjs
       - uses: actions/upload-pages-artifact@v3

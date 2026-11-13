@@ -1,0 +1,2 @@
+# a.etale and b.etale use each other's types, which is a cycle: an error.
+A_Type {B_Type...} count: 2

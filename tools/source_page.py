@@ -1,35 +1,35 @@
-"""Builds one HTML page showing language.sheaf, the stdlib and the examples exactly as sheaf reads them."""
+"""Builds one HTML page showing language.etale, the stdlib and the examples exactly as etale reads them."""
 import html, re, sys, os
 root = sys.argv[1]; out = sys.argv[2]
 groups = [
- ("Specification", ["priv/language.sheaf"]),
- ("Standard library", ["priv/stdlib/logic.sheaf","priv/stdlib/bits.sheaf","priv/stdlib/dates.sheaf","priv/stdlib/text.sheaf"]),
- ("Examples", ["examples/orders/orders.sheaf","examples/proofs/proofs.sheaf","examples/mistakes/mistakes.sheaf","examples/book/book.sheaf","examples/meeting/meeting.sheaf","examples/temperature/temperature.sheaf","examples/shop/money.sheaf","examples/shop/catalog/catalog.sheaf","examples/shop/catalog/codes.sheaf","examples/shop/orders/orders.sheaf","examples/shop/orders/peek.sheaf","examples/cycle/a.sheaf","examples/cycle/b.sheaf"]),
+ ("Specification", ["priv/language.etale"]),
+ ("Standard library", ["priv/stdlib/logic.etale","priv/stdlib/bits.etale","priv/stdlib/dates.etale","priv/stdlib/text.etale"]),
+ ("Examples", ["examples/orders/orders.etale","examples/proofs/proofs.etale","examples/mistakes/mistakes.etale","examples/book/book.etale","examples/meeting/meeting.etale","examples/temperature/temperature.etale","examples/shop/money.etale","examples/shop/catalog/catalog.etale","examples/shop/catalog/codes.etale","examples/shop/orders/orders.etale","examples/shop/orders/peek.etale","examples/cycle/a.etale","examples/cycle/b.etale"]),
 ]
 blurb = {
- "priv/language.sheaf": "The grammar. sheaf compiles it and requires it to parse as File in exactly one way.",
- "priv/stdlib/logic.sheaf": "Gates and truth tables as checked mappings.",
- "priv/stdlib/bits.sheaf": "Binary digits, bytes and XOR.",
- "priv/stdlib/dates.sheaf": "Calendar dates with leap years as a mapping chain.",
- "priv/stdlib/text.sheaf": "Common text shapes.",
- "examples/orders/orders.sheaf": "Stored and computed fields, folds, a mapping, a filtered list.",
- "examples/proofs/proofs.sheaf": "Claims proved by expand, cancel and bound, with induction.",
- "examples/mistakes/mistakes.sheaf": "Eleven kinds of deliberate error, each explained by the checker.",
- "examples/book/book.sheaf": "Orders belong to customers: a path that starts with a type reaches the record around.",
- "examples/meeting/meeting.sheaf": "Date and Identifier from the standard library, with no import.",
- "examples/temperature/temperature.sheaf": "A number layout whose \"-\" position is a sign.",
- "examples/shop/money.sheaf": "In shop/: seen by every file in the project.",
- "examples/shop/catalog/catalog.sheaf": "The front file of catalog/: Item is seen outside the folder.",
- "examples/shop/catalog/codes.sheaf": "Private to catalog/.",
- "examples/shop/orders/orders.sheaf": "Uses Money, Item and Date, with no imports.",
- "examples/shop/orders/peek.sheaf": "Tries to use the private Code: an error.",
- "examples/cycle/a.sheaf": "Half of a cycle between files (reported as an error).",
- "examples/cycle/b.sheaf": "The other half of the cycle.",
+ "priv/language.etale": "The grammar. etale compiles it and requires it to parse as File in exactly one way.",
+ "priv/stdlib/logic.etale": "Gates and truth tables as checked mappings.",
+ "priv/stdlib/bits.etale": "Binary digits, bytes and XOR.",
+ "priv/stdlib/dates.etale": "Calendar dates with leap years as a mapping chain.",
+ "priv/stdlib/text.etale": "Common text shapes.",
+ "examples/orders/orders.etale": "Stored and computed fields, folds, a mapping, a filtered list.",
+ "examples/proofs/proofs.etale": "Claims proved by expand, cancel and bound, with induction.",
+ "examples/mistakes/mistakes.etale": "Eleven kinds of deliberate error, each explained by the checker.",
+ "examples/book/book.etale": "Orders belong to customers: a path that starts with a type reaches the record around.",
+ "examples/meeting/meeting.etale": "Date and Identifier from the standard library, with no import.",
+ "examples/temperature/temperature.etale": "A number layout whose \"-\" position is a sign.",
+ "examples/shop/money.etale": "In shop/: seen by every file in the project.",
+ "examples/shop/catalog/catalog.etale": "The front file of catalog/: Item is seen outside the folder.",
+ "examples/shop/catalog/codes.etale": "Private to catalog/.",
+ "examples/shop/orders/orders.etale": "Uses Money, Item and Date, with no imports.",
+ "examples/shop/orders/peek.etale": "Tries to use the private Code: an error.",
+ "examples/cycle/a.etale": "Half of a cycle between files (reported as an error).",
+ "examples/cycle/b.etale": "The other half of the cycle.",
 }
 # lines changed from the uploaded v3: (file, predicate on line text)
 def amended(path, lines):
     """Lines added or changed since the uploaded v3 (tools/language.map.v3)."""
-    if path != "priv/language.sheaf": return set()
+    if path != "priv/language.etale": return set()
     import difflib
     base = open(os.path.join(root, "tools/language.map.v3"), encoding="utf-8").read().split("\n")
     marks = set()

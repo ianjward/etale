@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Launcher: run the compiled Gleam command line from anywhere.
-//   node bin/sheaf.mjs check examples/orders.sheaf
+//   node bin/etale.mjs check examples/orders.etale
 //
 // The parser and evaluator recurse once per level of nested data, so the work
 // runs in a worker thread with a large stack: deeply nested values (a chain of
@@ -26,9 +26,9 @@ if (isMainThread) {
   worker.on("message", (m) => { if (m && typeof m.exit === "number") process.exitCode = m.exit; });
   worker.on("error", (e) => { console.error(e); process.exitCode = 1; });
 } else {
-  globalThis.SHEAF_HOME = workerData.home;
+  globalThis.ETALE_HOME = workerData.home;
   const { parentPort } = await import("node:worker_threads");
-  const { main } = await import(resolve(workerData.home, "build/dev/javascript/etale/sheaf.mjs"));
+  const { main } = await import(resolve(workerData.home, "build/dev/javascript/etale/etale.mjs"));
   main();
   parentPort.postMessage({ exit: process.exitCode ?? 0 });
 }

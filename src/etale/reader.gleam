@@ -1,9 +1,9 @@
-//// The line reader: the bootstrap seed. language.sheaf is read with it once; the
-//// grammar it declares is compiled (grammar.gleam), and every file, language.sheaf
+//// The line reader: the bootstrap seed. language.etale is read with it once; the
+//// grammar it declares is compiled (grammar.gleam), and every file, language.etale
 //// included, must then match File in exactly one way. The program cross-checks
 //// the two block by block, so the reader cannot silently disagree with the spec.
 ////
-//// Every line has the shape of the header of language.sheaf:
+//// Every line has the shape of the header of language.etale:
 ////   name {type} (what the value is) property: value, property: value
 //// '...' after the type marks a list. The parentheses hold allowed values (a
 //// range or a choice), a calculation, a condition (a rule, a claim, a kept
@@ -23,8 +23,8 @@ import gleam/order
 import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
-import sheaf/decimal
-import sheaf/model.{
+import etale/decimal
+import etale/model.{
   type Block, type Case, type Clause, type Decl, type Entry, type Field,
   type Item, type MapError, type Num, type Position, type Value, AndConn, Block,
   Case, Decl, DeclEntry, Field, Flag, MapError, Mapping, Num, NumItem, OrConn,
@@ -2530,7 +2530,7 @@ fn mapping_line(
 
 /// A top-level 'Name {Other}' with nothing after it adds no constraint, so two
 /// names would mean one thing. Needs and Claims, the two names for TRUE that
-/// language.sheaf declares, are the only exceptions.
+/// language.etale declares, are the only exceptions.
 fn bare_alias(
   sc: Scan,
   name: String,
