@@ -1872,6 +1872,26 @@ fn more_forms() -> Outcome {
     expect(
       flagged(
         with_train(
+          "  late {Stop...} (stops.delay >= 2)\n  flagged {Stop...} (late.delay >= 10 | late.arrives <= 360)\n  n {Integer} (flagged.count)",
+        ),
+        "in_flagged {True | False} (delay, arrives)', then keep from stops by it: flagged {Stop...} (stops.in_flagged = True)",
+      ),
+      "a kept list of a kept list that would need brackets",
+    ),
+    expect(
+      case
+        source(with_train(
+          "  late {Stop...} (stops.delay >= 2)\n  very_late {Stop...} (late.delay >= 10)\n  n {Integer} (very_late.count)",
+        ))
+      {
+        Ok(#(_, r)) -> check.errors(r) == []
+        Error(_) -> False
+      },
+      "a kept list of a kept list joined by &",
+    ),
+    expect(
+      flagged(
+        with_train(
           "  late {Stop...} (stops.delay >= 2)\n  ok {Needs} (late.delay <= stops.delay)",
         ),
         "relate it to another list with in",

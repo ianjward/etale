@@ -2705,7 +2705,7 @@ type Base {
 fn base_of(lists: Dict(String, ListDef), name: String) -> Result(Base, String) {
   case dict.get(lists, name) {
     Error(_) -> Ok(Base(name, None, None))
-    Ok(Kept(source, b, _)) -> {
+    Ok(Kept(source, b, item)) -> {
       use src <- result.try(base_of(lists, source))
       case src.field {
         Some(_) ->
@@ -2719,7 +2719,10 @@ fn base_of(lists: Dict(String, ListDef), name: String) -> Result(Base, String) {
               Ok(Base(src.list, Some(Block(AndConn, list.append(cs, b.clauses))), None))
             Some(Block(_, [one])), AndConn ->
               Ok(Base(src.list, Some(Block(AndConn, [one, ..b.clauses])), None))
-            Some(_), _ -> Error("a kept list of a kept list whose condition uses |" <> not_built)
+            // (a & b) & (c | d) has no form without brackets: refused, with
+            // the rewrite through a field worked out by cases
+            Some(inner), _ ->
+              Error(brackets_needed(name, source, src.list, item, inner, b))
           }
       }
     }
@@ -2731,6 +2734,54 @@ fn base_of(lists: Dict(String, ListDef), name: String) -> Result(Base, String) {
       }
     }
   }
+}
+
+/// A kept list of a kept list whose conditions, put together, would mix '&'
+/// and '|'. Etale has no brackets, so the way to write it is a field of the
+/// item worked out by cases, and a kept list of the stored list by that field.
+fn brackets_needed(
+  name: String,
+  source: String,
+  stored: String,
+  item: Item,
+  inner: Block,
+  outer: Block,
+) -> String {
+  let t = model.item_text(item)
+  let field = "in_" <> name
+  let inputs =
+    list.append(inner.clauses, outer.clauses)
+    |> list.filter_map(fn(c) {
+      case c {
+        Plain([f], _, _) -> Ok(f)
+        _ -> Error(Nil)
+      }
+    })
+    |> list.unique
+  let inputs_text = case inputs {
+    [_] | [_, _] -> string.join(inputs, ", ")
+    _ -> "its inputs, one or two"
+  }
+  name
+  <> " keeps from "
+  <> source
+  <> ", which is kept too, so together their conditions would mix & and |, which needs brackets. Write it as a field of "
+  <> t
+  <> " worked out by cases, '"
+  <> field
+  <> " {True | False} ("
+  <> inputs_text
+  <> ")', then keep from "
+  <> stored
+  <> " by it: "
+  <> name
+  <> " {"
+  <> t
+  <> "...} ("
+  <> stored
+  <> "."
+  <> field
+  <> " = True)"
 }
 
 fn folded(path: List(String), b: Option(Block)) -> Value {
