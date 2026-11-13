@@ -613,6 +613,7 @@ fn check_record(c: Ctx, d: Decl) -> Nil {
     check_text_order(c, d, f)
     check_list_unique(c, d, f)
     check_never_empty(c, d, f)
+    check_collects(c, d, f)
     case f.role {
       model.Claim -> prove_claim(c, d, f)
       model.Computed -> {
@@ -793,8 +794,17 @@ fn check_filter(
               [],
             )
           list.each(model.plains(conditions), fn(cl) {
-            let assert Plain(cp, _, _) = cl
+            let assert Plain(cp, _, cv) = cl
             check_path(c, synthetic, None, cp, line, [])
+            // another field of the same item
+            case cv {
+              VPath([x]) ->
+                case is_upper_start(x) {
+                  True -> Nil
+                  False -> check_path(c, synthetic, None, [x], line, [])
+                }
+              _ -> Nil
+            }
           })
           check_refine_numbers(c, synthetic)
         }
@@ -4167,4 +4177,69 @@ fn empty_error(c: Ctx, d: Decl, f: Field, l: String, m: String) -> Nil {
       <> " value. Use a list that is never empty, such as one with count: 1..",
     d.name <> "." <> f.name,
   )
+}
+
+/// A collected list holds the field it collects: 'all_stops {Stop...}
+/// (trains.stops)' needs Train's stops to hold Stops.
+fn check_collects(c: Ctx, d: Decl, f: Field) -> Nil {
+  list.each(f.preds.clauses, fn(cl) {
+    case cl {
+      Setting("collects", VStr(spec)) ->
+        case string.split(spec, ":"), model.record_of(c.decls, item_name(f)) {
+          [name, declared, fld], Some(it) ->
+            case model.field(it, fld) {
+              None -> Nil
+              Some(src) -> {
+                let got = model.item_text(model.base(src))
+                let numeric = fn(t) { evaluate.items_numeric(c.ev, [TypeItem(t)]) }
+                case got == declared || { numeric(got) && numeric(declared) } {
+                  True -> Nil
+                  False ->
+                    err(
+                      c,
+                      d,
+                      f.line,
+                      name
+                        <> " collects "
+                        <> f.name
+                        <> "."
+                        <> fld
+                        <> ", which holds "
+                        <> got
+                        <> ", not "
+                        <> declared,
+                      d.name <> "." <> name,
+                    )
+                }
+              }
+            }
+          _, _ -> Nil
+        }
+      Setting("keeps", VStr(spec)) ->
+        case string.split(spec, ":") {
+          [name, declared] ->
+            case declared == item_name(f) {
+              True -> Nil
+              False ->
+                err(
+                  c,
+                  d,
+                  f.line,
+                  "a kept list holds the items of "
+                    <> f.name
+                    <> ": write "
+                    <> name
+                    <> " {"
+                    <> item_name(f)
+                    <> "...}, not {"
+                    <> declared
+                    <> "...}",
+                  d.name <> "." <> name,
+                )
+            }
+          _ -> Nil
+        }
+      _ -> Nil
+    }
+  })
 }

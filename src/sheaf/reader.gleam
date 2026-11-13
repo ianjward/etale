@@ -1686,9 +1686,9 @@ type FieldOut {
 type ListDef {
   /// 'late_stops {Stop...} (stops.delay >= 2)': the conditions name the
   /// fields of the items ('delay').
-  Kept(source: String, conditions: Block)
+  Kept(source: String, conditions: Block, item: Item)
   /// 'delays {Integer...} (stops.delay)'.
-  Collected(source: String, field: String)
+  Collected(source: String, field: String, item: Item)
 }
 
 fn record_body(
@@ -2109,7 +2109,7 @@ fn single_line(
               )
           })
           use #(source, conditions) <- result.try(kept_conditions(sc, b))
-          Ok(#(ListDone(f.name, Kept(source, conditions), line), rest, line + 1))
+          Ok(#(ListDone(f.name, Kept(source, conditions, one), line), rest, line + 1))
         }
         Some(PCalc(VPath([l, fld]))) -> {
           use _ <- result.try(case t.props {
@@ -2124,7 +2124,7 @@ fn single_line(
             True ->
               err(sc, "a collected list takes one field of each item of a list of this record, e.g. (stops.delay)")
             False ->
-              Ok(#(ListDone(f.name, Collected(l, fld), line), rest, line + 1))
+              Ok(#(ListDone(f.name, Collected(l, fld, one), line), rest, line + 1))
           }
         }
         Some(PCalc(VPath([l]))) ->
@@ -2244,6 +2244,11 @@ fn kept_conditions(sc: Scan, b: Block) -> Result(#(String, Block), MapError) {
           case c {
             Plain([_, fld], o, v) -> {
               use _ <- result.try(kept_value(sc, source, v))
+              // another field of the same item is read from the item
+              let v = case v {
+                VPath([l, other]) if l == source -> VPath([other])
+                _ -> v
+              }
               Ok(Plain([fld], o, v))
             }
             Plain(p, _, _) ->
@@ -2291,8 +2296,7 @@ fn kept_value(sc: Scan, source: String, v: Value) -> Result(Nil, MapError) {
         True -> Ok(Nil)
         False -> kept_field_error(sc, source)
       }
-    VPath([l, _]) if l == source ->
-      err(sc, "comparing two fields of one item" <> not_built)
+    VPath([l, _]) if l == source -> Ok(Nil)
     VMulti(vs) -> list.try_each(vs, fn(x) { kept_value(sc, source, x) })
     _ -> kept_field_error(sc, source)
   }
@@ -2361,6 +2365,11 @@ fn worked_out(
   let round = list.key_find(ps, "round")
   let wrap = list.key_find(ps, "wrap_at")
   use _ <- result.try(case v, round, wrap {
+    VPath([_, "first"]), _, _ | VPath([_, "last"]), _, _ ->
+      err(
+        sc,
+        "there is no .first or .last: an item's field would need a second dot. Use .min or .max on a collected list",
+      )
     VPath([l, m]), _, _ ->
       case list.contains(methods, m) || upper_first(l) {
         True -> Ok(Nil)
@@ -2696,7 +2705,7 @@ type Base {
 fn base_of(lists: Dict(String, ListDef), name: String) -> Result(Base, String) {
   case dict.get(lists, name) {
     Error(_) -> Ok(Base(name, None, None))
-    Ok(Kept(source, b)) -> {
+    Ok(Kept(source, b, _)) -> {
       use src <- result.try(base_of(lists, source))
       case src.field {
         Some(_) ->
@@ -2714,7 +2723,7 @@ fn base_of(lists: Dict(String, ListDef), name: String) -> Result(Base, String) {
           }
       }
     }
-    Ok(Collected(source, fld)) -> {
+    Ok(Collected(source, fld, _)) -> {
       use src <- result.try(base_of(lists, source))
       case src.field {
         Some(_) -> Error("a path has one dot: collect from a list of records")
@@ -2804,7 +2813,7 @@ type RecordState {
 /// The lists a list is worked out from, itself first.
 fn sources_of(lists: Dict(String, ListDef), name: String) -> List(String) {
   case dict.get(lists, name) {
-    Ok(Kept(source, _)) | Ok(Collected(source, _)) -> [
+    Ok(Kept(source, _, _)) | Ok(Collected(source, _, _)) -> [
       name,
       ..sources_of(lists, source)
     ]
@@ -2830,9 +2839,47 @@ fn settle_record(
           }
           let st2 =
             RecordState(..st, lists: dict.insert(st.lists, name, def), kept: kept)
-          case base_of(st2.lists, name) {
-            Ok(_) -> Ok(st2)
-            Error(msg) -> Error(MapError(msg, file, line, 3))
+          case base_of(st2.lists, name), def {
+            Ok(Base(stored, _, Some(fld))), Collected(_, _, it) -> {
+              // the checker compares the collected field with the type the
+              // line declares: 'all_stops {Stop...} (trains.line)' is refused
+              let mark =
+                Setting(
+                  "collects",
+                  VStr(name <> ":" <> model.item_text(it) <> ":" <> fld),
+                )
+              let fields =
+                list.map(st2.fields, fn(g) {
+                  case g.name == stored {
+                    True ->
+                      Field(
+                        ..g,
+                        preds: Block(g.preds.conn, list.append(g.preds.clauses, [mark])),
+                      )
+                    False -> g
+                  }
+                })
+              Ok(RecordState(..st2, fields: fields))
+            }
+            Ok(Base(stored, _, None)), Kept(_, _, it) -> {
+              // a kept list holds its source's items
+              let mark =
+                Setting("keeps", VStr(name <> ":" <> model.item_text(it)))
+              let fields =
+                list.map(st2.fields, fn(g) {
+                  case g.name == stored {
+                    True ->
+                      Field(
+                        ..g,
+                        preds: Block(g.preds.conn, list.append(g.preds.clauses, [mark])),
+                      )
+                    False -> g
+                  }
+                })
+              Ok(RecordState(..st2, fields: fields))
+            }
+            Ok(_), _ -> Ok(st2)
+            Error(msg), _ -> Error(MapError(msg, file, line, 3))
           }
         }
         FieldDone(f) -> {
@@ -3121,8 +3168,11 @@ fn settle_path(
             x
             <> " is worked out from another list: read it with a method such as "
             <> x
-            <> ".count. Comparing through it"
-            <> not_built,
+            <> ".count, or relate it to another list with in, e.g. ("
+            <> x
+            <> "."
+            <> string.join(list.drop(p, 1), ".")
+            <> " in index.station)",
             file,
             f.line,
           )

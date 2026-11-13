@@ -1807,6 +1807,15 @@ fn more_forms() -> Outcome {
     <> "  big_b {Item...} (b.n >= 5)\n  ok {Needs} (a.n in big_b.n)\n"
     <> "  text {Text}\n    1. {a}\n    2. {\"|\"}\n    3. {b}\n"
   let assert Ok(#(kp, krep)) = source(kept_right)
+  let with_train = fn(line) {
+    clock_src <> "\nTrain {}\n  stops {Stop...} count: 1..\n" <> line <> "\n"
+  }
+  let assert Ok(#(two, two_rep)) =
+    source(
+      "Item {}\n  n {Integer} (0..9)\n  limit {Integer} (0..9)\n  text {Text}\n    1. {n} digits: 1\n    2. {limit} digits: 1\n"
+      <> "Box {}\n  items {Item...} count: 1..\n  over {Item...} (items.n > items.limit)\n"
+      <> "  over_count {Integer} (over.count)\n  text {Text}\n    1. {items}\n    2. {\"|\"}\n",
+    )
   all([
     expect(check.errors(trep) == [], "methods in a calculation: " <> msgs(trep)),
     expect(num(get(tp, t.value, "spread")) == "20", "delays.max - delays.min"),
@@ -1842,6 +1851,32 @@ fn more_forms() -> Outcome {
         "already says how many",
       ),
       "a named list's count is said once",
+    ),
+    expect(check.errors(two_rep) == [], "two fields of one item: " <> msgs(two_rep)),
+    expect(
+      num(get(two, program.check(two, "Box", "37|52").value, "over_count")) == "1",
+      "(items.n > items.limit) compares each item with itself",
+    ),
+    expect(
+      flagged(with_train("  late {Line_Code...} (stops.delay >= 2)"), "a kept list holds the items of stops"),
+      "a kept list of another type",
+    ),
+    expect(
+      flagged(with_train("  dues {Stop...} (stops.delay)"), "which holds Integer, not Stop"),
+      "a collected list of another type",
+    ),
+    expect(
+      flagged(with_train("  x {Integer} (stops.first)"), "there is no .first"),
+      ".first",
+    ),
+    expect(
+      flagged(
+        with_train(
+          "  late {Stop...} (stops.delay >= 2)\n  ok {Needs} (late.delay <= stops.delay)",
+        ),
+        "relate it to another list with in",
+      ),
+      "comparing through a kept list",
     ),
   ])
 }
