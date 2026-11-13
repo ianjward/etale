@@ -104,8 +104,9 @@ fn rows_of(d: Decl) -> List(Row) {
             list.map(m.cases, fn(c) {
               "{"
               <> model.item_text(c.output)
-              <> "} if: "
+              <> "} ("
               <> model.block_text(c.preds)
+              <> ")"
             })
             |> string.join("\n")
           None -> ""

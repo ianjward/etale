@@ -180,14 +180,37 @@ pub fn value_text(v: Value) -> String {
     VRange(lo, hi) -> opt_num(lo) <> ".." <> opt_num(hi)
     VNum(n) -> n.text
     VStr(s) -> quote(s)
-    VPath(parts) -> string.join(parts, ".")
+    VPath(parts) -> path_text(parts)
     VMulti(vs) -> list.map(vs, value_text) |> string.join(" | ")
     VFilter(path, conditions) -> {
       let assert [list_name, ..] = path
-      string.join(path, ".")
-      <> ", filter: "
+      path_text(path)
+      <> " [only items with "
       <> through_list(list_name, conditions)
+      <> "]"
     }
+  }
+}
+
+/// A path as the language writes it: the model's own names 'qty' and 'val'
+/// read as the method '.count' and the line's value. Neither can name a
+/// field, so nothing else is renamed.
+pub fn path_text(parts: List(String)) -> String {
+  list.map(parts, fn(x) {
+    case x {
+      "qty" -> "count"
+      "val" -> "value"
+      other -> other
+    }
+  })
+  |> string.join(".")
+}
+
+/// '=' with a range or a choice reads as 'in', as the language writes it.
+fn op_text(op: String, v: Value) -> String {
+  case op, v {
+    "=", VRange(..) | "=", VMulti(..) -> "in"
+    _, _ -> op
   }
 }
 
@@ -203,9 +226,9 @@ pub fn through_list(list_name: String, b: Block) -> String {
       Plain(p, op, v) ->
         list_name
         <> "."
-        <> string.join(p, ".")
+        <> path_text(p)
         <> " "
-        <> op
+        <> op_text(op, v)
         <> " "
         <> value_text(v)
       other -> clause_text(other)
@@ -223,8 +246,8 @@ fn opt_num(n: Option(Num)) -> String {
 
 pub fn clause_text(c: Clause) -> String {
   case c {
-    Plain(p, op, v) -> string.join(p, ".") <> " " <> op <> " " <> value_text(v)
-    Setting("qty", v) -> "count " <> value_text(v)
+    Plain(p, op, v) -> path_text(p) <> " " <> op_text(op, v) <> " " <> value_text(v)
+    Setting("qty", v) -> "count: " <> value_text(v)
     Setting("cost", v) -> "cost <= " <> value_text(v)
     Setting(k, v) -> k <> " = " <> value_text(v)
     Flag(n) -> n
@@ -249,11 +272,24 @@ pub fn block_text(b: Block) -> String {
   |> string.join(sep)
 }
 
-/// A base in braces with its count, as written: {Digit 2}, {Line 1..}.
+/// A base in braces with its count, as written: {Digit...} count: 2,
+/// {Line...} count: 1.., {Stop...}, {Journey} count: 0..1.
 pub fn box_text(items: List(Item), b: Block) -> String {
   let inner = list.map(items, item_text) |> string.join(" | ")
   case setting(b, "qty") {
-    Some(v) -> "{" <> inner <> " " <> value_text(v) <> "}"
+    Some(VRange(Some(lo), None) as v) ->
+      case decimal.is_zero(lo.value) {
+        True -> "{" <> inner <> "...}"
+        False -> "{" <> inner <> "...} count: " <> value_text(v)
+      }
+    Some(VRange(Some(lo), Some(hi)) as v) ->
+      case
+        decimal.is_zero(lo.value) && decimal.eq(hi.value, decimal.from_int(1))
+      {
+        True -> "{" <> inner <> "} count: 0..1"
+        False -> "{" <> inner <> "...} count: " <> value_text(v)
+      }
+    Some(v) -> "{" <> inner <> "...} count: " <> value_text(v)
     None -> "{" <> inner <> "}"
   }
 }
@@ -387,6 +423,12 @@ pub fn definition(f: Field) -> Option(Value) {
       Plain(["val"], "=", v) ->
         case v {
           VRange(..) | VMulti(..) -> Error(Nil)
+          // a range whose ends name constants, before the file is settled
+          VArith(op, _) ->
+            case string.starts_with(op, "..") {
+              True -> Error(Nil)
+              False -> Ok(v)
+            }
           _ -> Ok(v)
         }
       _ -> Error(Nil)

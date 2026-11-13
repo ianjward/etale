@@ -847,6 +847,8 @@ fn paren(sc: Scan) -> R(Paren) {
   case peek(sc2), peek(skip_spaces(sc2)) {
     ")", _ -> Ok(#(p, adv(sc2, 1)))
     " ", ")" -> no_space_inside(sc2)
+    " ", "&" | "&", _ ->
+      err(sc2, "a mapping's inputs are joined by a comma: (kind, late_stops)")
     _, _ ->
       err(
         sc2,
@@ -2132,10 +2134,15 @@ fn single_line(
           done(Field(..f, items: [one], preds: b, comment: t.comment))
         }
         Some(PCond(_)) ->
-          err(
-            sc,
-            "a condition makes a rule, name {Needs} (condition), or a kept list, name {Item...} (condition)",
-          )
+          case one {
+            TypeItem("Claim") ->
+              err(sc, "a claim is name {Claims} (condition), e.g. nonnegative {Claims} (total >= 0)")
+            _ ->
+              err(
+                sc,
+                "a condition makes a rule, name {Needs} (condition), or a kept list, name {Item...} (condition)",
+              )
+          }
         Some(PInputs(_)) ->
           err(
             sc,
@@ -2701,7 +2708,20 @@ type RecordState {
     lists: Dict(String, ListDef),
     fields: List(Field),
     hidden: List(String),
+    read: List(String),
+    kept: List(#(String, Int)),
   )
+}
+
+/// The lists a list is worked out from, itself first.
+fn sources_of(lists: Dict(String, ListDef), name: String) -> List(String) {
+  case dict.get(lists, name) {
+    Ok(Kept(source, _)) | Ok(Collected(source, _)) -> [
+      name,
+      ..sources_of(lists, source)
+    ]
+    Error(_) -> [name]
+  }
 }
 
 /// Turn a record's lines into the model's fields: kept and collected lists
@@ -2713,10 +2733,15 @@ fn settle_record(
   file: String,
 ) -> Result(#(List(Field), List(String)), MapError) {
   use st <- result.try(
-    list.try_fold(outs, RecordState(dict.new(), [], []), fn(st, o) {
+    list.try_fold(outs, RecordState(dict.new(), [], [], [], []), fn(st, o) {
       case o {
         ListDone(name, def, line) -> {
-          let st2 = RecordState(..st, lists: dict.insert(st.lists, name, def))
+          let kept = case def {
+            Kept(..) -> [#(name, line), ..st.kept]
+            _ -> st.kept
+          }
+          let st2 =
+            RecordState(..st, lists: dict.insert(st.lists, name, def), kept: kept)
           case base_of(st2.lists, name) {
             Ok(_) -> Ok(st2)
             Error(msg) -> Error(MapError(msg, file, line, 3))
@@ -2729,7 +2754,31 @@ fn settle_record(
       }
     }),
   )
-  Ok(#(list.reverse(st.fields), dict.keys(st.lists)))
+  // a kept list that nothing reads still has its condition checked, through
+  // a count of its own
+  let read = list.flat_map(st.read, fn(x) { sources_of(st.lists, x) })
+  use extra <- result.try(
+    list.try_map(
+      list.filter(list.reverse(st.kept), fn(k) { !list.contains(read, k.0) }),
+      fn(k) {
+        let #(name, line) = k
+        case method_fold(st.lists, name, "count") {
+          Ok(v) ->
+            Ok(Field(
+              name <> ".count",
+              [TypeItem("Integer")],
+              Block(AndConn, [Plain(["val"], "=", v)]),
+              None,
+              line,
+              "",
+              model.Computed,
+            ))
+          Error(msg) -> Error(MapError(msg, file, line, 3))
+        }
+      },
+    ),
+  )
+  Ok(#(list.append(list.reverse(st.fields), extra), dict.keys(st.lists)))
 }
 
 fn settle_field(
@@ -2751,6 +2800,7 @@ fn settle_field(
     Some(#(x, m)) ->
       case method_fold(st.lists, x, m) {
         Ok(v) -> {
+          let st = RecordState(..st, read: [x, ..st.read])
           let clauses =
             list.map(f.preds.clauses, fn(c) {
               case c {
@@ -2852,6 +2902,7 @@ fn settle_path(
     [x, m] ->
       case list.contains(methods, m), dict.has_key(st.lists, x) {
         True, _ -> {
+          let st = RecordState(..st, read: [x, ..st.read])
           let name = x <> "." <> m
           case list.contains(st.hidden, name) {
             True -> Ok(#([name], st))
@@ -3152,9 +3203,9 @@ fn resolve(
 ) -> Result(Value, String) {
   case v {
     VPath([c]) ->
-      case dict.get(consts, c), in_calc {
-        Ok(n), False -> Ok(VNum(num_of(n)))
-        _, _ -> Ok(v)
+      case dict.get(consts, c) {
+        Ok(n) -> Ok(VNum(num_of(n)))
+        _ -> Ok(v)
       }
     VArith("..", [lo, hi]) -> {
       use l <- result.try(eval_fixed(consts, lo))

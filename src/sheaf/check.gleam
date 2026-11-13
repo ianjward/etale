@@ -282,7 +282,7 @@ fn type_ok(
             line,
             "'"
               <> d.name
-              <> "' refers to itself; only a record field may, as a sequence whose qty starts at 0",
+              <> "' refers to itself; only a record field may, as a list whose count starts at 0",
             d.name,
           )
         _, _, True -> {
@@ -606,25 +606,27 @@ fn check_record(c: Ctx, d: Decl) -> Nil {
   cost_record(c, d)
 }
 
-/// A relation is a rule on a line of its own, '{Needs} orders.customer =
-/// customers.code': each item of the left list equals exactly one item of the
-/// right list, which the right field's 'unique: True' guarantees.
+/// A relation is a rule on a line of its own, '{Needs} (orders.customer in
+/// customers.code)': each item of the left list matches some item of the
+/// right list, and exactly one when the right list has 'unique: code'.
 fn check_relation(c: Ctx, d: Decl, f: Field, rel: model.Relation) -> Nil {
   let where = d.name <> "." <> f.name
   let left = rel.left_list.name <> "." <> rel.left_field
   let right = rel.right_list.name <> "." <> rel.right_field
   let bad = fn(msg) { err(c, d, f.line, msg, where) }
-  let example = f.name <> " {Needs} " <> left <> " = " <> right
+  let example = f.name <> " {Needs} (" <> left <> " in " <> right <> ")"
   let item_of = fn(l: Field) { model.record_of(c.decls, item_name(l)) }
   case f.role, rel.op, list.length(f.preds.clauses) {
     model.Claim, _, _ ->
       bad("a relation between two lists is a rule, not a claim: " <> example)
     _, o, _ if o != "=" ->
       bad(
-        "a relation between two lists uses = only: each item of "
+        "two lists are related with in only: each item of "
         <> rel.left_list.name
-        <> " equals one item of "
-        <> rel.right_list.name,
+        <> " matches an item of "
+        <> rel.right_list.name
+        <> ", "
+        <> example,
       )
     _, _, n if n != 1 ->
       bad(
@@ -674,20 +676,7 @@ fn check_relation(c: Ctx, d: Decl, f: Field, rel: model.Relation) -> Nil {
                         <> model.item_text(model.base(rf))
                         <> ": a relation compares fields of the same type",
                       )
-                    _, _ ->
-                      case model.has_flag(rf.preds, "unique") {
-                        True -> Nil
-                        False ->
-                          bad(
-                            right
-                            <> " must be unique, so that each item of "
-                            <> rel.left_list.name
-                            <> " matches exactly one: add 'unique: True' to "
-                            <> rel.right_field
-                            <> " in "
-                            <> ri.name,
-                          )
-                      }
+                    _, _ -> Nil
                   }
                 }
                 None, _ ->
@@ -789,7 +778,7 @@ fn check_filter(
             c,
             d,
             line,
-            "filter: keeps some items of a list of records, and '"
+            "a kept list keeps some items of a list of records, and '"
               <> list_name
               <> "' is not one",
             where,
@@ -980,8 +969,8 @@ fn walk(
                     d,
                     line,
                     "'."
-                      <> step
-                      <> "' folds a sequence, but "
+                      <> method_name(step)
+                      <> "' reads a list, but "
                       <> string.join(list.take(p, i), ".")
                       <> " is not one",
                     where,
@@ -994,7 +983,7 @@ fn walk(
                     c,
                     d,
                     line,
-                    "a fold ends the path ('." <> step <> "')",
+                    "a method ends the path ('." <> method_name(step) <> "')",
                     where,
                   )
                 False -> Nil
@@ -1030,11 +1019,11 @@ fn walk(
                     line,
                     "'"
                       <> string.join(list.take(p, i + 1), ".")
-                      <> "' is gone: a path holds only fields, and a type cannot narrow a list. To keep some of the items, give "
+                      <> "': a path holds only fields, and a type cannot narrow a list. To keep some of the items, give "
                       <> rd.name
-                      <> " a field with cases and write filter: in the count: or sum:, e.g. filter: "
+                      <> " a field with cases and keep the items on a line of their own, e.g. ("
                       <> string.join(list.take(p, i), ".")
-                      <> ".field = True",
+                      <> ".field = True)",
                     where,
                   )
                   #(None, None, NotSeq, True)
@@ -1060,7 +1049,7 @@ fn walk(
         d,
         line,
         string.join(p, ".")
-          <> " is a list: end the path in .qty or .sum (a list appears only inside a fold)",
+          <> " is a list: read it with a method, .count or .sum",
         where,
       )
     False -> Nil
@@ -1427,7 +1416,7 @@ fn check_places(c: Ctx, d: Decl, f: Field) -> Nil {
                   <> int.to_string(got)
                   <> " decimal places but the field holds "
                   <> pl.text
-                  <> "; rounding never happens implicitly",
+                  <> "; rounding never happens implicitly: add round: with the unit to round to, e.g. round: 0.01",
                 d.name <> "." <> f.name,
               )
             False -> Nil
@@ -1465,13 +1454,13 @@ fn check_rounding(c: Ctx, d: Decl, f: Field, rule: Value) -> Nil {
         Ok(_) -> Nil
         Error(why) -> complain(why)
       }
-    _ -> complain("round: names a rounding rule, e.g. round: Half_Even")
+    _ -> complain("round: takes the unit to round to, e.g. round: 0.01")
   }
   let n = rounded_places(c, f)
   case n {
     None ->
       complain(
-        "a rounded field says how many places it rounds to, e.g. places: 2",
+        "a rounded field takes its places from its round: unit, e.g. round: 0.01",
       )
     Some(_) -> Nil
   }
@@ -1499,7 +1488,7 @@ fn rounding_rule(c: Ctx, name: String) -> Result(model.Mapping, String) {
   let not_rule =
     "'"
     <> name
-    <> "' is not a rounding rule: a rule is a record whose field direction {Direction} is a mapping on remainder, odd and negative (Half_Even, Half_Up, Floor and Ceiling are in the standard library)"
+    <> "' is not a rounding rule: a rule is a record whose field direction {Direction} is a mapping on remainder, odd and negative (Half_Even, Half_Up, Half_Lower and Half_Higher are in the standard library)"
   case dict.get(c.decls, name) {
     Error(_) -> Error("round: names " <> name <> ", which is not declared")
     Ok(rd) ->
@@ -1539,7 +1528,7 @@ fn check_divisor(c: Ctx, d: Decl, f: Field, divisor: Value) -> Nil {
           <> bfmt(lo)
           <> ", "
           <> bfmt(hi)
-          <> "]; give it a value: or a type that leaves out 0",
+          <> "]; give it allowed values or a type that leaves out 0",
         d.name <> "." <> f.name,
       )
     }
@@ -2990,7 +2979,7 @@ fn cost_path(
           let var = case recursive, hi {
             True, _ -> Some("nodes(" <> name <> ")")
             False, Some(_) -> None
-            False, None -> Some(name <> ".qty")
+            False, None -> Some(name <> ".count")
           }
           let item = case model.base(fl) {
             TypeItem(t) -> model.record_of(c.decls, t)
@@ -3107,7 +3096,9 @@ pub fn cost_text(cp: CPoly) -> String {
         |> list.map(fn(m) {
           case m {
             [] -> "1"
-            _ -> string.join(m, " * ")
+            _ ->
+              list.map(m, fn(x) { string.replace(x, ".qty", ".count") })
+              |> string.join(" * ")
           }
         })
         |> string.join(" + ")
@@ -3377,5 +3368,13 @@ pub fn cases_for(
           }
       }
     }
+  }
+}
+
+/// A fold step as the language writes it: the model's qty is '.count'.
+fn method_name(step: String) -> String {
+  case step {
+    "qty" -> "count"
+    other -> other
   }
 }

@@ -224,7 +224,7 @@ fn print_seq(
         }
       case fits {
         False ->
-          Error(at <> ": " <> int.to_string(n) <> " items do not fit the qty")
+          Error(at <> ": " <> int.to_string(n) <> " items do not fit the count")
         True ->
           list.index_map(xs, fn(x, i) {
             print_item(p, elem, x, at <> "[" <> int.to_string(i + 1) <> "]")

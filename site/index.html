@@ -80,10 +80,10 @@ section.why { padding-block: 40px 44px; border-top: 1px solid var(--stroke); }
       <header><span>forecast.sheaf</span><span class="state" style="color: var(--st-proved)">claims proved</span></header>
       <pre class="sheaf"># A low and a high, each from -20 to 40.
 Forecast {}
-  low {Integer} value: -20..40
-  high {Integer} value: -20..40
-  spread {Integer} value: high - low
-  at_most_60 {Claims} spread <= 60</pre>
+  low {Integer} (-20..40)
+  high {Integer} (-20..40)
+  spread {Integer} (high - low)
+  at_most_60 {Claims} (spread <= 60)</pre>
     </div>
   </header>
 

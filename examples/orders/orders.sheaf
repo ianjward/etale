@@ -30,11 +30,12 @@ Order {}
   number {Natural}
   lines {Line...} count: 1..
   big_lines {Line...} (lines.big = True)
+  big_line_count {Integer} (big_lines.count)
   line_totals {Decimal...} (lines.line_total)
   big_line_totals {Decimal...} (big_lines.line_total)
   total {Decimal} (line_totals.sum)
   big_total {Decimal} (big_line_totals.sum) places: 2
-  not_all_big {Needs} (big_lines.count <= lines.count)
+  not_all_big {Needs} (big_line_count <= lines.count)
   text {Text}
     1. {"order "}
     2. {number}

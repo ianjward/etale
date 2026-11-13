@@ -57,7 +57,8 @@ pub fn decl(p: Program, d: Decl) -> List(String) {
     model.Layout -> layout(p, d, me)
     model.Record -> record(d, me)
   }
-  [head, ..body]
+  // the model's fold 'qty' is the method '.count'; qty names no field
+  [head, ..list.map(body, fn(l) { string.replace(l, ".qty", ".count") })]
 }
 
 // ---------------------------------------------------------------- shapes
