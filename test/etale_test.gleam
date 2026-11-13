@@ -1399,6 +1399,7 @@ pub fn main() {
     #("rules, claims and mapping inputs", rules_claims_and_inputs),
     #("ordered lists, min and max, wraps", ordered_lists_and_wraps),
     #("the timetable", timetable),
+    #("every pattern: the weather log", weather),
     #("ordered texts", ordered_texts),
     #("methods, units, exact quotients, unique per list", more_forms),
   ]
@@ -1643,6 +1644,47 @@ fn ordered_lists_and_wraps() -> Outcome {
       ),
       ".max on a list that may be empty",
     ),
+  ])
+}
+
+fn weather() -> Outcome {
+  let #(p, rep) = load("examples/weather/weather.etale")
+  let assert Ok(good) = read_file("examples/weather/log.txt")
+  let run = fn(text) { program.check(p, "Log", text) }
+  let refused_by = fn(from, to, what) {
+    let o = run(string.replace(good, from, to))
+    !o.ok && list.any(o.failures, fn(f) { string.contains(f, what) })
+  }
+  let ok = run(good)
+  all([
+    expect(
+      check.errors(rep) == [],
+      "the weather log checks clean: " <> msgs(rep),
+    ),
+    expect(
+      list.key_find(rep.claims, "Log.average_within") |> is_ok,
+      "an average is at most the greatest",
+    ),
+    expect(ok.ok, "the log inhabits Log: " <> string.join(ok.failures, "; ")),
+    expect(
+      refused_by("12 4 sun GATE", "12 4 sun MAST", "known_sensors"),
+      "a reading from an unknown sensor",
+    ),
+    expect(refused_by("GATE\nROOF", "ROOF\nROOF", "unique"), "a sensor twice"),
+    expect(
+      refused_by("GATE\nROOF", "ROOF\nGATE", "ordered by name"),
+      "sensors out of name order",
+    ),
+    expect(
+      refused_by("12 4 sun", "05 4 sun", "ordered by hour"),
+      "readings out of hour order",
+    ),
+    expect(
+      refused_by("07 -3 snow", "07 -9 snow", "above_floor"),
+      "a reading below the log's floor",
+    ),
+    expect(refused_by("12 4 sun", "12 4 snow", "snow_is_cold"), "warm snow"),
+    expect(!run(string.replace(good, "07 -3", "7 -3")).ok, "an hour written 7"),
   ])
 }
 

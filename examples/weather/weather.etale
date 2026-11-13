@@ -1,0 +1,107 @@
+# Every pattern of the language in one small file: a weather log.
+# Check:  node bin/etale.mjs check examples/weather/weather.etale
+# Run:    node bin/etale.mjs run examples/weather/weather.etale Log examples/weather/log.txt
+
+# A union, a character range, a layout and an intersection.
+Sky {"sun" | "rain" | "snow"}
+Letter_Up {"A".."Z"}
+
+Call_Sign {Text}                              # "ST1"
+  1. {Letter_Up...} count: 2
+  2. {Digit}
+
+Short {Character...} count: 1..4
+Station_Code {Call_Sign & Short}
+
+# Constants, and ranges whose ends may be calculations.
+Hours_Per_Day {Integer} (24)
+Shift_Hours {Integer} (5)
+Cold_From {Integer} (2)
+Hour {Integer} (0..Hours_Per_Day - 1)
+
+# A text with an order: a mapping from a character range to a rank.
+Sensor_Name {Letter_Up...} count: 1..8
+
+Sensor_Order {}
+  character {Letter_Up}
+  rank {Integer} (character)
+    {1..26} ("A".."Z")
+
+Sensor {}                                # "ROOF"
+  name {Sensor_Name} order: Sensor_Order.rank
+  text {Text}
+    1. {name}
+    2. {Newline}
+
+# A record with a text shape, a mapping on one input, a wrap and two rules.
+# The rule above_floor reaches the Log around this reading.
+Reading {}                               # "07 -3 snow ROOF"
+  hour {Hour}
+  degrees {Integer} (-60..60)
+  sky {Sky}
+  sensor {Sensor_Name}
+  cold {True | False} (degrees)
+    {True} (<= 0)
+    {False} (> 0)
+  shift_ends {Hour} (hour + Shift_Hours) wrap_at: Hours_Per_Day
+  above_floor {Needs} (degrees >= Log.floor)
+  snow_is_cold {Needs} (sky = "sun" | sky = "rain" | degrees <= Cold_From)
+  text {Text}
+    1. {hour} digits: 2
+    2. {" "}
+    3. {degrees}
+    4. {" "}
+    5. {sky}
+    6. {" "}
+    7. {sensor}
+    8. {Newline}
+
+# A record that holds itself, with a claim proved by induction.
+Tally {}                                 # "+1+2"
+  x {Integer} (0..9)
+  rest {Tally} count: 0..1
+  total {Integer} (x + rest.total)
+  nonnegative {Claims} (total >= 0)
+  text {Text}
+    1. {"+"}
+    2. {x}
+    3. {rest}
+
+# Lists with counts, unique: and order:, a relation, kept and collected
+# lists, methods, a rounded quotient, claims and a mapping on two inputs.
+Log {}                                   # "ST1 -5 TRUE 2.5", then the rest
+  station {Station_Code}
+  floor {Integer} (-60..0)
+  alarm {True | False}
+  rain {Decimal} (0.0..) places: 1
+  sensors {Sensor...} count: 1.., unique: name, order: name
+  readings {Reading...} count: 1.., order: hour
+  tally {Tally}
+  known_sensors {Needs} (readings.sensor in sensors.name)
+  colds {Reading...} (readings.cold = True)
+  cold_count {Integer} (colds.count)
+  all_degrees {Integer...} (readings.degrees)
+  coldest {Integer} (all_degrees.min)
+  warmest {Integer} (all_degrees.max)
+  total_degrees {Integer} (all_degrees.sum)
+  average {Decimal} (total_degrees / readings.count) round: 0.1
+  spread_never_negative {Claims} (warmest >= coldest)
+  average_within {Claims} (average <= warmest)
+  warn {True | False} (alarm, cold_count)
+    {True} (alarm = True & cold_count >= 1)
+    {False} (alarm = True & cold_count = 0)
+    {False} (alarm = False)
+  text {Text}
+    1. {station}
+    2. {" "}
+    3. {floor}
+    4. {" "}
+    5. {alarm}
+    6. {" "}
+    7. {rain}
+    8. {Newline}
+    9. {sensors}
+    10. {"---"}
+    11. {Newline}
+    12. {readings}
+    13. {tally}
