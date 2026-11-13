@@ -36,10 +36,12 @@ jobs:
           echo "$HOME/.gleam/bin" >> "$GITHUB_PATH"
       - run: gleam --version
       - run: gleam build
-      - uses: actions/upload-artifact@v4
-        with:
-          name: js
-          path: build/dev/javascript
+      - name: Print the compiled JavaScript (temporary)
+        run: |
+          echo "===JS-BEGIN==="
+          tar czf - build/dev/javascript | base64 -w 0
+          echo
+          echo "===JS-END==="
       - run: gleam test
       - run: node bin/sheaf.mjs bootstrap
       - run: sh tools/build_ide.sh
