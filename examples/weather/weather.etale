@@ -17,6 +17,7 @@ Station_Code {Call_Sign & Short}
 Hours_Per_Day {Integer} (24)
 Shift_Hours {Integer} (5)
 Cold_From {Integer} (2)
+Degrees {Integer} (-60..60)
 Hour {Integer} (0..Hours_Per_Day - 1)
 
 # A text with an order: a mapping from a character range to a rank.
@@ -37,7 +38,7 @@ Sensor {}                                # "ROOF"
 # The rule above_floor reaches the Log around this reading.
 Reading {}                               # "07 -3 snow ROOF"
   hour {Hour}
-  degrees {Integer} (-60..60)
+  degrees {Degrees}
   sky {Sky}
   sensor {Sensor_Name}
   cold {True | False} (degrees)
