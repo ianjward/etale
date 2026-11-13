@@ -684,8 +684,8 @@ fn settle_block(sc: Scan, b: Block) -> Result(Block, MapError) {
       case c {
         Plain(p, "in", v) -> {
           let left = string.join(p, ".")
-          case v {
-            _ if is_open(v) ->
+          case is_open(v), v {
+            True, _ ->
               err(
                 sc,
                 model.value_text(v)
@@ -693,10 +693,10 @@ fn settle_block(sc: Scan, b: Block) -> Result(Block, MapError) {
                   <> left
                   <> " >= 1)",
               )
-            VRange(..) | VMulti(..) -> Ok(c)
-            VArith(o, _) if o == ".." -> Ok(c)
-            VPath([_, _]) -> Ok(c)
-            VPath([t]) ->
+            _, VRange(..) | _, VMulti(..) -> Ok(c)
+            _, VArith(o, _) if o == ".." -> Ok(c)
+            _, VPath([_, _]) -> Ok(c)
+            _, VPath([t]) ->
               case upper_first(t) {
                 True ->
                   err(
@@ -710,7 +710,7 @@ fn settle_block(sc: Scan, b: Block) -> Result(Block, MapError) {
                   )
                 False -> Ok(c)
               }
-            VNum(n) ->
+            _, VNum(n) ->
               err(
                 sc,
                 n.text
@@ -720,7 +720,7 @@ fn settle_block(sc: Scan, b: Block) -> Result(Block, MapError) {
                   <> n.text
                   <> ")",
               )
-            VStr(s) ->
+            _, VStr(s) ->
               err(
                 sc,
                 model.quote(s)
@@ -730,7 +730,7 @@ fn settle_block(sc: Scan, b: Block) -> Result(Block, MapError) {
                   <> model.quote(s)
                   <> ")",
               )
-            _ ->
+            _, _ ->
               err(sc, "in takes a list, a closed range or a choice of values")
           }
         }
@@ -2643,13 +2643,13 @@ fn base_of(lists: Dict(String, ListDef), name: String) -> Result(Base, String) {
             "a condition keeps records: keep first, then collect, e.g. late_stops {Stop...} (stops.delay >= 2) and late_delays {Integer...} (late_stops.delay)",
           )
         None ->
-          case src.conditions {
-            None -> Ok(Base(src.list, Some(b), None))
-            Some(Block(AndConn, cs)) if b.conn == AndConn ->
+          case src.conditions, b.conn {
+            None, _ -> Ok(Base(src.list, Some(b), None))
+            Some(Block(AndConn, cs)), AndConn ->
               Ok(Base(src.list, Some(Block(AndConn, list.append(cs, b.clauses))), None))
-            Some(Block(_, [one])) if b.conn == AndConn ->
+            Some(Block(_, [one])), AndConn ->
               Ok(Base(src.list, Some(Block(AndConn, [one, ..b.clauses])), None))
-            Some(_) -> Error("a kept list of a kept list whose condition uses |" <> not_built)
+            Some(_), _ -> Error("a kept list of a kept list whose condition uses |" <> not_built)
           }
       }
     }
@@ -2764,12 +2764,13 @@ fn settle_field(
         Error(msg) -> fail(msg)
       }
     None -> {
+      let is_rule = f.items == [TypeItem("Needs")]
       use #(clauses, st) <- result.try(
         list.try_fold(f.preds.clauses, #([], st), fn(acc, c) {
           let #(out, st) = acc
           case c {
-            Plain([l1, f1], "=", VPath([l2, f2])) if f.items == [TypeItem("Needs")] ->
-              case is_list_name(st, l1) && is_list_name(st, l2) {
+            Plain([l1, f1], "=", VPath([l2, f2])) ->
+              case is_rule && is_list_name(st, l1) && is_list_name(st, l2) {
                 True ->
                   fail_line(
                     "two lists are related with in: ("
@@ -3283,8 +3284,8 @@ fn named_list(
         Ok(nd) ->
           case nd.kind, nd.items, model.setting(nd.preds, "qty") {
             model.Refine, [TypeItem(item)], Some(q) ->
-              case dict.get(by_name, item) {
-                Ok(it) if it.kind == model.Record ->
+              case dict.get(by_name, item) |> result.map(fn(it) { it.kind }) {
+                Ok(model.Record) ->
                   case is_list {
                     False ->
                       Error(MapError(
