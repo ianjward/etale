@@ -1854,7 +1854,7 @@ fn more_forms() -> Outcome {
     ),
     expect(check.errors(two_rep) == [], "two fields of one item: " <> msgs(two_rep)),
     expect(
-      num(get(two, program.check(two, "Box", "37|52").value, "over_count")) == "1",
+      num(get(two, program.check(two, "Box", "3752|").value, "over_count")) == "1",
       "(items.n > items.limit) compares each item with itself",
     ),
     expect(
