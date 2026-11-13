@@ -22,7 +22,8 @@ pub type Check {
   CheckRecord(decl: String)
   CheckRefine(decl: String)
   CheckPosition(decl: String, number: Int)
-  CheckUnique(decl: String)
+  /// 'unique: code' on a list of decl: no two items share that field
+  CheckUnique(decl: String, field: String)
 }
 
 pub type M {
@@ -34,7 +35,7 @@ pub type M {
     elem: Int,
     lo: Int,
     hi: Option(Int),
-    elem_decl: Option(String),
+    elem_decl: Option(#(String, String)),
   )
   Cat(name: String, record: Bool, parts: List(#(String, Int)))
   Filt(name: Option(String), base: Int, check: Check, what: String)
@@ -182,19 +183,11 @@ pub fn qty_bounds(
   }
 }
 
-/// The record whose 'unique' fields a sequence of this item must respect, if any.
-fn elem_decl(decls: Dict(String, Decl), it: Item) -> Option(String) {
-  case it {
-    TypeItem(n) ->
-      case dict.get(decls, n) {
-        Ok(d) ->
-          case list.any(d.fields, fn(f) { model.has_flag(f.preds, "unique") }) {
-            True -> Some(n)
-            False -> None
-          }
-        Error(_) -> None
-      }
-    _ -> None
+/// The record and field a list's 'unique:' names, if it has one.
+fn unique_of(f: model.Field) -> Option(#(String, String)) {
+  case model.setting(f.preds, "unique"), model.base(f) {
+    Some(model.VStr(u)), TypeItem(n) -> Some(#(n, u))
+    _, _ -> None
   }
 }
 
@@ -244,7 +237,7 @@ fn compile_decl(
           let #(m, st) = case model.qty_of(d.preds) {
             Some(_) -> {
               let #(lo, hi) = qty_bounds(model.qty_of(d.preds))
-              put(st, Seq(Some(name), base, lo, hi, elem_decl(decls, b)))
+              put(st, Seq(Some(name), base, lo, hi, None))
             }
             None ->
               case charlike(st, base) {
@@ -311,7 +304,7 @@ fn compile_decl(
                       let #(lo, hi) = qty_bounds(model.qty(f))
                       put(
                         st,
-                        Seq(None, fm, lo, hi, elem_decl(decls, model.base(f))),
+                        Seq(None, fm, lo, hi, unique_of(f)),
                       )
                     }
                     None -> #(fm, st)
@@ -670,7 +663,7 @@ fn run_seq(
   elem: Int,
   lo: Int,
   hi: Option(Int),
-  edecl: Option(String),
+  edecl: Option(#(String, String)),
   pos: Int,
 ) -> Results {
   // Partial sequences are item lists, last item first. Results are kept by
@@ -695,7 +688,7 @@ fn run_seq(
 fn seq_nodes(
   p: Parser,
   name,
-  edecl: Option(String),
+  edecl: Option(#(String, String)),
   pos: Int,
   e: Int,
   partials: List(List(Node)),
@@ -703,11 +696,11 @@ fn seq_nodes(
   list.filter_map(partials, fn(items) {
     let n = Node(name, pos, e, NSeq(items))
     case p.enforce, edecl {
-      True, Some(d) ->
-        case p.check(CheckUnique(d), n) {
+      True, Some(#(d, u)) ->
+        case p.check(CheckUnique(d, u), n) {
           True -> Ok(n)
           False -> {
-            write(p.rejected, ["unique fields of " <> d, ..read(p.rejected)])
+            write(p.rejected, ["unique " <> u <> " of " <> d, ..read(p.rejected)])
             Error(Nil)
           }
         }

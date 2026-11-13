@@ -569,9 +569,11 @@ fn field_value(ev: Ev, r: Rec, f: Field) -> Val {
     }
     model.Computed -> {
       let assert Some(def) = model.definition(f)
-      let v = case model.setting(f.preds, "round") {
-        Some(VPath([rule])) -> rounded_value(ev, r, f, def, rule)
-        _ ->
+      let v = case model.setting(f.preds, "round"), def {
+        Some(VPath([rule])), _ -> rounded_value(ev, r, f, def, rule)
+        // a quotient the checker proved exact needs no round:
+        _, VArith("/", _) -> rounded_value(ev, r, f, def, "Half_Even")
+        _, _ ->
           case eval_value(ev, Some(r), def, VInvalid) {
             RVal(v) -> v
             RRange(..) -> VInvalid
@@ -618,10 +620,25 @@ fn rounded_value(ev: Ev, r: Rec, f: Field, def: Value, rule: String) -> Val {
         RRange(..) -> VInvalid
       }
     })
+  // with a unit such as 0.05, round the number of units to a whole number
+  let unit = case model.setting(f.preds, "round_unit") {
+    Some(VNum(u)) -> Some(u.value)
+    _ -> None
+  }
+  let cut = fn(a, b) {
+    case unit {
+      None -> round_cut(ev, r, f, a, b, n, rule)
+      Some(u) ->
+        case round_cut(ev, r, f, a, decimal.mul(b, u), 0, rule) {
+          VNumber(k) -> VNumber(decimal.mul(k, u))
+          other -> other
+        }
+    }
+  }
   case list.contains(vals, VLater), vals {
     True, _ -> VLater
-    _, [VNumber(a), VNumber(b)] -> round_cut(ev, r, f, a, b, n, rule)
-    _, [VNumber(a)] -> round_cut(ev, r, f, a, decimal.from_int(1), n, rule)
+    _, [VNumber(a), VNumber(b)] -> cut(a, b)
+    _, [VNumber(a)] -> cut(a, decimal.from_int(1))
     _, _ -> VInvalid
   }
 }
@@ -1066,6 +1083,7 @@ fn eval_plain(ev: Ev, r: Option(Rec), c: Clause, cur: Val) -> Tri {
 /// matches nothing.
 fn relation(ev: Ev, r: Option(Rec), c: Clause) -> Option(#(Tri, String)) {
   case c, r {
+    Plain(p, "in", v), Some(rec) -> Some(in_over(ev, rec, p, v))
     Plain([l1, f1], "=", VPath([l2, f2])), Some(rec) ->
       case list_field(rec, l1), list_field(rec, l2) {
         True, True -> Some(relation_over(ev, rec, l1, f1, l2, f2))
@@ -1079,6 +1097,95 @@ fn list_field(rec: Rec, name: String) -> Bool {
   case model.field(rec.decl, name) {
     Some(f) -> model.is_list_field(f)
     None -> False
+  }
+}
+
+/// 'all_stops.station in index.station' through lists the reader worked out:
+/// a path through lists of this record ('trains.stops.station'), on the
+/// right also the items of a list that meet a condition. Each value on the
+/// left matches some value on the right.
+fn in_over(ev: Ev, rec: Rec, p: List(String), v: Value) -> #(Tri, String) {
+  let lefts = collect(ev, [VRecord(rec)], p, None)
+  let #(rights, rname) = case v {
+    VPath(q) -> #(collect(ev, [VRecord(rec)], q, None), string.join(q, "."))
+    model.VFilter(q, conds) -> #(
+      collect(ev, [VRecord(rec)], q, Some(conds)),
+      string.join(q, "."),
+    )
+    _ -> #(Error(Inv), "")
+  }
+  case lefts, rights {
+    Error(t), _ | _, Error(t) -> #(t, "")
+    Ok(ls), Ok(rs) ->
+      case
+        list.index_map(ls, fn(x, i) { #(x, i + 1) })
+        |> list.find(fn(pair) { !list.any(rs, fn(y) { same(pair.0, y) }) })
+      {
+        Error(_) -> #(Yes, "")
+        Ok(#(x, n)) -> #(
+          No,
+          string.join(p, ".")
+            <> " item "
+            <> int.to_string(n)
+            <> " is "
+            <> show(x)
+            <> ", but no item of "
+            <> rname
+            <> " has it",
+        )
+      }
+  }
+}
+
+/// The values a path reaches through lists, flattened in order. A condition
+/// keeps the items of the first list it reaches.
+fn collect(
+  ev: Ev,
+  vals: List(Val),
+  steps: List(String),
+  conds: Option(Block),
+) -> Result(List(Val), Tri) {
+  case steps {
+    [] -> Ok(vals)
+    [step, ..rest] -> {
+      use next <- result.try(
+        list.try_fold(vals, [], fn(acc, x) {
+          case x {
+            VRecord(r) ->
+              case get(ev, r, step) {
+                VInvalid -> Error(Inv)
+                VLater -> Error(Later)
+                VSeqv(xs, _, _) -> Ok(list.append(list.reverse(xs), acc))
+                y -> Ok([y, ..acc])
+              }
+            _ -> Error(Inv)
+          }
+        })
+        |> result.map(list.reverse),
+      )
+      use next <- result.try(case conds, rest {
+        Some(b), [_, ..] ->
+          list.try_fold(next, [], fn(acc, it) {
+            case it {
+              VRecord(ir) ->
+                case eval_block(ev, Some(ir), b, it) {
+                  Yes -> Ok([it, ..acc])
+                  No -> Ok(acc)
+                  Inv -> Error(Inv)
+                  Later -> Error(Later)
+                }
+              _ -> Error(Inv)
+            }
+          })
+          |> result.map(list.reverse)
+        _, _ -> Ok(next)
+      })
+      let conds = case rest {
+        [_, ..] -> None
+        [] -> conds
+      }
+      collect(ev, next, rest, conds)
+    }
   }
 }
 
@@ -1159,11 +1266,29 @@ fn eval_compare(ev: Ev, r: Option(Rec), c: Clause, cur: Val) -> Tri {
             case eval_value(ev, r, vv, cur) {
               RVal(VInvalid) -> list.Stop(Inv)
               RVal(VLater) -> list.Stop(Later)
-              right ->
-                case compare(left, op, right) {
-                  True -> list.Stop(Yes)
-                  False -> list.Continue(No)
+              right -> {
+                let held = case left, right, ordered_by(ev, r, path) {
+                  VText(a), RVal(VText(b)), Some(o) ->
+                    case text_order(ev, o, a, b), op {
+                      Ok(order.Lt), "<" | Ok(order.Lt), "<=" -> Ok(True)
+                      Ok(order.Eq), "<=" | Ok(order.Eq), ">=" -> Ok(True)
+                      Ok(order.Gt), ">" | Ok(order.Gt), ">=" -> Ok(True)
+                      Ok(_), "<" | Ok(_), "<=" | Ok(_), ">" | Ok(_), ">=" ->
+                        Ok(False)
+                      _, _ -> Error(Nil)
+                    }
+                  _, _, _ -> Error(Nil)
                 }
+                case held {
+                  Ok(True) -> list.Stop(Yes)
+                  Ok(False) -> list.Continue(No)
+                  Error(_) ->
+                    case compare(left, op, right) {
+                      True -> list.Stop(Yes)
+                      False -> list.Continue(No)
+                    }
+                }
+              }
             }
           })
         }
@@ -1218,6 +1343,41 @@ fn eval_value(ev: Ev, r: Option(Rec), v: Value, cur: Val) -> Rhs {
   }
 }
 
+/// The prefix fact: in a list ordered by key, '(key < x)' and '(key <= x)'
+/// keep a run from the start, '(key > x)' and '(key >= x)' a run to the end.
+/// Only the items in the run can meet the condition, so only they are read.
+fn prefix_run(
+  ev: Ev,
+  rec: Rec,
+  list_name: String,
+  items: List(Val),
+  b: Block,
+) -> List(Val) {
+  let ordered = case model.field(rec.decl, list_name) {
+    Some(f) ->
+      case model.setting(f.preds, "order") {
+        Some(VStr(k)) -> Some(k)
+        _ -> None
+      }
+    None -> None
+  }
+  let meets = fn(x) {
+    case x {
+      VRecord(ir) -> eval_block(ev, Some(ir), b, x) == Yes
+      _ -> False
+    }
+  }
+  case ordered, b.clauses {
+    Some(k), [Plain([key], op, VNum(_))] if key == k ->
+      case op {
+        "<" | "<=" -> list.take_while(items, meets)
+        ">" | ">=" -> list.drop_while(items, fn(x) { !meets(x) })
+        _ -> items
+      }
+    _, _ -> items
+  }
+}
+
 fn result_all(xs: List(Result(a, Nil))) -> Result(List(a), Nil) {
   list.try_map(xs, fn(x) { x })
 }
@@ -1246,7 +1406,15 @@ fn eval_path_with(
     _, None -> outer(ev, head, steps)
   }
   let start = case filter, start {
-    Some(b), VSeqv(items, hi, elem) -> filter_items(ev, items, hi, elem, b)
+    Some(b), VSeqv(items, hi, elem) -> {
+      // a list ordered by a field, kept by comparing that field with a fixed
+      // value, is a run at one end: read only as far as the run goes
+      let items = case r {
+        Some(rec) -> prefix_run(ev, rec, head, items, b)
+        None -> items
+      }
+      filter_items(ev, items, hi, elem, b)
+    }
     _, _ -> start
   }
   let v =
@@ -1536,10 +1704,10 @@ pub fn checker(ev: Ev, text: String) -> fn(Check, Node) -> Bool {
           value(ev, n, text, Some(p.items), None),
         ))
       }
-      CheckUnique(name) -> {
+      CheckUnique(name, u) -> {
         let assert Ok(d) = dict.get(ev.decls, name)
         let kids = node.items(n)
-        unique_ok(ev, d, kids, text)
+        unique_ok(ev, d, u, kids, text)
       }
     }
   }
@@ -1551,11 +1719,15 @@ fn passes(t: Tri) -> Bool {
   t == Yes || t == Later
 }
 
-fn unique_ok(ev: Ev, d: Decl, kids: List(Node), text: String) -> Bool {
+fn unique_ok(
+  ev: Ev,
+  d: Decl,
+  u: String,
+  kids: List(Node),
+  text: String,
+) -> Bool {
   case d.kind {
     model.Record -> {
-      let flagged =
-        list.filter(d.fields, fn(f) { model.has_flag(f.preds, "unique") })
       let recs =
         list.filter_map(kids, fn(k) {
           case value(ev, k, text, None, None) {
@@ -1563,12 +1735,28 @@ fn unique_ok(ev: Ev, d: Decl, kids: List(Node), text: String) -> Bool {
             _ -> Error(Nil)
           }
         })
-      list.all(flagged, fn(f) {
-        let keys = list.map(recs, fn(r) { unique_key(ev, r, f) })
-        list.length(list.unique(keys)) == list.length(keys)
-      })
+      let keys = list.map(recs, fn(r) { path_key(ev, r, u) })
+      list.length(list.unique(keys)) == list.length(keys)
     }
     _ -> True
+  }
+}
+
+/// A unique key, one field or one dot from it ('due.minutes'), compared as
+/// '=' compares: numbers by value, everything else by its text.
+fn path_key(ev: Ev, r: Rec, key: String) -> String {
+  case string.split(key, ".") {
+    [k] ->
+      case model.field(r.decl, k) {
+        Some(f) -> unique_key(ev, r, f)
+        None -> ""
+      }
+    parts ->
+      case key_of(ev, VRecord(r), parts) {
+        VNumber(x) -> decimal.to_short(x)
+        VText(t) -> t
+        v -> show(v)
+      }
   }
 }
 
@@ -1663,6 +1851,102 @@ fn ov_loop(ev: Ev, v: Val, acc: List(String)) -> List(String) {
   }
 }
 
+/// The order named on the field a key reaches, 'order: Station_Order.rank'.
+fn key_order(ev: Ev, x: Val, key: List(String)) -> Option(String) {
+  case x, key {
+    VRecord(r), [k] -> field_order(r.decl, k)
+    VRecord(r), [k, ..more] ->
+      case get(ev, r, k) {
+        VRecord(_) as inner -> key_order(ev, inner, more)
+        _ -> None
+      }
+    _, _ -> None
+  }
+}
+
+fn field_order(d: Decl, name: String) -> Option(String) {
+  case model.field(d, name) {
+    Some(f) ->
+      case model.setting(f.preds, "text_order") {
+        Some(VStr(o)) -> Some(o)
+        _ -> None
+      }
+    None -> None
+  }
+}
+
+/// The order of the field a comparison's left path names, if it is an
+/// ordered text.
+fn ordered_by(ev: Ev, r: Option(Rec), path: List(String)) -> Option(String) {
+  case r {
+    Some(rec) -> key_order(ev, VRecord(rec), path)
+    None -> None
+  }
+}
+
+/// The rank a mapping such as Station_Order.rank gives one character.
+fn rank(ev: Ev, o: String, ch: String) -> Result(decimal.Decimal, Nil) {
+  case string.split(o, ".") {
+    [t, m] ->
+      case dict.get(ev.decls, t) {
+        Ok(d) ->
+          case model.field(d, m) {
+            Some(f) ->
+              case f.mapping {
+                Some(mp) ->
+                  list.find_map(mp.cases, fn(cs) {
+                    case cs.output, cs.preds.clauses {
+                      NumItem(n, _), [Plain(_, "=", VStr(x))] if x == ch -> Ok(n)
+                      NumItem(n, _), [Plain(_, "=", VMulti(vs))] ->
+                        case list.contains(vs, VStr(ch)) {
+                          True -> Ok(n)
+                          False -> Error(Nil)
+                        }
+                      _, _ -> Error(Nil)
+                    }
+                  })
+                None -> Error(Nil)
+              }
+            None -> Error(Nil)
+          }
+        Error(_) -> Error(Nil)
+      }
+    _ -> Error(Nil)
+  }
+}
+
+/// Two texts in an order, letter by letter: the first character whose
+/// ranks differ decides, and a text that runs out first comes first.
+pub fn text_order(
+  ev: Ev,
+  o: String,
+  a: String,
+  b: String,
+) -> Result(order.Order, Nil) {
+  compare_ranks(ev, o, string.to_graphemes(a), string.to_graphemes(b))
+}
+
+fn compare_ranks(
+  ev: Ev,
+  o: String,
+  a: List(String),
+  b: List(String),
+) -> Result(order.Order, Nil) {
+  case a, b {
+    [], [] -> Ok(order.Eq)
+    [], _ -> Ok(order.Lt)
+    _, [] -> Ok(order.Gt)
+    [x, ..xs], [y, ..ys] -> {
+      use rx <- result.try(rank(ev, o, x))
+      use ry <- result.try(rank(ev, o, y))
+      case decimal.compare(rx, ry) {
+        order.Eq -> compare_ranks(ev, o, xs, ys)
+        other -> Ok(other)
+      }
+    }
+  }
+}
+
 /// An item's key: a field, or a field of a field's record.
 fn key_of(ev: Ev, x: Val, key: List(String)) -> Val {
   list.fold(key, x, fn(v, step) {
@@ -1683,20 +1967,25 @@ fn first_out_of_order(
     [a, b, ..rest] -> {
       let ka = key_of(ev, a, key)
       let kb = key_of(ev, b, key)
-      case ka, kb {
-        VNumber(x), VNumber(y) ->
-          case decimal.compare(x, y) {
-            order.Gt -> Some(#(i, ka, kb))
-            _ -> first_out_of_order(ev, [b, ..rest], key, i + 1)
+      let went_down = case ka, kb {
+        VNumber(x), VNumber(y) -> decimal.compare(x, y) == order.Gt
+        VText(x), VText(y) ->
+          case key_order(ev, a, key) {
+            Some(o) -> text_order(ev, o, x, y) == Ok(order.Gt)
+            None -> False
           }
-        _, _ -> first_out_of_order(ev, [b, ..rest], key, i + 1)
+        _, _ -> False
+      }
+      case went_down {
+        True -> Some(#(i, ka, kb))
+        False -> first_out_of_order(ev, [b, ..rest], key, i + 1)
       }
     }
     _ -> None
   }
 }
 
-/// Every 'unique' field with two rows of equal value.
+/// Every list with 'unique: field' that has two items of equal value.
 pub fn unique_violations(ev: Ev, v: Val) -> List(String) {
   uv_loop(ev, v, []) |> list.reverse
 }
@@ -1706,52 +1995,53 @@ fn uv_loop(ev: Ev, v: Val, acc: List(String)) -> List(String) {
     VRecord(r) ->
       list.fold(r.decl.fields, acc, fn(acc, f) {
         case model.is_stored(f) {
-          True -> uv_loop(ev, get(ev, r, f.name), acc)
           False -> acc
-        }
-      })
-    VSeqv(xs, _, _) -> {
-      let recs =
-        list.filter_map(xs, fn(x) {
-          case x {
-            VRecord(r) -> Ok(r)
-            _ -> Error(Nil)
-          }
-        })
-      let acc = case recs {
-        [first, ..] ->
-          list.fold(first.decl.fields, acc, fn(acc, f) {
-            case model.has_flag(f.preds, "unique") {
-              False -> acc
-              True -> {
+          True -> {
+            let inner = get(ev, r, f.name)
+            let acc = case model.setting(f.preds, "unique"), inner {
+              Some(VStr(u)), VSeqv(xs, _, _) -> {
+                let recs =
+                  list.filter_map(xs, fn(x) {
+                    case x {
+                      VRecord(rr) -> Ok(rr)
+                      _ -> Error(Nil)
+                    }
+                  })
                 let #(_, acc) =
-                  list.index_fold(recs, #(dict.new(), acc), fn(st, r, i) {
+                  list.index_fold(recs, #(dict.new(), acc), fn(st, rr, i) {
                     let #(seen, acc) = st
-                    let key = unique_key(ev, r, f)
-                    case dict.get(seen, key) {
-                      Ok(j) -> #(seen, [
-                        first.decl.name
-                          <> "."
-                          <> f.name
-                          <> " is unique, but rows "
-                          <> int.to_string(j)
-                          <> " and "
-                          <> int.to_string(i + 1)
-                          <> " both have "
-                          <> string.inspect(key),
-                        ..acc
-                      ])
-                      Error(_) -> #(dict.insert(seen, key, i + 1), acc)
+                    case True {
+                      _ -> {
+                        let key = path_key(ev, rr, u)
+                        case dict.get(seen, key) {
+                          Ok(j) -> #(seen, [
+                            r.decl.name
+                              <> "."
+                              <> f.name
+                              <> " is unique by "
+                              <> u
+                              <> ", but items "
+                              <> int.to_string(j)
+                              <> " and "
+                              <> int.to_string(i + 1)
+                              <> " both have "
+                              <> string.inspect(key),
+                            ..acc
+                          ])
+                          Error(_) -> #(dict.insert(seen, key, i + 1), acc)
+                        }
+                      }
                     }
                   })
                 acc
               }
+              _, _ -> acc
             }
-          })
-        [] -> acc
-      }
-      list.fold(xs, acc, fn(a, x) { uv_loop(ev, x, a) })
-    }
+            uv_loop(ev, inner, acc)
+          }
+        }
+      })
+    VSeqv(xs, _, _) -> list.fold(xs, acc, fn(a, x) { uv_loop(ev, x, a) })
     _ -> acc
   }
 }

@@ -286,7 +286,7 @@ fn sequents_print() -> Outcome {
       "t.big_line_count = t.lines.count [only items with lines.big = True]",
     ),
     has(book, "t.orders.customer ⊆ t.customers.code"),
-    has(book, "t.code = u.code ⊢ t = u"),
+    has(book, "u ∈ t.customers ∧ v ∈ t.customers ∧ u.code = v.code ⊢ u = v"),
     expect(
       !string.contains(orders <> book, "¬")
         && !string.contains(orders <> book, "→")
@@ -1398,6 +1398,9 @@ pub fn main() {
     #("parentheses check or work out", value_checks_or_works_out),
     #("rules, claims and mapping inputs", rules_claims_and_inputs),
     #("ordered lists, min and max, wraps", ordered_lists_and_wraps),
+    #("the timetable", timetable),
+    #("ordered texts", ordered_texts),
+    #("methods, units, exact quotients, unique per list", more_forms),
   ]
   let failed =
     list.fold(tests, 0, fn(failed, t) {
@@ -1639,6 +1642,206 @@ fn ordered_lists_and_wraps() -> Outcome {
         "may be empty",
       ),
       ".max on a list that may be empty",
+    ),
+  ])
+}
+
+fn timetable() -> Outcome {
+  let #(p, rep) = load("examples/timetable/timetable.sheaf")
+  let assert Ok(good) = read_file("examples/timetable/timetable.txt")
+  let trains =
+    "R10 60\nAsker 09:41 +0\nDrammen 23:50 +20\nR11 30\nOslo S 10:05 +12\n---\n"
+  let run = fn(text) { program.check(p, "Timetable", text) }
+  let refused_by = fn(text, what) {
+    let o = run(text)
+    !o.ok && list.any(o.failures, fn(f) { string.contains(f, what) })
+  }
+  let ok = run(good)
+  let assert Some(VRecord(t)) = ok.value
+  let assert evaluate.VSeqv([VRecord(r10), ..], _, _) =
+    evaluate.get(p.ev, t, "trains")
+  let assert evaluate.VSeqv([_, VRecord(drammen)], _, _) =
+    evaluate.get(p.ev, r10, "stops")
+  all([
+    expect(check.errors(rep) == [], "the timetable checks clean: " <> msgs(rep)),
+    expect(
+      list.key_find(rep.claims, "Train.average_within") |> is_ok,
+      "an average is at most the greatest",
+    ),
+    expect(
+      list.key_find(rep.claims, "Train.spread_never_negative") |> is_ok,
+      "the least is at most the greatest",
+    ),
+    expect(ok.ok, "the data inhabits Timetable: " <> string.join(ok.failures, "; ")),
+    expect(
+      num(evaluate.get(p.ev, drammen, "arrives")) == "10",
+      "23:50 + 20 wraps to 00:10",
+    ),
+    expect(
+      num(evaluate.get(p.ev, drammen, "part_of_day")) == "night",
+      "and is night",
+    ),
+    expect(num(evaluate.get(p.ev, r10, "most_delay")) == "20", ".max"),
+    expect(num(evaluate.get(p.ev, r10, "average_delay")) == "10.0", "average"),
+    expect(
+      refused_by(trains <> "Asker\nBergen\nDrammen\nOslo S\n", "every_listing_used"),
+      "a listing no stop uses",
+    ),
+    expect(
+      refused_by(trains <> "Asker\nOslo S\n", "every_stop_listed"),
+      "a stop not listed",
+    ),
+    expect(
+      refused_by(trains <> "Asker\nAsker\nDrammen\nOslo S\n", "unique"),
+      "a station listed twice",
+    ),
+    expect(
+      refused_by(trains <> "Asker\nOslo S\nDrammen\n", "ordered by station"),
+      "the index out of name order",
+    ),
+    expect(
+      refused_by(
+        "R10 60\nDrammen 23:50 +20\nAsker 09:41 +0\nR11 30\nOslo S 10:05 +12\n---\nAsker\nDrammen\nOslo S\n",
+        "ordered by due.minutes",
+      ),
+      "stops out of due order",
+    ),
+    expect(
+      !run(trains <> "asker\nDrammen\nOslo S\n").ok,
+      "asker is not Asker",
+    ),
+  ])
+}
+
+/// 'order:' on a text field names the mapping that ranks its characters.
+fn ordered_texts() -> Outcome {
+  let lib =
+    "Name_Character {\" \" | Uppercase}\nName {Name_Character...} count: 1..9\n"
+    <> "Name_Order {}\n  character {Name_Character}\n  rank {Integer} (character)\n"
+    <> "    {0} (\" \")\n    {1..26} (\"A\"..\"Z\")\n"
+  let pair = fn(order, rule) {
+    lib
+    <> "Pair {}\n  a {Name}"
+    <> order
+    <> "\n  b {Name}"
+    <> order
+    <> "\n"
+    <> rule
+    <> "  text {Text}\n    1. {a}\n    2. {\",\"}\n    3. {b}\n"
+  }
+  let flagged = fn(text, needle) {
+    case source(text) {
+      Ok(#(_, r)) -> string.contains(msgs(r), needle)
+      Error(e) -> string.contains(e.msg, needle)
+    }
+  }
+  let assert Ok(#(p, rep)) =
+    source(pair(" order: Name_Order.rank", "  in_order {Needs} (a <= b)\n"))
+  all([
+    expect(check.errors(rep) == [], "ordered texts check clean: " <> msgs(rep)),
+    expect(program.check(p, "Pair", "AB,AC").ok, "AB before AC"),
+    expect(program.check(p, "Pair", "AB,ABC").ok, "the shorter first"),
+    expect(program.check(p, "Pair", "A B,AB").ok, "a space before a letter"),
+    expect(!program.check(p, "Pair", "B,AZ").ok, "B after AZ"),
+    expect(
+      flagged(pair("", "  in_order {Needs} (a <= b)\n"), "Texts take = only"),
+      "texts with no order take = only",
+    ),
+    expect(
+      flagged(
+        lib <> "X {}\n  a {Name} order: Name_Order\n",
+        "names the mapping that gives the rank",
+      ),
+      "order: names the mapping",
+    ),
+    expect(
+      flagged(
+        lib <> "X {}\n  a {Integer} order: Name_Order.rank\n",
+        "already ordered",
+      ),
+      "a number is already ordered",
+    ),
+    expect(
+      flagged(
+        lib
+          <> "Wide {Character...} count: 1..9\nX {}\n  a {Wide} order: Name_Order.rank\n",
+        "which Name_Order does not rank",
+      ),
+      "an order that does not rank every character",
+    ),
+  ])
+}
+
+fn more_forms() -> Outcome {
+  let flagged = fn(text, needle) {
+    case source(text) {
+      Ok(#(_, r)) -> string.contains(msgs(r), needle)
+      Error(e) -> string.contains(e.msg, needle)
+    }
+  }
+  let train =
+    clock_src
+    <> "\nTrain {}\n  stops {Stop...} count: 1.., unique: due.minutes, order: due.minutes\n"
+    <> "  delays {Integer...} (stops.delay)\n  spread {Integer} (delays.max - delays.min)\n"
+    <> "  fits_a_day {Claims} (stops.count <= Minutes_Per_Day)\n"
+  let assert Ok(#(tp, trep)) = source(train)
+  let t = program.check(tp, "Train", "09:41 +0\n23:50 +20\n")
+  let hours =
+    "Minutes_Per_Hour {Integer} (60)\nT {}\n  hour {Integer} (0..23)\n"
+    <> "  minutes {Integer} (hour * Minutes_Per_Hour)\n"
+    <> "  back {Integer} (minutes / Minutes_Per_Hour)\n"
+  let assert Ok(#(hp, hrep)) = source(hours)
+  let nickel =
+    "Three {Integer} (3)\nN {}\n  total {Decimal} (0..100) places: 2\n"
+    <> "  share {Decimal} (total / Three) round: 0.05\n"
+  let assert Ok(#(np, nrep)) = source(nickel)
+  let customers =
+    "Customer {}\n  code {Natural}\n  text {Text}\n    1. {code}\n    2. {Newline}\n"
+    <> "Book {}\n  customers {Customer...} count: 1.., unique: code\n"
+    <> "  vips {Customer...}\n  text {Text}\n    1. {customers}\n    2. {\"--\"}\n"
+    <> "    3. {Newline}\n    4. {vips}\n"
+  let assert Ok(#(bp, brep)) = source(customers)
+  let kept_right =
+    "Item {}\n  n {Integer} (0..9)\n  text {Text}\n    1. {n} digits: 1\n"
+    <> "Box {}\n  a {Item...} count: 1..\n  b {Item...} count: 1..\n"
+    <> "  big_b {Item...} (b.n >= 5)\n  ok {Needs} (a.n in big_b.n)\n"
+    <> "  text {Text}\n    1. {a}\n    2. {\"|\"}\n    3. {b}\n"
+  let assert Ok(#(kp, krep)) = source(kept_right)
+  all([
+    expect(check.errors(trep) == [], "methods in a calculation: " <> msgs(trep)),
+    expect(num(get(tp, t.value, "spread")) == "20", "delays.max - delays.min"),
+    expect(
+      list.key_find(trep.claims, "Train.fits_a_day") |> is_ok,
+      "order: and unique: on one key bound the count",
+    ),
+    expect(check.errors(hrep) == [], "an exact quotient: " <> msgs(hrep)),
+    expect(
+      num(get(hp, program.check(hp, "T", "7").value, "back")) == "7",
+      "420 / 60 needs no round:",
+    ),
+    expect(check.errors(nrep) == [], "round: 0.05: " <> msgs(nrep)),
+    expect(
+      num(get(np, program.check(np, "N", "10.00").value, "share")) == "3.35",
+      "10.00 / 3 to the nearest 0.05",
+    ),
+    expect(check.errors(brep) == [], "two lists of one type: " <> msgs(brep)),
+    expect(
+      program.check(bp, "Book", "1\n2\n--\n1\n1\n").ok,
+      "unique: on customers says nothing of vips",
+    ),
+    expect(
+      !program.check(bp, "Book", "1\n1\n--\n2\n").ok,
+      "but holds on customers",
+    ),
+    expect(check.errors(krep) == [], "in with a kept list on the right: " <> msgs(krep)),
+    expect(program.check(kp, "Box", "59|59").ok, "every a is a big b"),
+    expect(!program.check(kp, "Box", "1|59").ok, "1 is no big b"),
+    expect(
+      flagged(
+        clock_src <> "\nStops {Stop...} count: 1..\nTrain {}\n  stops {Stops...} count: 1..\n",
+        "already says how many",
+      ),
+      "a named list's count is said once",
     ),
   ])
 }

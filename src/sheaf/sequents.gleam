@@ -154,16 +154,23 @@ fn record(d: Decl, me: String) -> List(String) {
     })
   let uniques =
     stored
-    |> list.filter(fn(f) { model.has_flag(f.preds, "unique") })
-    |> list.map(fn(f) {
-      me
-      <> " ∧ "
-      <> d.name
-      <> "(u) ∧ rows_of_one_list(t, u) ∧ t."
-      <> f.name
-      <> " = u."
-      <> f.name
-      <> " ⊢ t = u"
+    |> list.filter_map(fn(f) {
+      case model.setting(f.preds, "unique") {
+        Some(model.VStr(u)) ->
+          Ok(
+            me
+            <> " ∧ u ∈ t."
+            <> f.name
+            <> " ∧ v ∈ t."
+            <> f.name
+            <> " ∧ u."
+            <> u
+            <> " = v."
+            <> u
+            <> " ⊢ u = v",
+          )
+        _ -> Error(Nil)
+      }
     })
   [def, ..list.append(rest, uniques)]
 }

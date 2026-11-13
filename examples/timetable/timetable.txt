@@ -1,0 +1,9 @@
+R10 60
+Asker 09:41 +0
+Drammen 23:50 +20
+R11 30
+Oslo S 10:05 +12
+---
+Asker
+Drammen
+Oslo S
