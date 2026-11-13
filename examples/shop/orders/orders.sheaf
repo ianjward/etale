@@ -1,15 +1,9 @@
 # Sees Money (shop/), Item (catalog/'s front file) and Date (the standard library).
-Order_Line {}
-  item {Item}
-  price {Decimal} value: item.price, places: 2
-  text {Text}
-    1. {item}
-    2. {Newline}
-
 Order {}
   on {Date}
-  items {Order_Line} qty: 1..
-  total {Decimal} sum: items.price, places: 2
+  items {Item...} count: 1..
+  prices {Money...} (items.price)
+  total {Money} (prices.sum)
   text {Text}
     1. {on}
     2. {Newline}

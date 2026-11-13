@@ -8,25 +8,23 @@
 #   =          equality of texts and numbers        {"TRUE"}, code = "A1"
 #   and        conjunction                          records, positions, &, ranges
 #   or         disjunction                          |
-#   exists     there is a part of the text          each stored field and position
-#   or over n  infinite disjunction                 lists of any length, qty: 0..
+#   exists     there is a part of the text          each stored field and position, in
+#   or over n  infinite disjunction                 lists of any length, {Stop...}
 # There is no 'not', '!=', 'else' or 'forall'. The comparisons and 'unique' hide a
 # 'not', but only over things that the checker can always decide.
 #
 # Every construction is one or more lines, which together state one or more sequents of
-# geometric logic. Most lines have the form:
-#   name {type} item: value, item: value
-# A rule or a claim has its condition straight after its type, and a mapping its inputs:
-#   name {Needs} condition
-#   name {Claims} condition
-#   name {type} (input, input)
+# geometric logic. Every line has the same shape:
+#   name {type} (what the value is) property: value, property: value
 #
 # Example:
 #   Order {}
-#     total {Decimal}
+#     lines {Line...} count: 1..
+#     totals {Decimal...} (lines.amount)
+#     total {Decimal} (totals.sum)
 #     big {True | False} (total)
-#       {True} if: total >= 1000.00
-#       {False} if: total < 1000.00
+#       {True} (>= Big_From)
+#       {False} (< Big_From)
 #
 # name:
 #   a type        capitalized snake case, not indented          Order_Line
@@ -35,78 +33,62 @@
 #                 or 4 spaces, in a record's text shape
 #   a case        an output in braces, indented 4 spaces        {True}
 #
-# type, in braces:
-#   a value
-#     {"text"}            exactly this text
-#     {5}                 exactly this number
-#
-#   a disjunction
-#     {A | B | "c" | 5}   one of these: types, texts or numbers
-#
-#   a type
-#     {Digit}             one Digit. A list of them is {Digit} qty: 1..4
-#
-#   a conjunction
-#     {A & B}             both, for exactly the same characters
-#                         Type names only: to use a text, name it first, C {"c"}, then {A & C}.
-#
-#   a rule or a claim (fields only), its condition straight after the braces
-#     {Needs}             a rule: its condition must hold, or the text is refused
-#     {Claims}            a claim: one comparison, proved for every text, or the file is
+# type, in braces, always second on the line:
+#   {"text"}              exactly this text
+#   {A | B | "c" | 5}     one of these: types, texts or numbers
+#   {"A".."Z"}            one of these characters, in code-point order
+#   {Digit}               one Digit
+#   {Digit...}            a list of Digits. How many goes after it: count: 1..4
+#   {A & B}               both, for exactly the same characters. Type names only: to use
+#                         a text, name it first, C {"c"}, then {A & C}.
+#   {Needs}               a rule: its condition must hold, or the text is refused
+#   {Claims}              a claim: one comparison, proved for every text, or the file is
 #                         refused
+#   {}                    a record: its fields, on the lines below
 #   {True} and {False} are never a field's whole type: they are values in a union,
 #   {True | False}, in a case's output and in a condition.
 #
-#   a mapping (fields only), its one or two inputs in parentheses after the braces
-#     {Status} (delay)    and its cases below, four spaces in:
-#                           {"late"} if: delay = 2..9
+# What the value is, in parentheses after the type, told apart by what is inside:
+#   (0..120)              allowed values, a range or a choice (10 | 30 | 60): the value
+#                         is read from the text and must be one of these
+#   (hour_minutes + minute)   a calculation: worked out, not in the text
+#   (delays.sum)          a method of a list: count, sum, min, max
+#   (stops.delay >= 2)    on a list, a kept list: the items that meet the condition
+#   (stops.delay)         on a list, a collected list: one field of each item
+#   (delay <= 60)         on {Needs} or {Claims}, the condition
+#   (kind, late_stops)    on a mapping, its inputs, with its cases below:
+#                           {"late"} (2..9)
+#   (25)                  on a type of Integer or Decimal, a constant: Name {Integer} (25)
 #
-#   a record
-#     {}                  its fields, on the lines below
+# Properties, after the parentheses, separated by commas:
+#   count: 1..            how many items a list holds
+#   places: 2             decimal places
+#   round: 0.1            the unit a calculation is rounded to; a tie goes to even
+#   wrap_at: Hours_Per_Day    a calculation wraps at this number
+#   unique: station       on a list, no two items share this field's value
+#   order: due.minutes    on a list, its items are ordered by this key
+#   digits: 2             on a text-shape position, the number's fixed width
 #
-# Items. Everything after the type is a list of named items, joined by commas.
+#   Defaults, when nothing is written: one item; places inferred from the numbers on the
+#   line; nothing unique.
 #
-#   value: says what a number is, in one of two ways, told apart by what follows:
-#     value: 0..9         a range or a choice (0 | 10..100): the number is read from
-#                         the text and must be one of these
-#     value: a + b        a number, a path or a calculation: the number is worked out
-#                         and is not in the text. value: 5 is always 5.
+# A type never narrows another type by a condition. To pick out some Orders, give Order a
+# field with cases, as 'big' above. Then use that field where you need it, as in a kept
+# list, '(orders.big = True)', or a rule, 'large {Needs} (order.big = True)'.
 #
-#   where a value comes from, at most one on a line:
-#     value: a + b        a calculation, as above
-#     count: lines        how many items a list holds
-#     sum: lines.amount   the total of a field over a list's items
-#     filter: stops.delay >= 2   beside count: or sum:, only the items that meet a condition
-#
-#   restrictions:
-#     qty: 1..            how many items a list may hold. A field with qty is a list.
-#     value: 0..9         the values a number read from the text may take, as above
-#     places: 2           decimal places
-#     mod: 24             arithmetic wraps at 24
-#     unique: True        no two items of a list share this field's value
-#     round: Half_Even    how a calculation is rounded to the field's places (Step 5)
-#
-#   Defaults, when nothing is written: qty 1; places inferred from the numbers on the line;
-#   unique False.
-#
-# 'if:' is not an item. It belongs to the cases of a mapping, '{output} if: conditions'.
-# A type never narrows another type by a condition. To pick out some Orders, give Order
-# a field with cases, as 'big' above. Then use that field where you need it, as in
-# 'large {Needs} order.big = True'.
-#
-# Paths. A condition, calculation or fold names values by paths:
+# Paths. A condition, calculation or method names values by paths:
 #     total                 a field declared above, in the same record
 #     due.minutes           a field of that field's record
+#     stops.count           a method of a list
 #     Train.max_delay       a field of the Train this record sits inside
-#     value                 the value of this line itself
 # A path has at most one dot. To reach further, give the step its own field first.
 #
 # Conditions:
-#   comparisons             = < <= > >=, and no others; a path on the left
+#   comparisons             = < <= > >= in, and no others; a path on the left
 #     total >= 0            numbers take all five
 #     code = "A1"           texts and TRUE/FALSE take = only
-#     delay = 2..9          a range: 2 <= delay and delay <= 9
-#     max_delay = 10 | 30   a choice of values
+#     delay in 2..9         in: one of a set, a closed range, a choice or a list
+#     max_delay in 10 | 30  a choice of values
 #
 #   joined by & or |        never both on one line
 #     a > 0 & b > 0
@@ -116,12 +98,12 @@
 #   + - * / on numbers, one kind per calculation
 #     a + b + c             allowed
 #     a + b * c             refused: there is no precedence, so give b * c its own field
-#     a / b                 a quotient: two terms only, and only after value:
-#   Integers never overflow and decimals are exact: + and - keep the larger number of
-#   places, and * adds them. mod makes arithmetic wrap. The checker must prove that a
-#   divisor is never 0. A quotient may need any number of places, so its field says how
-#   to round it:
-#     share {Decimal} value: total / 3, places: 2, round: Half_Even
+#     a / b                 a quotient: two terms only
+#   A number in a calculation is named by a constant, except 0 and 1. Integers never
+#   overflow and decimals are exact: + and - keep the larger number of places, and *
+#   adds them. The checker must prove that a divisor is never 0. A quotient may need any
+#   number of places, so its field says what unit to round it to:
+#     share {Decimal} (total / Parts) round: 0.01
 #
 # Text shapes. The fields of a record hold only meaning. When its text has more than its
 # stored fields in order, a field named text lays it out, with positions four spaces in:
@@ -129,17 +111,17 @@
 #     hour {Hour}
 #     minute {Minute}
 #     text {Text}
-#       1. {hour}
+#       1. {hour} digits: 2
 #       2. {":"}
-#       3. {minute}
+#       3. {minute} digits: 2
 #
-# Braces never nest. Parentheses appear only around the inputs of a mapping, and never
-# nest. Items are optional. A line uses only names declared above it, with three
-# exceptions:
+# Braces never nest, and parentheses never nest. Parentheses and properties are
+# optional. A line uses only names declared above it, with three exceptions:
 #   1. a record may hold itself as a field, as a list from 0 (Step 3)
 #   2. a path may start with a record this one sits inside (Step 3)
 #   3. names may come from other files in scope (Step 10)
-# The language reserves 'value' and 'text', so they cannot name a field.
+# The language reserves 'value', 'text', 'count', 'sum', 'min' and 'max', so they cannot
+# name a field.
 # ==========================================================================
 
 
@@ -205,64 +187,67 @@ Claims {True}
 
 # ---------- Step 3: Lists, Literals and Names ----------
 
-# Lists. 'qty:' after a type makes a list: 'digits {Digit} qty: 2' is
-# two Digits, 'qty: 1..' one or more, 'qty: 0..1' none or one. With no
-# qty there is exactly one. A list of X is a function from positions
-# '1..n' to X, where n is its number of items. A qty is a natural number
-# or a range of them.
+# Lists. '...' after a type in braces makes a list: 'digits {Digit...}
+# count: 2' is two Digits, 'count: 1..' one or more. With no count, a
+# list holds any number of items, none included. Without '...', count
+# is allowed only as 'count: 0..1', an item that may be absent. With no
+# '...' and no count there is exactly one. A list of X is a function
+# from positions '1..n' to X, where n is its number of items. A count is
+# a natural number or a range of them.
+#
+# A named list of records, 'Stops {Stop...} count: 1..', is written with
+# '...' wherever a field holds it: 'stops {Stops...}'. A list of lists
+# is a record that holds a list. A list of characters is a text, one
+# value, as Text is below.
 #
 # Recursion. A record field may use its own record type only as a list
-# whose qty starts at 0, as in 'children {Node} qty: 0..' or
-# 'next_leg {Journey} qty: 0..1'. The empty list is the stopping branch,
-# so every value is finite. This is the only recursion. No other type
-# may refer to itself, and two types cannot refer to each other. Two
-# rules keep recursion polynomial.
+# whose count starts at 0, as in 'children {Node...}' or 'next_leg
+# {Journey} count: 0..1'. The empty list is the stopping branch, so
+# every value is finite. This is the only recursion. No other type may
+# refer to itself, and two types cannot refer to each other. Two rules
+# keep recursion polynomial.
 #
 # - The checker computes each field once per node and reuses it, so a repeated read costs nothing.
 # - A product or a quotient reads at most one of its terms through a recursive field.
 #
-# The checker accepts 'next_leg.delay * 10'. It refuses
+# The checker accepts 'next_leg.delay * Weight'. It refuses
 # 'next_leg.delay * next_leg.delay', because the number would double in
 # length at every level. Computed fields produce numbers, TRUE and
-# FALSE, never new records or lists, so evaluation never makes the data
-# bigger.
+# FALSE, never new records, so evaluation never makes the data bigger.
 #
-# Folds. The checker reads a list only through a fold, and a fold is
-# always its own field:
-#   stop_count {Integer} count: stops       the number of items
-#   total_delay {Integer} sum: stops.delay  the total of a numeric field,
-#                                           with its places
-# An empty list folds to 0, and a count is never below 0. Both give the
-# same answer in any order of the items. You write other counts with
-# these. The nodes of a tree, all levels down, are:
-#   below {Integer} sum: children.nodes
-#   nodes {Integer} value: 1 + below
-# A field whose qty is at most 1 reads as its item, or as 0 when it is
-# absent. So 'train.total_delay + next_leg.delay' needs no fold.
+# Methods. A list is read through a method, the last step of a path:
+#   stop_count {Integer} (stops.count)      the number of items
+#   total_delay {Integer} (delays.sum)      the total of a list of numbers
+# An empty list gives 0, and a count is never below 0. Both give the
+# same answer in any order of the items. A method counts toward the one
+# dot of a path, so 'stops.delay.sum' does not read: collect first.
+# 'count', 'sum', 'min' and 'max' are reserved, so no field takes them.
+# An item that may be absent, 'count: 0..1', has a count of 0 or 1. A
+# field whose count is at most 1 reads as its item, or as 0 when it is
+# absent. So 'train.total_delay + next_leg.delay' needs no method.
 #
-# Filters. 'filter:' beside a fold keeps the items that meet a condition on their fields,
-# each written through the list, as 'sum: stops.delay' is:
-#   late_stops {Integer} count: stops, filter: stops.delay >= 2
-# counts the stops with a delay of 2 or more.
-# 'sum: stops.delay, filter: stops.delay >= 2' adds up their delays. A
+# Kept and collected lists. Each line does one job. A kept list picks
+# the items that meet a condition, written through the list:
+#   late_stops {Stop...} (stops.delay >= Late_From)
+# A collected list takes one field of each item:
+#   delays {Integer...} (stops.delay)
+# A kept list holds the item type of its source. To sum the delays of
+# the late stops, keep first, then collect from the kept list. A
 # condition is one comparison, or several joined by '&' or by '|'. Each
 # comparison tests a field of the items against a number, a text, a
-# range or a choice of them. It can also test the one value of a type
-# such as True, as in 'filter: orders.big = True'.
-#
-# A filter tests only the items of the list that the fold reads. A fold
-# takes at most one filter, and a path never holds one. Folds and
-# filters visit each item once, so they are linear. 'Every item' is a
-# filtered count compared with a count.
+# range, a choice or a constant. It can also test the one value of a
+# type such as True, as in '(orders.big = True)'. Kept and collected
+# lists visit each item once, so they are linear. 'Every item' is a kept
+# count compared with a count.
 #
 # Relations. A record that holds two lists states a relation between
 # their items as a rule on a line of its own:
-#   each_order_has_its_customer {Needs} orders.customer = customers.code
+#   each_order_has_its_customer {Needs} (orders.customer in customers.code)
 # Every item of orders has a customer equal to the code of an item of
 # customers. Both sides are a field of the items of a list of this
-# record, of the same type. The right field is 'unique: True', so each
-# order matches exactly one customer. The checker refuses a text that
-# breaks the rule, and it names the first order that matches no
+# record, of the same type. With 'unique: code' on the customers list,
+# each order matches exactly one customer. The checker refuses a text
+# that breaks the rule, and it names the first order that matches no
 # customer.
 #
 # Context. A path that starts with a type name and goes on to a field
@@ -273,32 +258,31 @@ Claims {True}
 # once it has read the whole text, when every record knows the records
 # around it. A type name with no field after it is the value of a type
 # that has one value, such as True or the constant
-# 'Late_Stop_Credit {25}'.
-Text {Character} qty: 0..
-Line_Text {Line_Character} qty: 0..      # Cannot contain a newline, by construction
-Natural {Digit} qty: 1..                 # Every character is a digit
+# 'Late_Stop_Credit {Integer} (25)'.
+Text {Character...}
+Line_Text {Line_Character...}            # Cannot contain a newline, by construction
+Natural {Digit...} count: 1..            # Every character is a digit
 
 # A layout is a refinement line followed by numbered positions at two
-# spaces. Its text is its positions in number order. On a position, qty
-# repeats the type of that position.
+# spaces. Its text is its positions in number order. On a position,
+# '...' and count repeat the type of that position. The numbers '1.',
+# '2.' mark a line as a position, so a position never looks like a case.
+# They count up from 1 and carry nothing else. The base of a layout is
+# Text: a number's written form goes on the position that writes it, as
+# in '1. {hour} digits: 2' (Step 7).
 #
-# A layout whose base is Integer or Decimal is a conversion: it reads
-# the Digit positions left to right in base 10. A '"-"' position, when
-# present, makes the number negative. Other literal positions contribute
-# nothing. The 'value:' range must fit what the layout holds. For
-# example:
-#   Temperature {Integer} value: -90..60
-#     1. {"-"} qty: 0..1                 # a "-" position makes it negative
-#     2. {Digit} qty: 1..2
+# Integer_Literal and Decimal_Literal are Text layouts. Reading them as
+# numbers is the language's own rule. A number literal compares as the
+# number it writes, so 'high > low' in Bounded_Range compares numbers.
 Integer_Literal {Text}
-  1. {"-"} qty: 0..1                     # an optional minus sign
-  2. {Digit} qty: 1..
+  1. {"-"} count: 0..1                   # an optional minus sign
+  2. {Digit...} count: 1..
 
 Decimal_Literal {Text}
-  1. {"-"} qty: 0..1                     # an optional minus sign
-  2. {Digit} qty: 1..
+  1. {"-"} count: 0..1                   # an optional minus sign
+  2. {Digit...} count: 1..
   3. {"."}
-  4. {Digit} qty: 1..
+  4. {Digit...} count: 1..
 
 # Numbers. Integer has no bound, so overflow cannot occur. Decimal is
 # exact. For '+' and '-' the result has the larger number of places of
@@ -309,24 +293,24 @@ Number_Literal {Decimal_Literal | Integer_Literal}
 # A record is a header 'Name {}' followed by its fields at two spaces.
 # Its text is its text shape, or with no shape its stored fields in
 # declaration order. Computed fields contribute no text. A computed
-# field is a calculation after 'value:', a fold with 'count:' or 'sum:',
-# a mapping, a rule or a claim. A field may name only fields of the same
-# record declared above it. No stored field holds only one possible
-# text, so a separator such as '" "' goes in the text shape.
+# field is a calculation or a method in parentheses, a kept or collected
+# list, a mapping, a rule or a claim. A field may name only fields of
+# the same record declared above it. No stored field holds only one
+# possible text, so a separator such as '" "' goes in the text shape.
 #
 # A text shape is a field named text with the base '{Text}', then
 # numbered positions at four spaces. A position holds one field of the
 # record, by its lowercase name, or a type or a literal, which may take
-# a qty. Every stored field appears in exactly one position, and keeps
-# its own qty there. A shape lays out the text only. Values, conditions,
-# unique, claims and sequents see only fields.
+# '...' and a count. Every stored field appears in exactly one position.
+# A shape lays out the text only. Values, conditions, unique, claims and
+# sequents see only fields.
 #
-# A rule is a field with the base '{Needs}' and its condition straight
-# after the braces, as in 'plausible {Needs} delay <= 60'. If its
-# condition does not hold, the field is INVALID, never FALSE. A
-# '{Needs}' with no condition is an error, because it would always hold
-# and so says nothing. A field whose whole type is '{True}' or '{False}'
-# is an error for the same reason.
+# A rule is a field with the base '{Needs}' and its condition in
+# parentheses, as in 'plausible {Needs} (delay <= 60)'. If its condition
+# does not hold, the field is INVALID, never FALSE. A '{Needs}' with no
+# condition is an error, because it would always hold and so says
+# nothing. A field whose whole type is '{True}' or '{False}' is an error
+# for the same reason.
 #
 # Every field evaluates to a value or to INVALID. Anything computed from
 # an INVALID field is INVALID. The checker refuses a record that has an
@@ -334,21 +318,21 @@ Number_Literal {Decimal_Literal | Integer_Literal}
 # grammar carries a rule, a text inhabits the type only if the rule
 # holds on it.
 #
-# A claim is a field with the base '{Claims}' and one comparison
-# straight after the braces, as in 'nonnegative {Claims} total >= 0'. It
-# narrows nothing. The checker must prove that it holds for every value,
-# by one fixed method.
+# A claim is a field with the base '{Claims}' and one comparison in
+# parentheses, as in 'nonnegative {Claims} (total >= 0)'. It narrows
+# nothing. The checker must prove that it holds for every value, by one
+# fixed method.
 #
 # - Expand both sides into sums of stored fields.
 # - Move everything to one side and cancel.
-# - Bound what remains, using the 'value:' of each field, its choice of values, or its count.
+# - Bound what remains, using the allowed values of each field, its choice of values, or its count.
 #
 # On a recursive type, the checker may assume the claim itself for the
 # recursive field. This is induction. It keeps a product of two fields
 # as one term, bounded by multiplying their ranges. It keeps a quotient
 # as one term too, bounded by dividing ranges. A rounded field is at
 # most one unit in its last place away from the exact value. The limit
-# is half a unit when its rule rounds away from zero only above a half.
+# is half a unit when it rounds to the nearest unit.
 #
 # If the bound does not settle the comparison, the claim is a compile
 # error, 'cannot prove'. The checker checks each claim once, against the
@@ -357,19 +341,20 @@ Number_Literal {Decimal_Literal | Integer_Literal}
 #
 # Ranges. A range 'low..high' contains both ends, and high is above low
 # by the rule below, so neither '5..1' nor '5..5' reads. A range always
-# spans more than one value. A single fixed value is a type with one
-# value, used by name as in 'Limit {5}', or written as 'value: 5'.
+# spans more than one value. A single fixed value is a constant, a type
+# with one value, written 'Limit {Integer} (5)' and used by name.
 Bounded_Range {}
   low {Number_Literal}
   high {Number_Literal}
-  ordered {Needs} high > low
+  ordered {Needs} (high > low)
   text {Text}
     1. {low}
     2. {".."}
     3. {high}
 
 # 'low..' and '..high' are open on one side. A '..' with both ends
-# missing does not exist. To allow every value, leave out 'value:'.
+# missing does not exist. To allow every value, leave out the
+# parentheses.
 Lower_Range {Text}                       # 'low..' is low and everything above
   1. {Number_Literal}
   2. {".."}
@@ -377,8 +362,6 @@ Lower_Range {Text}                       # 'low..' is low and everything above
 Upper_Range {Text}                       # '..high' is high and everything below
   1. {".."}
   2. {Number_Literal}
-
-Range_Literal {Bounded_Range | Lower_Range | Upper_Range}
 
 # Raw quotes and backslashes cannot appear inside a string literal. An
 # escape is the only way to reach them. The only escapes are '\"', '\\'
@@ -395,8 +378,21 @@ String_Character {Plain_String_Character | Escape}
 
 String_Literal {Text}
   1. {Quote}
-  2. {String_Character} qty: 0..
+  2. {String_Character...}
   3. {Quote}
+
+# A range of characters, '"A".."Z"', lists the characters from one to
+# the other in code-point order, both ends included. It is used only to
+# list characters: 'Uppercase {"A".."Z"}', or a case '{1..26}
+# ("A".."Z")', which maps a range of characters to a range of numbers of
+# the same size, first to first.
+Character_Range {}                       # Example: '"A".."Z"'
+  low {String_Literal}
+  high {String_Literal}
+  text {Text}
+    1. {low}
+    2. {".."}
+    3. {high}
 
 # Uppercase names are types. Lowercase names are fields.
 Name_Character {Uppercase | Lowercase | Digit | Underscore}
@@ -404,11 +400,11 @@ Lower_Name_Character {Lowercase | Digit | Underscore}
 
 Type_Name {Text}
   1. {Uppercase}
-  2. {Name_Character} qty: 0..
+  2. {Name_Character...}
 
 Field_Name {Text}
   1. {Lowercase}
-  2. {Lower_Name_Character} qty: 0..
+  2. {Lower_Name_Character...}
 
 Name {Type_Name | Field_Name}
 
@@ -419,13 +415,12 @@ Field_Step {Text}
 # A path starts with a field declared above it, a type with one value,
 # or a record type around this one. See Step 3, Context.
 #
-# A path has at
-# most one step, and the step is always a field. A field cannot refer to
-# itself. It may use its own record type only as a recursive field.
-# 'value' names the value of the line that it appears on.
+# A path has at most one step, and the step is always a field or a
+# method. A field cannot refer to itself. It may use its own record
+# type only as a recursive field.
 Path {Text}                              # Example: 'due.minutes'
   1. {Name}
-  2. {Field_Step} qty: 0..1
+  2. {Field_Step} count: 0..1
 
 
 # ---------- Step 4: Layout ----------
@@ -436,14 +431,15 @@ Path {Text}                              # Example: 'due.minutes'
 Indent_0 {""}
 
 Indent_2 {Text}
-  1. {Space} qty: 2
+  1. {Space...} count: 2
 
 Indent_4 {Text}
-  1. {Space} qty: 4
+  1. {Space...} count: 4
 
 # Spacing around operators. Any number of spaces, none included, may
 # surround '&', '|', '+', '-', '*', '/' and the comparisons. One or more
-# spaces separate a name from its type and follow a comma or a colon.
+# spaces surround 'in', separate a name from its type, and follow a
+# comma or a colon.
 #
 # Lines have at most 100 characters. See File in Step 7. This bounds
 # every run of spaces.
@@ -451,13 +447,13 @@ Indent_4 {Text}
 # Spacing holds no meaning, so no field holds it. It sits in text
 # shapes. It prints as its first form, as Step 9 says, so Pad and Gap
 # print as one space and End_Spaces as none.
-Wide_Space {Space} qty: 2..
+Wide_Space {Space...} count: 2..
 Pad {" " | "" | Wide_Space}
 Gap {" " | Wide_Space}
-End_Spaces {Space} qty: 0..
+End_Spaces {Space...}
 
 Trailing_Comment {Text}
-  1. {Space} qty: 1..
+  1. {Space...} count: 1..
   2. {"#"}
   3. {Line_Text}
 
@@ -475,10 +471,12 @@ Noted_End {}
 Line_End {Plain_End | Noted_End}
 
 
-# ---------- Step 5: Values, Conditions and Items ----------
+# ---------- Step 5: Values, Conditions and Properties ----------
 
 # Arithmetic is '+', '-', '*' and '/'. A calculation uses one operator
-# kind only, so no precedence exists.
+# kind only, so no precedence exists. A number in a calculation is named
+# by a constant, 'hour * Minutes_Per_Hour' and not 'hour * 60', except 0
+# and 1.
 Term {Path | Number_Literal}
 
 Sum_Tail {}
@@ -507,26 +505,26 @@ Product_Tail {}
 
 Sum {}
   first {Term}
-  rest {Sum_Tail} qty: 1..
+  rest {Sum_Tail...} count: 1..
 
 Difference {}
   first {Term}
-  rest {Difference_Tail} qty: 1..
+  rest {Difference_Tail...} count: 1..
 
 Product {}
   first {Term}
-  rest {Product_Tail} qty: 1..
+  rest {Product_Tail...} count: 1..
 
 Arithmetic {Sum | Difference | Product}  # One operator kind per calculation
 
-# Division. A quotient has exactly two terms. You write it only after
-# 'value:', never in a condition. To divide again, or to compare a
-# quotient, give it its own field first.
+# Division. A quotient has exactly two terms. You write it only in a
+# field's parentheses, never in a condition. To divide again, or to
+# compare a quotient, give it its own field first.
 #
-# The checker must prove that the divisor is never 0, from its 'value:',
-# its choice of values or its count. If it cannot, the line is an error.
-# The exact quotient may need any number of places, so its field names a
-# rounding rule with 'round:'. '1 / 3' is the exact value one third,
+# The checker must prove that the divisor is never 0, from its allowed
+# values, its choice of values or its count. If it cannot, the line is
+# an error. The exact quotient may need any number of places, so its
+# field rounds it with 'round:'. '1 / 3' is the exact value one third,
 # never a decimal cut short.
 Quotient {}                              # Example: 'total / 3'
   dividend {Term}
@@ -538,17 +536,53 @@ Quotient {}                              # Example: 'total / 3'
     4. {Pad}
     5. {divisor}
 
-Value {Arithmetic | Range_Literal | Number_Literal | String_Literal | Path}
+# A range end may name a constant, or be a calculation of numbers and
+# constants: '(0..Hours_Per_Day - 1)'. It is worked out before any text
+# is read, and high must then be above low. The two forms below hold at
+# least one end that is not a number literal, so a range of two literals
+# reads only as Bounded_Range.
+Named_End {Arithmetic | Path}
 
-# Comparisons. There is no '!=', 'not', 'else', 'forall' or 'in'.
+Range_To_Name {}                         # Example: '0..Max_Delay'
+  low {Number_Literal}
+  high {Named_End}
+  text {Text}
+    1. {low}
+    2. {".."}
+    3. {high}
+
+Range_From_Name {}                       # Example: 'Low..High'
+  low {Path}
+  high {Named_End | Number_Literal}
+  text {Text}
+    1. {low}
+    2. {".."}
+    3. {high}
+
+Range_Literal {Bounded_Range | Lower_Range | Upper_Range | Range_To_Name | Range_From_Name}
+
+Value {Arithmetic | Range_Literal | Number_Literal | Character_Range | String_Literal | Path}
+
+# Comparisons. There is no '!=', 'not', 'else' or 'forall'. '=' compares
+# one value with one value. 'in' asks whether a value is one of a set: a
+# list, a closed range or a choice. Each item on the left of 'in' matches
+# some item on the right. It only says a match exists, so it stays
+# geometric.
 Comparison_Symbol {"=" | "<" | "<=" | ">" | ">="}
 
-Comparison {}
+Symbol_Comparison {}
   symbol {Comparison_Symbol}
   text {Text}
     1. {Pad}
     2. {symbol}
     3. {Pad}
+
+In_Comparison {Text}                     # ' in ', with spaces around it
+  1. {Gap}
+  2. {"in"}
+  3. {Gap}
+
+Comparison {Symbol_Comparison | In_Comparison}
 
 Condition {}                             # Example: 'total >= 0'
   field {Path}
@@ -569,7 +603,7 @@ And_Tail {}
 
 And_Conditions {}                        # One or more conditions joined by '&'
   first {Condition}
-  rest {And_Tail} qty: 0..
+  rest {And_Tail...}
 
 Value_Tail {}
   next {Value}
@@ -581,7 +615,7 @@ Value_Tail {}
 
 Multi_Value {}                           # Example: '0 | 10..100'
   first {Value}
-  rest {Value_Tail} qty: 1..
+  rest {Value_Tail...} count: 1..
 
 Choice_Value {Multi_Value | Value}
 
@@ -600,19 +634,19 @@ Or_Tail {}
 
 Or_Chain {}                              # Two or more conditions joined by '|'
   first {Choice_Condition}
-  rest {Or_Tail} qty: 1..
+  rest {Or_Tail...} count: 1..
 
 Single_Choice {}                         # One condition choosing among values
   field {Path}
-  comparison {Comparison}
+  comparison {In_Comparison}
   right {Multi_Value}
 
 Or_Conditions {Or_Chain | Single_Choice}
 
 Conditions {And_Conditions | Or_Conditions}
 
-# Allowed values, after 'value:': a range, or a choice of ranges and
-# numbers. No paths and no texts.
+# Allowed values: a range, or a choice of ranges and numbers. No paths
+# and no texts.
 Allowed {Range_Literal | Number_Literal}
 
 Allowed_Tail {}
@@ -625,153 +659,144 @@ Allowed_Tail {}
 
 Allowed_Choice {}                        # Example: '10 | 30 | 60'
   first {Allowed}
-  rest {Allowed_Tail} qty: 1..
+  rest {Allowed_Tail...} count: 1..
 
-# Allowed numbers of items, after 'qty:'.
+# Allowed numbers of items, after 'count:'.
 Quantity {Range_Literal | Natural}
 
 Calculation {Arithmetic | Quotient | Term}
 
-# What follows 'value:'. A range or a choice checks a number read from
-# the text. A number, a path or a calculation works the number out, so
-# it is not in the text, and 'value: 5' is always 5. A stored field that
-# could hold only one value would hold no data, so a single number never
-# checks. A fixed text such as '"5"' goes in the text shape of the
-# record.
-Value_Content {Allowed_Choice | Range_Literal | Calculation}
-
-
-# Items. Each item is a name, a colon, one or more spaces, and its
-# value. A name followed by a colon never appears in a path, so the
-# language does not need to reserve the item names.
+# What the parentheses after a type hold, told apart by what is inside:
 #
-# Where a value comes from. A line has at most one of these: a
-# calculation after 'value:' or a fold. Value_Item, below, defines the
-# calculation. A condition is not an item. A rule or a claim has its own
-# line form, in Step 7, and 'if:' belongs to cases.
-Count_Item {}                            # Example: 'count: stops'
-  path {Path}
+# - A range or a choice: a number read from the text, which must be one of these.
+# - A calculation, a path or a method: a value worked out, which is not in the text.
+# - A condition: a rule, a claim or a kept list.
+#
+# A single number or constant is worked out, so '(Max_Delay)' is always
+# that value. A path on its own that only copies a field is an error.
+# A worked-out single value takes no allowed values: a limit on it is a
+# rule, 'credit_limit {Needs} (credit <= Max_Credit)'.
+Paren_Content {Allowed_Choice | Range_Literal | Calculation | Conditions}
+
+Parens {}                                # Example: ' (hour_minutes + minute)'
+  content {Paren_Content}
+  text {Text}
+    1. {Gap}
+    2. {"("}
+    3. {content}
+    4. {")"}
+
+
+# Properties. Each property is a name, a colon, one or more spaces, and
+# its value. Properties are separated by commas. A name followed by a
+# colon never appears in a path, so the language does not need to
+# reserve the property names.
+#
+# 'count:' limits how many items a list holds. 'places: 2' fixes the
+# decimal places of a value read from the text, or of a worked-out value
+# that is never rounded. Without it, the checker infers the places from
+# the literals on the line. Giving a value fewer decimal places than it
+# needs is a compile error, so rounding never happens implicitly.
+Count_Property {}                        # Example: 'count: 1..'
+  allowed {Quantity}
   text {Text}
     1. {"count:"}
     2. {Gap}
-    3. {path}
-
-Sum_Item {}                              # Example: 'sum: stops.delay'
-  path {Path}
-  text {Text}
-    1. {"sum:"}
-    2. {Gap}
-    3. {path}
-
-# A filter goes beside 'count:' or 'sum:' only. The fold reads only the
-# items that meet the conditions. See Step 3, Filters. Each condition
-# names a field of the items through the list.
-Filter_Item {}                           # Example: 'filter: stops.delay >= 2'
-  conditions {Conditions}
-  text {Text}
-    1. {"filter:"}
-    2. {Gap}
-    3. {conditions}
-
-# Restrictions. 'places: 2' fixes the decimal places. Without it, the
-# checker infers the places from the literals on the line. 'mod: 7'
-# makes arithmetic wrap. A value read into a field must satisfy the
-# 'value:' of that field. Giving a value fewer decimal places than it
-# needs is a compile error, so rounding never happens implicitly.
-#
-# A calculation whose exact value may have more places than its field
-# allows names a rounding rule with 'round:'. A quotient is always such
-# a calculation. 'unique: True' forbids two items of a list with equal
-# values in that field. Its opposite, two equal items, is positive and
-# always decidable. 'unique: False' says nothing, and 'fmt' drops it.
-Qty_Item {}                              # Example: 'qty: 1..'
-  allowed {Quantity}
-  text {Text}
-    1. {"qty:"}
-    2. {Gap}
     3. {allowed}
 
-Value_Item {}                            # Example: 'value: 0..9, or value: hour * 60'
-  allowed {Value_Content}
-  text {Text}
-    1. {"value:"}
-    2. {Gap}
-    3. {allowed}
-
-Places_Item {}                           # Example: 'places: 2'
+Places_Property {}                       # Example: 'places: 2'
   places {Natural}
   text {Text}
     1. {"places:"}
     2. {Gap}
     3. {places}
 
-Mod_Item {}                              # Example: 'mod: 24'
-  modulus {Natural}
+# Rounding. 'round:' goes after a calculation and takes the unit to
+# round to: 'round: 0.1' gives one place. A tie goes to the even multiple,
+# so sums of rounded values do not drift. One word after the unit
+# changes that: 'away' (a tie away from zero), 'lower' (toward the lower
+# number, also when negative: -2.5 to -3) or 'higher' (toward the higher
+# number: -2.5 to -2). Rounding rules are fixed by the language and
+# cannot be declared, so no rule name can say one thing and do another.
+# A quotient always needs 'round:'. A rounded value takes its places from
+# its unit.
+Round_Word {"away" | "lower" | "higher"}
+
+Round_Direction {}
+  word {Round_Word}
   text {Text}
-    1. {"mod:"}
-    2. {Gap}
-    3. {modulus}
+    1. {Gap}
+    2. {word}
 
-# 'unique:' names True or False, as a condition does. For example,
-# 'alarm = True'.
-Flag_Name {"True" | "False"}
-
-Unique_Item {}                           # Example: 'unique: True'
-  flag {Flag_Name}
-  text {Text}
-    1. {"unique:"}
-    2. {Gap}
-    3. {flag}
-
-# Rounding. 'round: Half_Even' names a rounding rule. A rounding rule is
-# a record whose field 'direction {Direction}' is a mapping on one or
-# two of these inputs. The checker supplies them when it rounds:
-#   remainder {Decimal} value: 0..1    the part cut off, as a fraction of
-#                                      the last place kept
-#   odd {True | False}                 the last digit kept is odd
-#   negative {True | False}            the exact value is below 0
-# For example, round half to even:
-#   Half_Even {}
-#     remainder {Decimal} value: 0..1
-#     odd {True | False}
-#     direction {Direction} (remainder, odd)
-#       {"toward_zero"} if: remainder < 0.5
-#       {"away_from_zero"} if: remainder > 0.5
-#       {"toward_zero"} if: remainder = 0.5 & odd = False
-#       {"away_from_zero"} if: remainder = 0.5 & odd = True
-# The checks of the mapping refuse a rule that misses a case, such as
-# the tie. The standard library holds Half_Even, Half_Up, Floor and
-# Ceiling. Anyone may declare more. A rule decides only which way to
-# round. So every rounded value is at most one unit in its last place
-# away from the exact value.
-Direction {"toward_zero" | "away_from_zero"}
-
-Round_Item {}                            # round: Half_Even
-  rule {Type_Name}
+Round_Property {}                        # Example: 'round: 0.01 away'
+  unit {Number_Literal}
+  direction {Round_Direction} count: 0..1
   text {Text}
     1. {"round:"}
     2. {Gap}
-    3. {rule}
+    3. {unit}
+    4. {direction}
 
-Source {Count_Item | Sum_Item}
-Restriction {Qty_Item | Value_Item | Places_Item | Mod_Item | Round_Item}
-Named_Item {Source | Filter_Item | Restriction | Unique_Item}
+# Wrapping. 'wrap_at:' goes after a calculation, as 'round:' does, and
+# names the number at which it wraps: '(due.minutes + delay) wrap_at:
+# Minutes_Per_Day'. With both, 'round:' comes first. A value read from
+# the text is checked, never wrapped. A calculation that might not fit
+# its field's type is an error that names three fixes: 'wrap_at:', a
+# wider type, or a rule.
+Wrap_Property {}                         # Example: 'wrap_at: Minutes_Per_Day'
+  modulus {Named_End}
+  text {Text}
+    1. {"wrap_at:"}
+    2. {Gap}
+    3. {modulus}
 
-Item_Tail {}
-  next {Named_Item}
+# 'unique:' goes on a list and names a field of its items: no two items
+# of the list have the same value in that field. Its opposite, two equal
+# items, is positive and always decidable.
+Unique_Property {}                       # Example: 'unique: station'
+  key {Field_Name}
+  text {Text}
+    1. {"unique:"}
+    2. {Gap}
+    3. {key}
+
+# 'order:' means ordered by. On a text field it names the mapping that
+# ranks its characters. On a list it names a key of its items, and each
+# item's key must be at or before the next one's.
+Order_Property {}                        # Example: 'order: due.minutes'
+  key {Path}
+  text {Text}
+    1. {"order:"}
+    2. {Gap}
+    3. {key}
+
+# 'digits:' goes on the position of a text shape that writes a number,
+# and writes exactly that many digits, with leading zeros and no sign.
+Digits_Property {}                       # Example: 'digits: 2'
+  digits {Natural}
+  text {Text}
+    1. {"digits:"}
+    2. {Gap}
+    3. {digits}
+
+Value_Property {Count_Property | Places_Property | Round_Property | Wrap_Property}
+List_Property {Unique_Property | Order_Property | Digits_Property}
+Property {Value_Property | List_Property}
+
+Property_Tail {}
+  next {Property}
   text {Text}
     1. {","}
     2. {Gap}
     3. {next}
 
-Items {}                                 # Example: 'value: hour + 5, mod: 24'
-  first {Named_Item}
-  rest {Item_Tail} qty: 0..
+Properties {}                            # Example: ' count: 1.., unique: station'
+  first {Property}
+  rest {Property_Tail...}
   text {Text}
     1. {Gap}
     2. {first}
     3. {rest}
-
 
 # ---------- Step 6: Bases ----------
 
@@ -786,8 +811,8 @@ Items {}                                 # Example: 'value: hour + 5, mod: 24'
 # inputs as a chain, where the output field of one mapping is an input
 # of the next.
 #
-# Parentheses appear nowhere else, and never nest. No space goes inside
-# them or before the comma. Nothing follows them on the line, and cases
+# Parentheses never nest. No space goes just inside them or before the
+# comma. Nothing follows a mapping's inputs on its line, and cases
 # always follow below.
 Input_Tail {}
   next {Field_Name}
@@ -796,9 +821,9 @@ Input_Tail {}
     2. {Gap}
     3. {next}
 
-Inputs {}                                # Example: '(kind, late_stops)'
+Inputs {}                                # Example: '(kind, late_stop_count)'
   first {Field_Name}
-  second {Input_Tail} qty: 0..1
+  second {Input_Tail} count: 0..1
   text {Text}
     1. {Gap}
     2. {"("}
@@ -806,9 +831,10 @@ Inputs {}                                # Example: '(kind, late_stops)'
     4. {second}
     5. {")"}
 
-# Inside braces, '|' is union. A union takes no qty: to repeat one,
-# name it, then give the name a qty.
-Union_Item {Type_Name | String_Literal | Number_Literal}
+# Inside braces, '|' is union. A range of characters is a union of its
+# characters, so it stands only where a union does.
+Single_Item {Type_Name | String_Literal | Number_Literal}
+Union_Item {Single_Item | Character_Range}
 
 Union_Tail {}
   next {Union_Item}
@@ -818,18 +844,30 @@ Union_Tail {}
     3. {Pad}
     4. {next}
 
-Union_Base {}                            # Two or more items
+Union_List {}                            # Two or more items
   first {Union_Item}
-  rest {Union_Tail} qty: 1..
+  rest {Union_Tail...} count: 1..
 
-# Braces never nest and hold only a type: how many items, and every
-# other item, comes after the braces.
+Union_Base {Union_List | Character_Range}
+
+# Braces never nest and hold only a type. '...' after a type name marks
+# a list. How many items, and every property, comes after the braces.
 Item_Box {}
-  item {Union_Item}
+  item {Single_Item}
   text {Text}
     1. {"{"}
     2. {item}
     3. {"}"}
+
+List_Box {}                              # Example: '{Stop...}'
+  item {Type_Name}
+  text {Text}
+    1. {"{"}
+    2. {item}
+    3. {"..."}
+    4. {"}"}
+
+Base_Box {Item_Box | List_Box}
 
 Union_Box {}
   items {Union_Base}
@@ -857,7 +895,7 @@ Intersection_Tail {}
 
 Intersection_Base {}                     # Two or more type names
   first {Type_Name}
-  rest {Intersection_Tail} qty: 1..
+  rest {Intersection_Tail...} count: 1..
 
 Intersection_Box {}
   items {Intersection_Base}
@@ -869,30 +907,34 @@ Intersection_Box {}
 
 # ---------- Step 7: Lines, Blocks and Files ----------
 
-# Line forms. One or more spaces separate a name from its type, so the
-# types of a record line up in a column. A refinement line has a base of
-# one item and optional items. A union line has two or more items in its
-# base and no items after it, so conditions on a union do not read.
+# Line forms. Every line has the same shape: 'name {type} (what the
+# value is) properties'. One or more spaces separate a name from its
+# type, so the types of a record line up in a column. A refinement line
+# has a base of one item, optional parentheses and optional properties.
+# A union line has two or more items in its base and nothing after it,
+# so conditions on a union do not read.
 #
-# A mapping line has its inputs in parentheses and nothing else after
-# its type. A rule or claim line has its condition and nothing else
-# after its type. A refinement narrows a number or a text with items
-# such as 'value:', 'places:' and 'qty:'. It never narrows by a
-# condition. 'if:' belongs to cases.
-Refinement_Line {}                       # A base of one item, optional items
+# A constant is a refinement of Integer or Decimal with one fixed value,
+# or a calculation of fixed values, in its parentheses:
+# 'Minutes_Per_Day {Integer} (Hours_Per_Day * Minutes_Per_Hour)'. It is
+# used by name. A type never narrows another type by a condition: a rule
+# names fields, and a named type has none.
+Refinement_Line {}                       # A base of one item, then parentheses and properties
   name {Type_Name}
-  base {Item_Box}
-  items {Items} qty: 0..1
+  base {Base_Box}
+  parens {Parens} count: 0..1
+  properties {Properties} count: 0..1
   finish {Line_End}
   text {Text}
     1. {Indent_0}
     2. {name}
     3. {Gap}
     4. {base}
-    5. {items}
-    6. {finish}
+    5. {parens}
+    6. {properties}
+    7. {finish}
 
-Union_Line {}                            # Union base, no items
+Union_Line {}                            # Union base, nothing after it
   name {Type_Name}
   base {Union_Box}
   finish {Line_End}
@@ -903,7 +945,7 @@ Union_Line {}                            # Union base, no items
     4. {base}
     5. {finish}
 
-# An intersection line has an intersection base and no items.
+# An intersection line has an intersection base and nothing after it.
 Intersection_Line {}                     # Example: 'Station_Name {Word & Short}'
   name {Type_Name}
   base {Intersection_Box}
@@ -925,18 +967,24 @@ Record_Header {}
     4. {Empty_Box}
     5. {finish}
 
-Field_Line {}
+# A field line. A rule or a claim has the base '{Needs}' or '{Claims}',
+# then its condition in parentheses. A claim holds one comparison. A
+# kept list has its condition in parentheses, and a collected list one
+# field of each item.
+Field_Line {}                            # Example: 'plausible {Needs} (delay <= 60)'
   name {Field_Name}
-  base {Item_Box}
-  items {Items} qty: 0..1
+  base {Base_Box}
+  parens {Parens} count: 0..1
+  properties {Properties} count: 0..1
   finish {Line_End}
   text {Text}
     1. {Indent_2}
     2. {name}
     3. {Gap}
     4. {base}
-    5. {items}
-    6. {finish}
+    5. {parens}
+    6. {properties}
+    7. {finish}
 
 Union_Field_Line {}
   name {Field_Name}
@@ -948,26 +996,6 @@ Union_Field_Line {}
     3. {Gap}
     4. {base}
     5. {finish}
-
-# A rule or a claim has the base '{Needs}' or '{Claims}', then its
-# condition. A claim holds one comparison.
-Condition_Kind {"Needs" | "Claims"}
-
-Condition_Line {}                        # Example: 'plausible {Needs} delay <= 60'
-  name {Field_Name}
-  kind {Condition_Kind}
-  conditions {Conditions}
-  finish {Line_End}
-  text {Text}
-    1. {Indent_2}
-    2. {name}
-    3. {Gap}
-    4. {"{"}
-    5. {kind}
-    6. {"}"}
-    7. {Gap}
-    8. {conditions}
-    9. {finish}
 
 Mapping_Line {}                          # Example: 'refund {True | False} (kind, late_stops)'
   name {Field_Name}
@@ -982,41 +1010,68 @@ Mapping_Line {}                          # Example: 'refund {True | False} (kind
     5. {inputs}
     6. {finish}
 
-# A case is '{output} if: conditions', four spaces in. Each output is a
-# singleton: a literal, or a type with exactly one inhabitant such as
-# True. A case condition compares one input to a literal or a range,
-# with no arithmetic and no other fields. So every case is a box, with
-# one interval or literal set per input. A case may name only the inputs
-# in the parentheses.
+# A case is '{output} (when)', four spaces in: a rule line with no name.
+# Each output is a singleton: a literal, or a type with exactly one
+# inhabitant such as True. With one input, a case gives only its values:
+# a value, a range, a choice, or a comparison with no left side, '(>=
+# 10)'. The left side is always the one input. With two inputs, a case
+# names them, '(kind = "fast" & late_stop_count >= 1)'. A case compares
+# its inputs to literals, constants or ranges, with no arithmetic and no
+# other fields. So every case is a box, with one interval or literal
+# set per input.
+#
+# A range of outputs, '{1..26}', maps to a range of characters of the
+# same size, first to first: '{1..26} ("A".."Z")'.
 #
 # Left side: the cases cover every input combination. Right side: some
 # case produces every value of the output type. Cases are disjoint. The
 # checker decides all three checks by splitting each input at the case
 # boundaries. A missing combination is a compile error, not FALSE.
+Bound_Symbol {"<" | "<=" | ">" | ">="}
+
+Bound_Case {}                            # Example: '>= 10'
+  symbol {Bound_Symbol}
+  bound {Value}
+  text {Text}
+    1. {symbol}
+    2. {Pad}
+    3. {bound}
+
+Case_When {Conditions | Choice_Value | Bound_Case}
+
+Range_Box {}
+  range {Bounded_Range}
+  text {Text}
+    1. {"{"}
+    2. {range}
+    3. {"}"}
+
+Case_Output {Item_Box | Range_Box}
+
 Case_Line {}
-  output {Item_Box}
-  conditions {Conditions}
+  output {Case_Output}
+  when {Case_When}
   finish {Line_End}
   text {Text}
     1. {Indent_4}
     2. {output}
     3. {Gap}
-    4. {"if:"}
-    5. {Gap}
-    6. {conditions}
+    4. {"("}
+    5. {when}
+    6. {")"}
     7. {finish}
 
 Position_Line {}
   number {Natural}
-  base {Item_Box}
-  items {Items} qty: 0..1
+  base {Base_Box}
+  properties {Properties} count: 0..1
   finish {Line_End}
   text {Text}
     1. {Indent_2}
     2. {number}
     3. {". "}
     4. {base}
-    5. {items}
+    5. {properties}
     6. {finish}
 
 Union_Position_Line {}
@@ -1031,8 +1086,8 @@ Union_Position_Line {}
     5. {finish}
 
 # The head of a text shape is exactly 'text {Text}'. A position holds a
-# field of the record, with no items, or a type or a literal, with an
-# optional qty.
+# field of the record, with an optional 'digits:', or a type or a
+# literal, with an optional '...' and count.
 Shape_Head {}
   finish {Line_End}
   text {Text}
@@ -1051,41 +1106,37 @@ Field_Box {}
     2. {field}
     3. {"}"}
 
-Field_Position {}                        #     1. {station}
+Field_Position {}                        #     1. {hour} digits: 2
   number {Natural}
   base {Field_Box}
+  properties {Properties} count: 0..1
   finish {Line_End}
   text {Text}
     1. {Indent_4}
     2. {number}
     3. {". "}
     4. {base}
-    5. {finish}
-
-Shape_Qty {}
-  allowed {Qty_Item}
-  text {Text}
-    1. {Gap}
-    2. {allowed}
+    5. {properties}
+    6. {finish}
 
 Type_Position {}                         #     2. {" "}
   number {Natural}
-  base {Item_Box}
-  repeat {Shape_Qty} qty: 0..1
+  base {Base_Box}
+  properties {Properties} count: 0..1
   finish {Line_End}
   text {Text}
     1. {Indent_4}
     2. {number}
     3. {". "}
     4. {base}
-    5. {repeat}
+    5. {properties}
     6. {finish}
 
 Shape_Position {Field_Position | Type_Position}
 
 Shape {}
   head {Shape_Head}
-  positions {Shape_Position} qty: 1..
+  positions {Shape_Position...} count: 1..
 
 # Comments start with '#'. A comment at the top level starts in column
 # one. A comment inside a record body starts at two spaces.
@@ -1115,36 +1166,36 @@ Blank_Line {Text}                        # Empty, or only spaces
 # that cannot belong to it.
 Mapped_Field {}
   head {Mapping_Line}
-  cases {Case_Line} qty: 1..
+  cases {Case_Line...} count: 1..
 
-Field_Content {Field_Line | Union_Field_Line | Condition_Line | Mapped_Field}
+Field_Content {Field_Line | Union_Field_Line | Mapped_Field}
 Body_Content {Field_Content | Shape | Body_Comment_Line}
 
 Body_Item {}                             # Blank lines only before more body
-  gap {Blank_Line} qty: 0..
+  gap {Blank_Line...}
   line {Body_Content}
 
 Record_Block {}
   head {Record_Header}
-  body {Body_Item} qty: 0..
+  body {Body_Item...}
 
 Position_Content {Position_Line | Union_Position_Line}
 
 Layout_Block {}
   head {Refinement_Line}
-  positions {Position_Content} qty: 1..
+  positions {Position_Content...} count: 1..
 
 Line_Block {Refinement_Line | Union_Line | Intersection_Line}
 Block {Record_Block | Layout_Block | Line_Block | Comment_Line | Blank_Line}
 
-Blocks {Block} qty: 0..
+Blocks {Block...}
 
 # A physical line: at most 100 characters, then a newline.
 Short_Line {Text}
-  1. {Line_Character} qty: 0..100
+  1. {Line_Character...} count: 0..100
   2. {Newline}
 
-Short_Lines {Short_Line} qty: 0..
+Short_Lines {Short_Line...}
 
 # A file is its blocks, read as lines of at most 100 characters each.
 # The last line of a file may omit its newline. The checker reads such a
@@ -1181,9 +1232,9 @@ And_Gate {}                              # AND over TRUE and FALSE, with a short
   left {True | False}
   right {True | False}
   out {True | False} (left, right)
-    {True} if: left = True & right = True
-    {False} if: left = True & right = False
-    {False} if: left = False             # No remaining case mentions right
+    {True} (left = True & right = True)
+    {False} (left = True & right = False)
+    {False} (left = False)               # No remaining case mentions right
 
 
 # ---------- Step 9: Printing ----------
@@ -1195,8 +1246,7 @@ And_Gate {}                              # AND over TRUE and FALSE, with a short
 # - Integer prints its exact value.
 # - Decimal prints with the places of the 'places:' of its field, padded with zeros.
 # - If a decimal value needs more places, printing fails and does not round.
-# - A conversion layout prints its value in its digit positions.
-# - It pads the digits with leading zeros to the fewest digits that its qty allows.
+# - A number with 'digits:' on its position prints that many digits, with leading zeros.
 # - A union prints as the first item, in order, that prints the value.
 # - A record prints by its text shape, or with no shape its stored fields in declaration order.
 # - A shape position that holds no field prints the first form of its type.
@@ -1254,4 +1304,4 @@ Entry {}
   name {Entry_Name}
   file {File}
 
-Project {Entry} qty: 0..
+Project {Entry...}

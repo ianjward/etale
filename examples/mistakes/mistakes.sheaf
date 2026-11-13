@@ -1,7 +1,7 @@
 # Every declaration below breaks one rule of the spec; `check` explains each.
 
 # 1. A type used before it is declared.
-Early {Later} qty: 2
+Early {Later...} count: 2
 Later {"x"}
 
 # 2. A reserved word as a field name.
@@ -10,48 +10,52 @@ Bad_Name {}
 
 # 3. A field that names a field below it.
 Wrong_Order {}
-  a {Integer} value: b + 1
+  a {Integer} (b + 1)
   b {Integer}
 
-# 4. A list used outside a fold.
+# 4. A list compared as one value.
 Basket {}
-  items {Digit} qty: 0..
-  first {Integer} value: items
+  items {Digit...}
+  has_four {Needs} (items = "4")
 
 # 5. A mapping that misses a combination and overlaps.
 Grade {}
-  score {Integer} value: 0..100
+  score {Integer} (0..100)
   pass {True | False} (score)
-    {True} if: score >= 50
-    {False} if: score < 40
-    {False} if: score = 45..49
-    {True} if: score = 49..60
+    {True} (>= 50)
+    {False} (< 40)
+    {False} (45..49)
+    {True} (49..60)
 
 # 6. A claim the ranges cannot settle.
 Pair {}
-  a {Integer} value: 0..10
-  b {Integer} value: 5..20
-  diff {Integer} value: b - a
-  positive {Claims} diff > 0
+  a {Integer} (0..10)
+  b {Integer} (5..20)
+  diff {Integer} (b - a)
+  positive {Claims} (diff > 0)
 
 # 7. A product of two reads through a recursive field.
 Tower {}
-  h {Integer} value: 1..9
-  rest {Tower} qty: 0..1
-  blowup {Integer} value: rest.h * rest.h
+  h {Integer} (1..9)
+  rest {Tower} count: 0..1
+  blowup {Integer} (rest.h * rest.h)
 
-# 8. Rounding would be needed, and no rounding rule is named.
+# 8. Rounding would be needed, and no round: is given.
+Tax_Rate {Decimal} (0.075)
+
 Price {}
   amount {Decimal} places: 2
-  tax {Decimal} value: amount * 0.075, places: 2
+  tax {Decimal} (amount * Tax_Rate) places: 2
 
 # 9. Arithmetic on text.
+Two {Integer} (2)
+
 Label {}
   code {Digit}
-  twice {Integer} value: code * 2
+  twice {Integer} (code * Two)
 
 # 10. Reaching a record that is not around.
 Note {}
   words {Line_Text}
-  items_in {Integer} count: Basket.items
-  filled {Needs} items_in >= 1
+  items_in {Integer} (Basket.items)
+  filled {Needs} (items_in >= 1)

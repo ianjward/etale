@@ -12,7 +12,7 @@ pub const folds = ["qty", "sum"]
 
 /// Names no field may take (the header of language.sheaf). Inside the model the
 /// line's own value is the path 'val', and folds end a path in qty or sum.
-pub const reserved = ["value", "text"]
+pub const reserved = ["value", "text", "count", "sum", "min", "max"]
 
 pub const builtin_numeric = ["Integer", "Decimal"]
 
@@ -143,6 +143,9 @@ pub type Decl {
     fields: List(Field),
     comment: String,
     doc: String,
+    /// A record's kept and collected lists ('late_stops {Stop...} (stops.delay
+    /// >= 2)'): lines of the record that the model holds as folds, not fields.
+    worked: List(String),
   )
 }
 

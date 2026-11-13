@@ -776,6 +776,7 @@ fn check_filter(
               [],
               "",
               "",
+              [],
             )
           list.each(model.plains(conditions), fn(cl) {
             let assert Plain(cp, _, _) = cl

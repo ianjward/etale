@@ -298,9 +298,19 @@ pub fn verify_file(
           }
         })
       let want =
-        list.map(entries, fn(e) {
+        list.filter_map(entries, fn(e) {
           case e {
-            DeclEntry(d) -> #(block_kind(d.kind), d.name)
+            DeclEntry(d) ->
+              case reader.is_hidden_decl(d.name) {
+                True -> Error(Nil)
+                False -> Ok(#(block_kind(d.kind), d.name))
+              }
+          }
+        })
+      let entries =
+        list.filter(entries, fn(e) {
+          case e {
+            DeclEntry(d) -> !reader.is_hidden_decl(d.name)
           }
         })
       case list.map(got, fn(g) { #(g.0, g.1) }) == want {
@@ -342,7 +352,10 @@ pub fn verify_file(
                   == {
                     d.fields
                     |> list.map(fn(f) { f.name })
-                    |> list.filter(fn(n) { !reader.is_position_field(n) })
+                    |> list.filter(fn(n) {
+                      !reader.is_position_field(n) && !reader.is_hidden_field(n)
+                    })
+                    |> list.append(d.worked)
                     |> list.sort(string.compare)
                   }
                 }

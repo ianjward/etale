@@ -1,14 +1,12 @@
 # A temperature in whole degrees, like "-12" or "31".
-Temperature {Integer} value: -90..60
-  1. {"-"} qty: 0..1                          # a "-" position makes the number negative
-  2. {Digit} qty: 1..2
+Temperature {Integer} (-90..60)
 
 Reading {}
-  where {Lowercase} qty: 1..
+  where {Lowercase...} count: 1..
   degrees {Temperature}
   freezing {True | False} (degrees)
-    {True} if: degrees <= 0
-    {False} if: degrees > 0
+    {True} (<= 0)
+    {False} (> 0)
   text {Text}
     1. {where}
     2. {" "}

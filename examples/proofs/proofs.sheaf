@@ -3,10 +3,10 @@
 # The window always has width at least 10, whatever the stored values are,
 # because their ranges do not overlap.
 Window {}
-  start {Integer} value: 0..10
-  finish {Integer} value: 20..30
-  width {Integer} value: finish - start
-  wide_enough {Claims} width >= 10
+  start {Integer} (0..10)
+  finish {Integer} (20..30)
+  width {Integer} (finish - start)
+  wide_enough {Claims} (width >= 10)
   text {Text}
     1. {start}
     2. {".."}
@@ -15,12 +15,12 @@ Window {}
 # A chain of digits written "+3+4+5". Its total is never negative:
 # proved by induction, assuming the claim for the rest of the chain.
 Chain {}
-  x {Integer} value: 0..9
-  rest {Chain} qty: 0..1
-  total {Integer} value: x + rest.total
-  rest_count {Integer} count: rest
-  links {Integer} value: rest_count + rest.links
-  nonnegative {Claims} total >= 0
+  x {Integer} (0..9)
+  rest {Chain} count: 0..1
+  total {Integer} (x + rest.total)
+  rest_count {Integer} (rest.count)
+  links {Integer} (rest_count + rest.links)
+  nonnegative {Claims} (total >= 0)
   text {Text}
     1. {"+"}
     2. {x}
@@ -31,12 +31,12 @@ Zone {"A" | "B"}
 Tier {"light" | "heavy" | "far"}
 
 Parcel {}
-  weight {Integer} value: 0..50
+  weight {Integer} (0..50)
   zone {Zone}
   tier {Tier} (weight, zone)
-    {"light"} if: weight = 0..5 & zone = "A"
-    {"heavy"} if: weight = 6..50 & zone = "A"
-    {"far"} if: zone = "B"
+    {"light"} (weight in 0..5 & zone = "A")
+    {"heavy"} (weight in 6..50 & zone = "A")
+    {"far"} (zone = "B")
   text {Text}
     1. {weight}
     2. {" "}

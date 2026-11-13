@@ -2,45 +2,51 @@
 # Check:  node bin/sheaf.mjs check examples/train/train.sheaf
 # Run:    node bin/sheaf.mjs run examples/train/train.sheaf Journey examples/train/journey.txt
 
-Hour {Integer} value: 0..23              # a conversion layout
-  1. {Digit} qty: 2
-Minute {Integer} value: 0..59
-  1. {Digit} qty: 2
+# Clock numbers, each named once.
+Hours_Per_Day {Integer} (24)
+Minutes_Per_Hour {Integer} (60)
+Minutes_Per_Day {Integer} (Hours_Per_Day * Minutes_Per_Hour)
+
+Hour {Integer} (0..Hours_Per_Day - 1)
+Minute {Integer} (0..Minutes_Per_Hour - 1)
+Minute_Of_Day {Integer} (0..Minutes_Per_Day - 1)
 
 Time {}                                  # "08:45"
   hour {Hour}
   minute {Minute}
-  hour_minutes {Integer} value: hour * 60
-  minutes {Integer} value: hour_minutes + minute
+  hour_minutes {Integer} (hour * Minutes_Per_Hour)
+  minutes {Integer} (hour_minutes + minute)
   text {Text}
-    1. {hour}
+    1. {hour} digits: 2
     2. {":"}
-    3. {minute}
+    3. {minute} digits: 2
 
 # A station name is a Word (letters, from the standard library) and
 # at most 12 characters: one text read as both types.
-Short {Character} qty: 1..12
+Short {Character...} count: 1..12
 Station_Name {Word & Short}
 
 Line_Code {Text}                         # "R10"
   1. {"R"}
-  2. {Digit} qty: 1..2
+  2. {Digit...} count: 1..2
 
 Kind {"fast" | "slow"}
 Status {"on time" | "late" | "very late"}
-Late_Stop_Credit {25}                    # credit for each late stop, used by name
+Max_Delay {Integer} (120)
+Late_From {Integer} (2)
+Late_Stop_Credit {Integer} (25)          # credit for each late stop, used by name
 
 Stop {}                                  # "Drammen 09:20 +4"
-  station {Station_Name} unique: True
+  station {Station_Name}
   due {Time}
-  delay {Integer} value: 0..120
-  arrives {Integer} value: due.minutes + delay, mod: 1440
+  delay {Integer} (0..Max_Delay)
+  arrives {Minute_Of_Day} (due.minutes + delay) wrap_at: Minutes_Per_Day
   status {Status} (delay)
-    {"on time"} if: delay = 0..1
-    {"late"} if: delay = 2..9
-    {"very late"} if: delay >= 10
+    {"on time"} (0..1)
+    {"late"} (2..9)
+    {"very late"} (>= 10)
   # a rule that reaches the Train around this stop
-  plausible {Needs} delay <= Train.max_delay | status = "on time"
+  plausible {Needs} (delay <= Train.max_delay | status = "on time")
   text {Text}
     1. {station}
     2. {" "}
@@ -49,22 +55,28 @@ Stop {}                                  # "Drammen 09:20 +4"
     5. {delay}
     6. {Newline}
 
+# A named list of records: written with ... wherever it is used.
+Stops {Stop...} count: 1..
+
 Train {}
   line {Line_Code}
   kind {Kind}
-  max_delay {Integer} value: 10 | 30 | 60
-  stops {Stop} qty: 1..
-  late_stops {Integer} count: stops, filter: stops.delay >= 2
-  total_delay {Integer} sum: stops.delay
+  max_delay {Integer} (10 | 30 | 60)
+  stops {Stops...} unique: station
+  late_stops {Stop...} (stops.delay >= Late_From)
+  late_stop_count {Integer} (late_stops.count)
+  delays {Integer...} (stops.delay)
+  late_delays {Integer...} (late_stops.delay)
+  total_delay {Integer} (delays.sum)
+  total_late_delay {Integer} (late_delays.sum)
   # a train has at least one stop, so the count is never 0 and divides
-  stop_count {Integer} count: stops
-  average_delay {Decimal} value: total_delay / stop_count, places: 1, round: Half_Even
-  average_never_early {Claims} average_delay >= 0
-  credit {Integer} value: Late_Stop_Credit * late_stops
-  refund {True | False} (kind, late_stops)
-    {True} if: kind = "fast" & late_stops >= 1
-    {False} if: kind = "fast" & late_stops = 0
-    {False} if: kind = "slow"
+  average_delay {Decimal} (total_delay / stops.count) round: 0.1
+  average_never_early {Claims} (average_delay >= 0)
+  credit {Integer} (Late_Stop_Credit * late_stop_count)
+  refund {True | False} (kind, late_stop_count)
+    {True} (kind = "fast" & late_stop_count >= 1)
+    {False} (kind = "fast" & late_stop_count = 0)
+    {False} (kind = "slow")
   text {Text}
     1. {line}
     2. {" "}
@@ -76,6 +88,6 @@ Train {}
 
 Journey {}                               # a record that holds itself
   train {Train}
-  next_leg {Journey} qty: 0..1
-  delay {Integer} value: train.total_delay + next_leg.delay
-  never_early {Claims} delay >= 0
+  next_leg {Journey} count: 0..1
+  delay {Integer} (train.total_delay + next_leg.delay)
+  never_early {Claims} (delay >= 0)
