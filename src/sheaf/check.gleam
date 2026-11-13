@@ -15,6 +15,7 @@ import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/order
+import gleam/result
 import gleam/string
 import sheaf/decimal.{type Decimal}
 import sheaf/evaluate.{type Ev, type Val, VNumber, VText}
@@ -576,6 +577,7 @@ fn check_record(c: Ctx, d: Decl) -> Nil {
       }),
       fn(cl) {
         case cl {
+          Plain(p, "in", v) -> check_in(c, d, f, p, v)
           Plain(p, op, v) -> {
             check_path(c, d, Some(f), p, f.line, seen)
             let vs = case v {
@@ -608,12 +610,18 @@ fn check_record(c: Ctx, d: Decl) -> Nil {
     check_numbers(c, d, f)
     check_wraps(c, d, f)
     check_list_order(c, d, f)
+    check_text_order(c, d, f)
+    check_list_unique(c, d, f)
+    check_never_empty(c, d, f)
+    check_collects(c, d, f)
     case f.role {
       model.Claim -> prove_claim(c, d, f)
       model.Computed -> {
-        case model.setting(f.preds, "round") {
-          Some(rule) -> check_rounding(c, d, f, rule)
-          None -> check_places(c, d, f)
+        case model.setting(f.preds, "round"), definition(f) {
+          Some(rule), _ -> check_rounding(c, d, f, rule)
+          None, Some(VArith("/", [a, divisor])) ->
+            check_exact(c, d, f, a, divisor)
+          None, _ -> check_places(c, d, f)
         }
         check_recursive_products(c, d, f)
       }
@@ -786,8 +794,17 @@ fn check_filter(
               [],
             )
           list.each(model.plains(conditions), fn(cl) {
-            let assert Plain(cp, _, _) = cl
+            let assert Plain(cp, _, cv) = cl
             check_path(c, synthetic, None, cp, line, [])
+            // another field of the same item
+            case cv {
+              VPath([x]) ->
+                case is_upper_start(x) {
+                  True -> Nil
+                  False -> check_path(c, synthetic, None, [x], line, [])
+                }
+              _ -> Nil
+            }
           })
           check_refine_numbers(c, synthetic)
         }
@@ -1351,8 +1368,35 @@ fn check_numbers(c: Ctx, d: Decl, f: Field) -> Nil {
   list.each(model.plains(f.preds), fn(cl) {
     let assert Plain(path, op, v) = cl
     in_arith(v)
-    case op {
-      "<" | "<=" | ">" | ">=" ->
+    let left_order = path_text_order(c, d, path)
+    let right_order = case v {
+      VPath(q) -> path_text_order(c, d, q)
+      _ -> None
+    }
+    case op, left_order, v {
+      "<", Some(_), VStr(_)
+      | "<=", Some(_), VStr(_)
+      | ">", Some(_), VStr(_)
+      | ">=", Some(_), VStr(_)
+      -> Nil
+      "<", Some(o), _ | "<=", Some(o), _ | ">", Some(o), _ | ">=", Some(o), _ ->
+        case right_order == Some(o) {
+          True -> Nil
+          False ->
+            err(
+              c,
+              d,
+              f.line,
+              "two texts compared with "
+                <> op
+                <> " must name the same order: "
+                <> string.join(path, ".")
+                <> " is ordered by "
+                <> o,
+              where,
+            )
+        }
+      "<", None, _ | "<=", None, _ | ">", None, _ | ">=", None, _ ->
         list.each(
           list.append(
             case path {
@@ -1367,14 +1411,166 @@ fn check_numbers(c: Ctx, d: Decl, f: Field) -> Nil {
           ),
           fn(k) {
             case k.1 {
-              NotNumber(kind) -> complain(k.0, kind, "compared with " <> op)
+              NotNumber("TRUE or FALSE") | NotNumber("a record") ->
+                complain(k.0, kind_of(k.1), "compared with " <> op)
+              NotNumber(kind) ->
+                complain(
+                  k.0,
+                  kind,
+                  "compared with "
+                    <> op
+                    <> ". Texts take = only, unless their field names an order, e.g. "
+                    <> k.0
+                    <> " {"
+                    <> kind
+                    <> "} order: Station_Order.rank",
+                )
               _ -> Nil
             }
           },
         )
-      _ -> Nil
+      _, _, _ -> Nil
     }
   })
+}
+
+fn kind_of(k: Kind) -> String {
+  case k {
+    NotNumber(w) -> w
+    _ -> ""
+  }
+}
+
+/// The order a text field names, 'order: Station_Order.rank', if any.
+fn path_text_order(c: Ctx, d: Decl, p: List(String)) -> Option(String) {
+  case path_field(c, d, p) {
+    Some(fl) ->
+      case model.setting(fl.preds, "text_order") {
+        Some(VStr(o)) -> Some(o)
+        _ -> None
+      }
+    None -> None
+  }
+}
+
+/// The literal characters a finite type can hold, if it is a union or a
+/// refinement of literals.
+fn literals(c: Ctx, it: Item, seen: List(String)) -> Option(List(String)) {
+  case it {
+    StrItem(x) -> Some([x])
+    NumItem(..) -> None
+    TypeItem(n) ->
+      case list.contains(seen, n), dict.get(c.decls, n) {
+        False, Ok(dd) ->
+          case dd.kind {
+            model.Union | model.Refine ->
+              list.try_map(dd.items, fn(i) {
+                option.to_result(literals(c, i, [n, ..seen]), Nil)
+              })
+              |> result.map(list.flatten)
+              |> option.from_result
+            _ -> None
+          }
+        _, _ -> None
+      }
+  }
+}
+
+/// 'order: Station_Order.rank' on a text field: a mapping of one input that
+/// ranks every character the text can hold. Numbers are already ordered.
+fn check_text_order(c: Ctx, d: Decl, f: Field) -> Nil {
+  let where = d.name <> "." <> f.name
+  let bad = fn(msg) { err(c, d, f.line, msg, where) }
+  case model.setting(f.preds, "text_order") {
+    Some(VStr(o)) ->
+      case evaluate.items_numeric(c.ev, f.items) {
+        True ->
+          bad(
+            f.name
+            <> " is a number, which is already ordered. On a single value, order: is for texts",
+          )
+        False -> {
+          let assert [t, m] = string.split(o, ".")
+          case model.record_of(c.decls, t) {
+            None -> bad(t <> " is not a record of this file or the files in scope")
+            Some(od) ->
+              case model.field(od, m) {
+                Some(mf) ->
+                  case mf.mapping {
+                    Some(model.Mapping([input], _, _)) ->
+                      case model.field(od, input) {
+                        Some(inf) -> {
+                          // the characters of the text: its list's item type
+                          let element = case model.base(f) {
+                            TypeItem(tn) ->
+                              case dict.get(c.decls, tn) {
+                                Ok(td) ->
+                                  case td.kind, td.items {
+                                    model.Refine, [e] -> Some(e)
+                                    _, _ -> None
+                                  }
+                                Error(_) -> None
+                              }
+                            _ -> None
+                          }
+                          case element {
+                            None ->
+                              bad(
+                                f.name
+                                <> " is not a list of characters of a named type, so its characters cannot be ranked: give it a type such as Station_Name {Station_Character...}",
+                              )
+                            Some(e) ->
+                              case
+                                literals(c, e, []),
+                                literals(c, model.base(inf), [])
+                              {
+                                Some(have), Some(ranked) ->
+                                  case
+                                    list.find(have, fn(x) {
+                                      !list.contains(ranked, x)
+                                    })
+                                  {
+                                    Ok(x) ->
+                                      bad(
+                                        model.item_text(model.base(f))
+                                        <> " can hold "
+                                        <> model.quote(x)
+                                        <> ", which "
+                                        <> t
+                                        <> " does not rank",
+                                      )
+                                    Error(_) -> Nil
+                                  }
+                                _, _ ->
+                                  bad(
+                                    "the characters of "
+                                    <> f.name
+                                    <> " and the input of "
+                                    <> o
+                                    <> " must be finite unions of characters",
+                                  )
+                              }
+                          }
+                        }
+                        None -> bad(o <> " has no input field")
+                      }
+                    _ ->
+                      bad(
+                        o
+                        <> " is not a mapping of one input: name the mapping that gives the rank, e.g. order: Station_Order.rank",
+                      )
+                  }
+                None ->
+                  case m == "" {
+                    True -> bad("name the mapping that gives the rank")
+                    False -> bad(t <> " has no field " <> m)
+                  }
+              }
+          }
+        }
+      }
+    _ -> Nil
+  }
 }
 
 /// The same for the conditions of a filter: they name the fields of the item
@@ -1488,8 +1684,11 @@ fn check_rounding(c: Ctx, d: Decl, f: Field, rule: Value) -> Nil {
       )
     Some(_) -> Nil
   }
+  let unit = model.setting(f.preds, "round_unit") != None
   case definition(f), n {
     Some(VArith("/", [_, divisor])), _ -> check_divisor(c, d, f, divisor)
+    // a unit such as 0.05 can round a value of the same places
+    _, _ if unit -> Nil
     Some(def), Some(n) ->
       case places(c, d, def, []) {
         Some(got) if got <= n ->
@@ -1700,6 +1899,16 @@ fn rounded_bounds(
     Some(n) -> {
       let #(lo, hi) = value_bounds(c, d, def, n + 1)
       let half = rule_rounds_half(c, rule)
+      case model.setting(fl.preds, "round_unit") {
+        // a unit such as 0.05: within half a unit, or one unit
+        Some(VNum(u)) -> {
+          let w = case half {
+            True -> Fin(decimal.half(u.value))
+            False -> Fin(u.value)
+          }
+          #(bsub(lo, w), badd(hi, w))
+        }
+        _ -> {
       let u = decimal.unit(n)
       let hu = decimal.half(u)
       #(
@@ -1714,6 +1923,8 @@ fn rounded_bounds(
           b, _ -> b
         },
       )
+        }
+      }
     }
   }
 }
@@ -2819,6 +3030,7 @@ fn path_bounds(c: Ctx, d: Decl, atom: String, claim: Option(Field)) -> #(B, B) {
             True -> d0()
             False -> qlo
           }
+          let qhi = bmin(qhi, ordered_unique_bound(c, fl))
           let item = case model.base(fl) {
             TypeItem(t) -> model.record_of(c.decls, t)
             _ -> None
@@ -2897,8 +3109,10 @@ fn prove_claim(c: Ctx, d: Decl, f: Field) -> Nil {
         where,
       )
     _ ->
-      case expand(d, VPath(p), 0), expand(d, v, 0) {
-        Some(l), Some(r) -> {
+      case list_fact(c, d, p, op, v), expand(d, VPath(p), 0), expand(d, v, 0) {
+        Some(why), _, _ ->
+          push(c.claims, #(where, "proved: " <> text <> "  (" <> why <> ")"))
+        None, Some(l), Some(r) -> {
           let diff =
             padd(l, r, -1) |> dict.filter(fn(_, k) { !decimal.is_zero(k) })
           let #(lo, hi) =
@@ -2955,7 +3169,7 @@ fn prove_claim(c: Ctx, d: Decl, f: Field) -> Nil {
               )
           }
         }
-        _, _ ->
+        None, _, _ ->
           err(
             c,
             d,
@@ -3628,10 +3842,18 @@ fn check_list_order(c: Ctx, d: Decl, f: Field) -> Nil {
                     <> ", a record, which has no order. Name one of its number fields, e.g. order: due.minutes",
                   )
                 _, False ->
-                  bad(
-                    key
-                    <> " is not a number: ordering a list by a text is not built yet in this build",
-                  )
+                  case model.setting(kf.preds, "text_order") {
+                    Some(_) -> Nil
+                    None ->
+                      bad(
+                        key
+                        <> " is a text and has no order. Give its field one, e.g. "
+                        <> kf.name
+                        <> " {"
+                        <> model.item_text(model.base(kf))
+                        <> "} order: Station_Order.rank",
+                      )
+                  }
               }
             [], None -> bad("order: names a key of the list's items")
           }
@@ -3639,4 +3861,385 @@ fn check_list_order(c: Ctx, d: Decl, f: Field) -> Nil {
     }
     _ -> Nil
   }
+}
+
+/// 'unique: code' on a list: the items are records with that field.
+fn check_list_unique(c: Ctx, d: Decl, f: Field) -> Nil {
+  let where = d.name <> "." <> f.name
+  case model.setting(f.preds, "unique") {
+    Some(VStr(u)) ->
+      case model.record_of(c.decls, item_name(f)) {
+        None ->
+          err(
+            c,
+            d,
+            f.line,
+            f.name
+              <> " holds "
+              <> item_name(f)
+              <> " items, not records, so unique: has no field to compare",
+            where,
+          )
+        Some(it) ->
+          case path_field(c, it, string.split(u, ".")) {
+            Some(_) -> Nil
+            None -> err(c, d, f.line, it.name <> " has no field " <> u, where)
+          }
+      }
+    _ -> Nil
+  }
+}
+
+/// A quotient with no 'round:' must be exact: a divisor that is a number,
+/// and a dividend whose every term is a whole number times a multiple of it,
+/// as in '(hour * Minutes_Per_Hour) / Minutes_Per_Hour'.
+fn check_exact(c: Ctx, d: Decl, f: Field, a: Value, divisor: Value) -> Nil {
+  let exact = case divisor, expand(d, a, 0) {
+    VNum(k), Some(poly) ->
+      !decimal.is_zero(k.value)
+      && list.all(dict.to_list(poly), fn(term) {
+        let #(atoms, coef) = term
+        let q = decimal.divide(coef, k.value, 0)
+        case q {
+          Ok(cut) ->
+            cut.exact
+            && list.all(atoms, fn(x) {
+              let parts = string.split(x, ".")
+              places(c, d, VPath(parts), []) == Some(0)
+              || case path_field(c, d, parts) {
+                Some(fl) -> integer_type(c, model.base(fl))
+                None -> False
+              }
+            })
+          Error(_) -> False
+        }
+      })
+    _, _ -> False
+  }
+  case exact {
+    True -> Nil
+    False ->
+      err(
+        c,
+        d,
+        f.line,
+        "a quotient can need any number of places: add round: 0.1, or the unit you need",
+        d.name <> "." <> f.name,
+      )
+  }
+}
+
+/// The field a path through lists of records reaches: 'trains.stops.station'
+/// from Timetable is Stop's station.
+fn through_lists(c: Ctx, d: Decl, p: List(String)) -> Result(Field, String) {
+  case p {
+    [] -> Error("an empty path")
+    [x] ->
+      case model.field(d, x) {
+        Some(fl) -> Ok(fl)
+        None -> Error(d.name <> " has no field " <> x)
+      }
+    [x, ..rest] ->
+      case model.field(d, x) {
+        None -> Error(d.name <> " has no field " <> x)
+        Some(fl) ->
+          case model.record_of(c.decls, item_name(fl)) {
+            Some(it) -> through_lists(c, it, rest)
+            None ->
+              Error(
+                x
+                <> " holds "
+                <> model.item_text(model.base(fl))
+                <> ", not records, so "
+                <> string.join(p, ".")
+                <> " names nothing",
+              )
+          }
+      }
+  }
+}
+
+/// 'in' between lists that the reader worked out: both sides reach fields
+/// of the same type, single numbers or texts.
+fn check_in(c: Ctx, d: Decl, f: Field, p: List(String), v: Value) -> Nil {
+  let where = d.name <> "." <> f.name
+  let bad = fn(msg) { err(c, d, f.line, msg, where) }
+  let right = case v {
+    VPath(q) -> Ok(q)
+    VFilter(q, _) -> Ok(q)
+    _ -> Error(Nil)
+  }
+  case f.role, right {
+    model.Claim, _ -> bad("a relation between two lists is a rule, not a claim")
+    _, Error(_) -> Nil
+    _, Ok(q) ->
+      case through_lists(c, d, p), through_lists(c, d, q) {
+        Error(m), _ | _, Error(m) -> bad(m)
+        Ok(lf), Ok(rf) -> {
+          let same =
+            model.base(lf) == model.base(rf)
+            || {
+              evaluate.items_numeric(c.ev, lf.items)
+              && evaluate.items_numeric(c.ev, rf.items)
+            }
+          let scalar = fn(x: Field) {
+            option.is_none(model.qty(x))
+            && option.is_none(model.record_of(c.decls, item_name(x)))
+          }
+          case scalar(lf) && scalar(rf), same {
+            False, _ ->
+              bad(
+                "in compares single numbers or texts: neither side may end in a list or a record",
+              )
+            _, False ->
+              bad(
+                "the two sides hold different types: "
+                <> model.item_text(model.base(lf))
+                <> " and "
+                <> model.item_text(model.base(rf)),
+              )
+            _, _ -> Nil
+          }
+        }
+      }
+  }
+}
+
+// ---------------------------------------------------------------- facts about lists
+
+/// What a field reads from a list: its method, the list, the field of the
+/// items and the condition that keeps them.
+type ListRead {
+  ListRead(method: String, list: String, item_field: String, keep: String)
+}
+
+fn list_read(d: Decl, name: String) -> Option(ListRead) {
+  case model.field(d, name) {
+    None -> None
+    Some(fl) ->
+      case definition(fl) {
+        Some(VPath([l, "qty"])) -> Some(ListRead("count", l, "", ""))
+        Some(VFilter([l, "qty"], b)) ->
+          Some(ListRead("count", l, "", model.block_text(b)))
+        Some(VPath([l, x, m])) if m == "sum" || m == "min" || m == "max" ->
+          Some(ListRead(m, l, x, ""))
+        Some(VFilter([l, x, m], b)) if m == "sum" || m == "min" || m == "max" ->
+          Some(ListRead(m, l, x, model.block_text(b)))
+        _ -> None
+      }
+  }
+}
+
+/// An average: a quotient of a total by the count of the same items.
+fn average_of(d: Decl, name: String) -> Option(#(ListRead, Field)) {
+  case model.field(d, name) {
+    Some(fl) ->
+      case definition(fl) {
+        Some(VArith("/", [VPath([s]), VPath([k])])) ->
+          case list_read(d, s), list_read(d, k) {
+            Some(total), Some(count) ->
+              case
+                total.method == "sum"
+                && count.method == "count"
+                && total.list == count.list
+                && total.keep == count.keep
+              {
+                True -> Some(#(total, fl))
+                False -> None
+              }
+            _, _ -> None
+          }
+        _ -> None
+      }
+    None -> None
+  }
+}
+
+/// Facts proved once for every list of numbers and used in any file: the
+/// least item is at most the greatest, and an average of the items lies
+/// between them. A rounded average stays there when the items are whole
+/// multiples of its unit, since rounding never passes such a value.
+fn list_fact(
+  c: Ctx,
+  d: Decl,
+  p: List(String),
+  op: String,
+  v: Value,
+) -> Option(String) {
+  // a <= b
+  let pair = case op, p, v {
+    "<=", [a], VPath([b]) | "<", [a], VPath([b]) -> Some(#(a, b, op == "<"))
+    ">=", [a], VPath([b]) | ">", [a], VPath([b]) -> Some(#(b, a, op == ">"))
+    _, _, _ -> None
+  }
+  let same = fn(x: ListRead, y: ListRead) {
+    x.list == y.list && x.item_field == y.item_field && x.keep == y.keep
+  }
+  // the average's unit holds every item exactly
+  let fits = fn(x: ListRead, avg: Field) {
+    let item_places = case model.field(d, x.list) {
+      Some(lf) ->
+        case model.record_of(c.decls, item_name(lf)) {
+          Some(it) -> places(c, it, VPath([x.item_field]), [])
+          None -> None
+        }
+      None -> None
+    }
+    case item_places, rounded_places(c, avg), model.setting(avg.preds, "round_unit") {
+      Some(ip), Some(ap), None -> ip <= ap
+      Some(ip), _, None if ip == 0 ->
+        model.setting(avg.preds, "round") == None
+      _, _, _ -> False
+    }
+  }
+  case pair {
+    None -> None
+    Some(#(a, b, strict)) ->
+      case strict, list_read(d, a), list_read(d, b) {
+        False, Some(x), Some(y) if x.method == "min" && y.method == "max" ->
+          case same(x, y) {
+            True -> Some("the least item is at most the greatest")
+            False -> None
+          }
+        _, _, _ ->
+          case strict, average_of(d, a), list_read(d, b), list_read(d, a), average_of(d, b) {
+            False, Some(#(total, avg)), Some(y), _, _ if y.method == "max" ->
+              case same(total, y) && fits(y, avg) {
+                True -> Some("an average of the items is at most the greatest")
+                False -> None
+              }
+            False, _, _, Some(x), Some(#(total, avg)) if x.method == "min" ->
+              case same(total, x) && fits(x, avg) {
+                True -> Some("the least item is at most an average of the items")
+                False -> None
+              }
+            _, _, _, _, _ -> None
+          }
+      }
+  }
+}
+
+/// With 'order:' and 'unique:' on the same whole-number key with a bounded
+/// range, a list holds at most as many items as the range has values:
+/// 'unique: due.minutes, order: due.minutes' proves stops.count <= 1440.
+fn ordered_unique_bound(c: Ctx, fl: Field) -> B {
+  case model.setting(fl.preds, "order"), model.setting(fl.preds, "unique") {
+    Some(VStr(k)), Some(VStr(u)) if k == u ->
+      case model.record_of(c.decls, item_name(fl)) {
+        Some(it) ->
+          case path_field(c, it, string.split(k, ".")) {
+            Some(kf) ->
+              case integer_type(c, model.base(kf)), def_bounds(c, it, kf) {
+                True, #(Fin(lo), Fin(hi)) ->
+                  Fin(decimal.add(decimal.sub(hi, lo), decimal.from_int(1)))
+                _, _ -> PosInf
+              }
+            None -> PosInf
+          }
+        None -> PosInf
+      }
+    _, _ -> PosInf
+  }
+}
+
+/// '.min' and '.max' read a list that is never empty: its count starts at 1
+/// or more.
+fn check_never_empty(c: Ctx, d: Decl, f: Field) -> Nil {
+  case definition(f) {
+    Some(VPath([l, _, m])) if m == "min" || m == "max" ->
+      case model.field(d, l) {
+        Some(lf) ->
+          case model.qty(lf) {
+            Some(#(Some(lo), _)) if lo.value.places >= 0 ->
+              case decimal.lt(lo.value, decimal.from_int(1)) {
+                True -> empty_error(c, d, f, l, m)
+                False -> Nil
+              }
+            _ -> empty_error(c, d, f, l, m)
+          }
+        None -> Nil
+      }
+    _ -> Nil
+  }
+}
+
+fn empty_error(c: Ctx, d: Decl, f: Field, l: String, m: String) -> Nil {
+  err(
+    c,
+    d,
+    f.line,
+    l
+      <> " may be empty, so it has no "
+      <> case m {
+      "min" -> "least"
+      _ -> "greatest"
+    }
+      <> " value. Use a list that is never empty, such as one with count: 1..",
+    d.name <> "." <> f.name,
+  )
+}
+
+/// A collected list holds the field it collects: 'all_stops {Stop...}
+/// (trains.stops)' needs Train's stops to hold Stops.
+fn check_collects(c: Ctx, d: Decl, f: Field) -> Nil {
+  list.each(f.preds.clauses, fn(cl) {
+    case cl {
+      Setting("collects", VStr(spec)) ->
+        case string.split(spec, ":"), model.record_of(c.decls, item_name(f)) {
+          [name, declared, fld], Some(it) ->
+            case model.field(it, fld) {
+              None -> Nil
+              Some(src) -> {
+                let got = model.item_text(model.base(src))
+                let numeric = fn(t) { evaluate.items_numeric(c.ev, [TypeItem(t)]) }
+                case got == declared || { numeric(got) && numeric(declared) } {
+                  True -> Nil
+                  False ->
+                    err(
+                      c,
+                      d,
+                      f.line,
+                      name
+                        <> " collects "
+                        <> f.name
+                        <> "."
+                        <> fld
+                        <> ", which holds "
+                        <> got
+                        <> ", not "
+                        <> declared,
+                      d.name <> "." <> name,
+                    )
+                }
+              }
+            }
+          _, _ -> Nil
+        }
+      Setting("keeps", VStr(spec)) ->
+        case string.split(spec, ":") {
+          [name, declared] ->
+            case declared == item_name(f) {
+              True -> Nil
+              False ->
+                err(
+                  c,
+                  d,
+                  f.line,
+                  "a kept list holds the items of "
+                    <> f.name
+                    <> ": write "
+                    <> name
+                    <> " {"
+                    <> item_name(f)
+                    <> "...}, not {"
+                    <> declared
+                    <> "...}",
+                  d.name <> "." <> name,
+                )
+            }
+          _ -> Nil
+        }
+      _ -> Nil
+    }
+  })
 }

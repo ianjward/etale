@@ -1,0 +1,112 @@
+# A timetable: trains with their stops, then an index of the stations in
+# name order (the decisions of 13 November).
+# Check:  node bin/sheaf.mjs check examples/timetable/timetable.sheaf
+# Run:    node bin/sheaf.mjs run examples/timetable/timetable.sheaf Timetable \
+#           examples/timetable/timetable.txt
+
+# Clock numbers, each named once.
+Hours_Per_Day {Integer} (24)
+Minutes_Per_Hour {Integer} (60)
+Minutes_Per_Day {Integer} (Hours_Per_Day * Minutes_Per_Hour)
+Day_Start_Hour {Integer} (6)
+Day_Starts {Integer} (Day_Start_Hour * Minutes_Per_Hour)
+
+Hour {Integer} (0..Hours_Per_Day - 1)
+Minute {Integer} (0..Minutes_Per_Hour - 1)
+Minute_Of_Day {Integer} (0..Minutes_Per_Day - 1)
+
+Time {}                                  # "09:20"
+  hour {Hour}
+  minute {Minute}
+  hour_minutes {Integer} (hour * Minutes_Per_Hour)
+  minutes {Minute_Of_Day} (hour_minutes + minute)
+  text {Text}
+    1. {hour} digits: 2
+    2. {":"}
+    3. {minute} digits: 2
+
+# A station name is a text: letters and spaces, at most 20.
+Station_Character {" " | Letter}
+Station_Name {Station_Character...} count: 1..20
+
+# Name order: a space before every letter, "a" ranked with "A".
+Station_Order {}
+  character {Station_Character}
+  rank {Integer} (character)
+    {0} (" ")
+    {1..26} ("A".."Z")
+    {1..26} ("a".."z")
+
+Line_Code {Text}                         # "R10"
+  1. {"R"}
+  2. {Digit...} count: 1..2
+
+Status {"on time" | "late" | "very late"}
+Part_Of_Day {"night" | "day"}
+Max_Delay {Integer} (120)
+Late_From {Integer} (2)
+Late_Stop_Credit {Integer} (25)
+
+Stop {}                                  # "Drammen 09:20 +4"
+  station {Station_Name}
+  due {Time}
+  delay {Integer} (0..Max_Delay)
+  arrives {Minute_Of_Day} (due.minutes + delay) wrap_at: Minutes_Per_Day
+  part_of_day {Part_Of_Day} (arrives)
+    {"night"} (< Day_Starts)
+    {"day"} (>= Day_Starts)
+  status {Status} (delay)
+    {"on time"} (0..1)
+    {"late"} (2..9)
+    {"very late"} (>= 10)
+  plausible {Needs} (delay <= Train.max_delay | status = "on time")
+  text {Text}
+    1. {station}
+    2. {" "}
+    3. {due}
+    4. {" +"}
+    5. {delay}
+    6. {Newline}
+
+# A named list of records: written with ... wherever it is used.
+Stops {Stop...} count: 1..
+
+Train {}                                 # "R10 60", then its stops
+  line {Line_Code}
+  max_delay {Integer} (10 | 30 | 60)
+  stops {Stops...} unique: station, order: due.minutes
+  late_stops {Stop...} (stops.delay >= Late_From)
+  late_stop_count {Integer} (late_stops.count)
+  delays {Integer...} (stops.delay)
+  total_delay {Integer} (delays.sum)
+  least_delay {Integer} (delays.min)
+  most_delay {Integer} (delays.max)
+  average_delay {Decimal} (total_delay / stops.count) round: 0.1
+  average_within {Claims} (average_delay <= most_delay)
+  spread_never_negative {Claims} (most_delay >= least_delay)
+  credit {Integer} (Late_Stop_Credit * late_stop_count)
+  text {Text}
+    1. {line}
+    2. {" "}
+    3. {max_delay}
+    4. {Newline}
+    5. {stops}
+
+# One index line: a station name.
+Index_Entry {}                           # "Drammen"
+  station {Station_Name} order: Station_Order.rank
+  text {Text}
+    1. {station}
+    2. {Newline}
+
+Timetable {}
+  trains {Train...} count: 1..
+  index {Index_Entry...} count: 1.., unique: station, order: station
+  all_stops {Stop...} (trains.stops)
+  every_stop_listed {Needs} (all_stops.station in index.station)
+  every_listing_used {Needs} (index.station in all_stops.station)
+  text {Text}
+    1. {trains}
+    2. {"---"}
+    3. {Newline}
+    4. {index}

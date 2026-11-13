@@ -1075,7 +1075,14 @@ fn prop_value(sc: Scan, word: String) -> R(Prop) {
           )
         _ ->
           case is_lower(string.slice(w, 0, 1)) {
-            True -> Ok(#(PUnique(w), sc2))
+            True -> {
+              use #(p, sc3) <- result.try(path(sc))
+              let _ = sc2
+              case list.length(p) <= 2 {
+                True -> Ok(#(PUnique(string.join(p, ".")), sc3))
+                False -> err(sc, "a key has one dot, e.g. unique: due.minutes")
+              }
+            }
             False -> err(sc, "unique: names a field of the list's items")
           }
       }
@@ -1217,11 +1224,28 @@ fn list_order(
   }
 }
 
-fn order_not_built(sc: Scan, ps: List(#(String, Prop))) -> Result(Nil, MapError) {
+/// 'order: Station_Order.rank' on a text field: the mapping that ranks its
+/// characters, by a one-dot path from a record type.
+fn text_order(
+  sc: Scan,
+  ps: List(#(String, Prop)),
+) -> Result(List(Clause), MapError) {
   case list.key_find(ps, "order") {
-    Ok(_) -> err(sc, "order:" <> not_built)
-    Error(_) -> Ok(Nil)
+    Error(_) -> Ok([])
+    Ok(POrder([t, m])) ->
+      case upper_first(t) && !upper_first(m) {
+        True -> Ok([Setting("text_order", VStr(t <> "." <> m))])
+        False -> text_order_error(sc)
+      }
+    Ok(_) -> text_order_error(sc)
   }
+}
+
+fn text_order_error(sc: Scan) -> Result(a, MapError) {
+  err(
+    sc,
+    "on a text field, order: names the mapping that gives the rank, e.g. order: Station_Order.rank",
+  )
 }
 
 // ---------------------------------------------------------------- boxes
@@ -1662,9 +1686,9 @@ type FieldOut {
 type ListDef {
   /// 'late_stops {Stop...} (stops.delay >= 2)': the conditions name the
   /// fields of the items ('delay').
-  Kept(source: String, conditions: Block)
+  Kept(source: String, conditions: Block, item: Item)
   /// 'delays {Integer...} (stops.delay)'.
-  Collected(source: String, field: String)
+  Collected(source: String, field: String, item: Item)
 }
 
 fn record_body(
@@ -2058,7 +2082,7 @@ fn single_line(
             None -> []
           }
           let unique = case list.key_find(t.props, "unique") {
-            Ok(PUnique(u)) -> [Setting("unique", VPath([u]))]
+            Ok(PUnique(u)) -> [Setting("unique", VStr(u))]
             _ -> []
           }
           done(
@@ -2085,7 +2109,7 @@ fn single_line(
               )
           })
           use #(source, conditions) <- result.try(kept_conditions(sc, b))
-          Ok(#(ListDone(f.name, Kept(source, conditions), line), rest, line + 1))
+          Ok(#(ListDone(f.name, Kept(source, conditions, one), line), rest, line + 1))
         }
         Some(PCalc(VPath([l, fld]))) -> {
           use _ <- result.try(case t.props {
@@ -2100,7 +2124,7 @@ fn single_line(
             True ->
               err(sc, "a collected list takes one field of each item of a list of this record, e.g. (stops.delay)")
             False ->
-              Ok(#(ListDone(f.name, Collected(l, fld), line), rest, line + 1))
+              Ok(#(ListDone(f.name, Collected(l, fld, one), line), rest, line + 1))
           }
         }
         Some(PCalc(VPath([l]))) ->
@@ -2138,7 +2162,7 @@ fn single_line(
             ["count", "places", "order"],
             "a field read from the text",
           ))
-          use _ <- result.try(order_not_built(sc, t.props))
+          use text_order <- result.try(text_order(sc, t.props))
           use qty <- result.try(case count_value(t.props) {
             Some(v) -> {
               use _ <- result.try(single_count(sc, v))
@@ -2158,7 +2182,7 @@ fn single_line(
             Field(
               ..f,
               items: [one],
-              preds: Block(AndConn, list.flatten([qty, val, places])),
+              preds: Block(AndConn, list.flatten([qty, val, places, text_order])),
               comment: t.comment,
             ),
           )
@@ -2220,6 +2244,11 @@ fn kept_conditions(sc: Scan, b: Block) -> Result(#(String, Block), MapError) {
           case c {
             Plain([_, fld], o, v) -> {
               use _ <- result.try(kept_value(sc, source, v))
+              // another field of the same item is read from the item
+              let v = case v {
+                VPath([l, other]) if l == source -> VPath([other])
+                _ -> v
+              }
               Ok(Plain([fld], o, v))
             }
             Plain(p, _, _) ->
@@ -2267,8 +2296,7 @@ fn kept_value(sc: Scan, source: String, v: Value) -> Result(Nil, MapError) {
         True -> Ok(Nil)
         False -> kept_field_error(sc, source)
       }
-    VPath([l, _]) if l == source ->
-      err(sc, "comparing two fields of one item" <> not_built)
+    VPath([l, _]) if l == source -> Ok(Nil)
     VMulti(vs) -> list.try_each(vs, fn(x) { kept_value(sc, source, x) })
     _ -> kept_field_error(sc, source)
   }
@@ -2337,6 +2365,11 @@ fn worked_out(
   let round = list.key_find(ps, "round")
   let wrap = list.key_find(ps, "wrap_at")
   use _ <- result.try(case v, round, wrap {
+    VPath([_, "first"]), _, _ | VPath([_, "last"]), _, _ ->
+      err(
+        sc,
+        "there is no .first or .last: an item's field would need a second dot. Use .min or .max on a collected list",
+      )
     VPath([l, m]), _, _ ->
       case list.contains(methods, m) || upper_first(l) {
         True -> Ok(Nil)
@@ -2366,14 +2399,6 @@ fn worked_out(
       }
     _, _, _ -> Ok(Nil)
   })
-  use _ <- result.try(case v, round {
-    VArith("/", _), Error(_) ->
-      err(
-        sc,
-        "a quotient can need any number of places: add round: 0.1, or the unit you need",
-      )
-    _, _ -> Ok(Nil)
-  })
   use rounding <- result.try(case round {
     Ok(PRound(u, word)) -> {
       use _ <- result.try(case list.key_find(ps, "places") {
@@ -2382,6 +2407,11 @@ fn worked_out(
         Error(_) -> Ok(Nil)
       })
       use places <- result.try(unit_places(sc, u))
+      // a unit that is not 1, 0.1, 0.01 and so on is kept as it is written
+      let unit = case decimal.eq(u.value, decimal.unit(places)) {
+        True -> []
+        False -> [Setting("round_unit", VNum(u))]
+      }
       let rule = case word {
         "away" -> "Half_Up"
         "lower" -> "Half_Lower"
@@ -2391,6 +2421,7 @@ fn worked_out(
       Ok([
         Setting("places", VNum(Num(decimal.from_int(places), int.to_string(places)))),
         Setting("round", VPath([rule])),
+        ..unit
       ])
     }
     _ -> Ok([])
@@ -2429,10 +2460,8 @@ fn unit_places(sc: Scan, u: Num) -> Result(Int, MapError) {
     Ok(#(_, frac)) -> string.length(frac)
     Error(_) -> 0
   }
-  case decimal.eq(u.value, decimal.unit(places)) {
-    True -> Ok(places)
-    False -> err(sc, "round: to a unit other than 1, 0.1, 0.01 and so on" <> not_built)
-  }
+  let _ = sc
+  Ok(places)
 }
 
 /// A field line that is not a rule, a claim or a mapping: refuse a field that
@@ -2676,7 +2705,7 @@ type Base {
 fn base_of(lists: Dict(String, ListDef), name: String) -> Result(Base, String) {
   case dict.get(lists, name) {
     Error(_) -> Ok(Base(name, None, None))
-    Ok(Kept(source, b)) -> {
+    Ok(Kept(source, b, _)) -> {
       use src <- result.try(base_of(lists, source))
       case src.field {
         Some(_) ->
@@ -2694,7 +2723,7 @@ fn base_of(lists: Dict(String, ListDef), name: String) -> Result(Base, String) {
           }
       }
     }
-    Ok(Collected(source, fld)) -> {
+    Ok(Collected(source, fld, _)) -> {
       use src <- result.try(base_of(lists, source))
       case src.field {
         Some(_) -> Error("a path has one dot: collect from a list of records")
@@ -2764,19 +2793,9 @@ fn never_empty(st: RecordState, x: String, m: String) -> Result(Nil, String) {
       case base_of(st.lists, x) {
         Error(msg) -> Error(msg)
         Ok(Base(_, Some(_), _)) -> Error(empty)
-        Ok(Base(stored, None, _)) ->
-          case list.find(st.fields, fn(g) { g.name == stored }) {
-            Ok(g) ->
-              case model.qty(g) {
-                Some(#(Some(lo), _)) ->
-                  case decimal.compare(lo.value, decimal.from_int(1)) {
-                    order.Lt -> Error(empty)
-                    _ -> Ok(Nil)
-                  }
-                _ -> Error(empty)
-              }
-            Error(_) -> Error(empty)
-          }
+        // the count of a stored list is known once the file is settled:
+        // the checker refuses one that may be empty
+        Ok(Base(_, None, _)) -> Ok(Nil)
       }
   }
 }
@@ -2794,7 +2813,7 @@ type RecordState {
 /// The lists a list is worked out from, itself first.
 fn sources_of(lists: Dict(String, ListDef), name: String) -> List(String) {
   case dict.get(lists, name) {
-    Ok(Kept(source, _)) | Ok(Collected(source, _)) -> [
+    Ok(Kept(source, _, _)) | Ok(Collected(source, _, _)) -> [
       name,
       ..sources_of(lists, source)
     ]
@@ -2820,9 +2839,47 @@ fn settle_record(
           }
           let st2 =
             RecordState(..st, lists: dict.insert(st.lists, name, def), kept: kept)
-          case base_of(st2.lists, name) {
-            Ok(_) -> Ok(st2)
-            Error(msg) -> Error(MapError(msg, file, line, 3))
+          case base_of(st2.lists, name), def {
+            Ok(Base(stored, _, Some(fld))), Collected(_, _, it) -> {
+              // the checker compares the collected field with the type the
+              // line declares: 'all_stops {Stop...} (trains.line)' is refused
+              let mark =
+                Setting(
+                  "collects",
+                  VStr(name <> ":" <> model.item_text(it) <> ":" <> fld),
+                )
+              let fields =
+                list.map(st2.fields, fn(g) {
+                  case g.name == stored {
+                    True ->
+                      Field(
+                        ..g,
+                        preds: Block(g.preds.conn, list.append(g.preds.clauses, [mark])),
+                      )
+                    False -> g
+                  }
+                })
+              Ok(RecordState(..st2, fields: fields))
+            }
+            Ok(Base(stored, _, None)), Kept(_, _, it) -> {
+              // a kept list holds its source's items
+              let mark =
+                Setting("keeps", VStr(name <> ":" <> model.item_text(it)))
+              let fields =
+                list.map(st2.fields, fn(g) {
+                  case g.name == stored {
+                    True ->
+                      Field(
+                        ..g,
+                        preds: Block(g.preds.conn, list.append(g.preds.clauses, [mark])),
+                      )
+                    False -> g
+                  }
+                })
+              Ok(RecordState(..st2, fields: fields))
+            }
+            Ok(_), _ -> Ok(st2)
+            Error(msg), _ -> Error(MapError(msg, file, line, 3))
           }
         }
         FieldDone(f) -> {
@@ -2919,6 +2976,59 @@ fn settle_field(
                   Ok(#([Plain(p, "=", v), ..out], st))
                 }
               }
+            Plain([l1, f1], "in", rv) ->
+              case
+                is_rule
+                && {
+                  dict.has_key(st.lists, l1)
+                  || case rv {
+                    VPath([l2, _]) -> dict.has_key(st.lists, l2)
+                    _ -> False
+                  }
+                }
+              {
+                False -> {
+                  use #(p, st) <- result.try(settle_path(st, [l1, f1], f, file))
+                  use #(v, st) <- result.try(settle_value(st, rv, f, file))
+                  Ok(#([Plain(p, "in", v), ..out], st))
+                }
+                True -> {
+                  use _ <- result.try(case list.length(f.preds.clauses) {
+                    1 -> Ok(Nil)
+                    _ ->
+                      fail_line(
+                        "a relation between two lists is a line of its own, with no other condition",
+                        file,
+                        f.line,
+                      )
+                  })
+                  use left <- result.try(
+                    through(st, l1, f1, False)
+                    |> result.map_error(fn(m) { MapError(m, file, f.line, 3) }),
+                  )
+                  use right <- result.try(case rv {
+                    VPath([l2, f2]) ->
+                      through(st, l2, f2, True)
+                      |> result.map_error(fn(m) { MapError(m, file, f.line, 3) })
+                    _ ->
+                      fail_line(
+                        "in relates a list to a list: (all_stops.station in index.station)",
+                        file,
+                        f.line,
+                      )
+                  })
+                  let st = RecordState(..st, read: [l1, ..st.read])
+                  let st = case rv {
+                    VPath([l2, _]) -> RecordState(..st, read: [l2, ..st.read])
+                    _ -> st
+                  }
+                  let left_path = case left {
+                    VPath(lp) -> lp
+                    _ -> [l1, f1]
+                  }
+                  Ok(#([Plain(left_path, "in", right), ..out], st))
+                }
+              }
             Plain(p, o, v) -> {
               use #(p, st) <- result.try(settle_path(st, p, f, file))
               use #(v, st) <- result.try(settle_value(st, v, f, file))
@@ -2930,6 +3040,38 @@ fn settle_field(
       )
       Ok(#(Field(..f, preds: Block(f.preds.conn, list.reverse(clauses))), st))
     }
+  }
+}
+
+/// One side of 'in' through a list worked out above: a joined list
+/// ('all_stops {Stop...} (trains.stops)') reads as the path through it,
+/// 'trains.stops.station'; on the right, a kept list reads as its source with
+/// the condition on its items.
+fn through(
+  st: RecordState,
+  x: String,
+  fld: String,
+  right: Bool,
+) -> Result(Value, String) {
+  case dict.has_key(st.lists, x) {
+    False -> Ok(VPath([x, fld]))
+    True ->
+      case base_of(st.lists, x) {
+        Error(m) -> Error(m)
+        Ok(Base(l, None, Some(g))) -> Ok(VPath([l, g, fld]))
+        Ok(Base(l, Some(b), None)) ->
+          case right {
+            True -> Ok(VFilter([l, fld], b))
+            False ->
+              Error(
+                x
+                <> " keeps some items, and only the right side of in may: write the condition the other way, or keep from "
+                <> l
+                <> " on the right",
+              )
+          }
+        Ok(_) -> Error(x <> " is not a list of records, so " <> x <> "." <> fld <> " names nothing")
+      }
   }
 }
 
@@ -2985,27 +3127,23 @@ fn settle_path(
           case list.contains(st.hidden, name) {
             True -> Ok(#([name], st))
             False ->
-              case m == "count" {
-                False ->
-                  fail_line(
-                    "."
-                    <> m
-                    <> " inside a calculation or a condition"
-                    <> not_built
-                    <> ": give it its own field first, e.g. total {Integer} ("
-                    <> name
-                    <> ")",
-                    file,
-                    f.line,
-                  )
-                True ->
+              case never_empty(st, x, m) {
+                Error(msg) -> fail_line(msg, file, f.line)
+                Ok(_) ->
                   case method_fold(st.lists, x, m) {
                     Error(msg) -> fail_line(msg, file, f.line)
                     Ok(v) -> {
+                      // a count is whole; a total, least or greatest takes
+                      // the type of what it reads, settled with the file
                       let h =
                         Field(
                           name,
-                          [TypeItem("Integer")],
+                          [
+                            TypeItem(case m {
+                              "count" -> "Integer"
+                              _ -> "Decimal"
+                            }),
+                          ],
                           Block(AndConn, [Plain(["val"], "=", v)]),
                           None,
                           f.line,
@@ -3030,8 +3168,11 @@ fn settle_path(
             x
             <> " is worked out from another list: read it with a method such as "
             <> x
-            <> ".count. Comparing through it"
-            <> not_built,
+            <> ".count, or relate it to another list with in, e.g. ("
+            <> x
+            <> "."
+            <> string.join(list.drop(p, 1), ".")
+            <> " in index.station)",
             file,
             f.line,
           )
@@ -3071,59 +3212,6 @@ fn settle_file(entries: List(Entry), file: String) -> Result(List(Entry), MapErr
       }
     }),
   )
-  // unique: on a list marks the field of its items
-  let uniques =
-    list.flat_map(ds, fn(d) {
-      list.filter_map(d.fields, fn(f) {
-        case model.setting(f.preds, "unique"), f.items {
-          Some(VPath([u])), [TypeItem(t)] -> Ok(#(t, u, d, f))
-          _, _ -> Error(Nil)
-        }
-      })
-    })
-  use ds <- result.try(
-    list.try_fold(uniques, ds, fn(ds, q) {
-      let #(t, u, d, f) = q
-      case list.find(ds, fn(x) { x.name == t && x.kind == model.Record }) {
-        Error(_) ->
-          Error(MapError(
-            "unique: on a list of " <> t <> ", which is not a record of this file," <> not_built,
-            file,
-            f.line,
-            3,
-          ))
-        Ok(item) ->
-          case model.field(item, u) {
-            None ->
-              Error(MapError(t <> " has no field " <> u, file, f.line, 3))
-            Some(_) -> {
-              let _ = d
-              Ok(
-                list.map(ds, fn(x) {
-                  case x.name == t {
-                    True ->
-                      Decl(
-                        ..x,
-                        fields: list.map(x.fields, fn(g) {
-                          case g.name == u && !model.has_flag(g.preds, "unique") {
-                            True ->
-                              Field(
-                                ..g,
-                                preds: Block(g.preds.conn, list.append(g.preds.clauses, [Flag("unique")])),
-                              )
-                            False -> g
-                          }
-                        }),
-                      )
-                    False -> x
-                  }
-                }),
-              )
-            }
-          }
-      }
-    }),
-  )
   // drop the reader's own markers, and add the fixed-width forms
   let #(out, _) =
     list.fold(ds, #([], []), fn(acc, d) {
@@ -3137,8 +3225,6 @@ fn settle_file(entries: List(Entry), file: String) -> Result(List(Entry), MapErr
               list.filter(f.preds.clauses, fn(c) {
                 case c {
                   Flag("list") -> False
-                  Setting("unique", _) -> False
-                  Setting("order", VStr(_)) -> True
                   _ -> True
                 }
               }),
@@ -3346,9 +3432,11 @@ fn resolve_block(
         }
         Plain(p, o, v) -> {
           use v <- result.try(resolve(consts, v, False))
-          let o = case o {
-            "in" -> "="
-            _ -> o
+          let o = case o, p, v {
+            "in", [_, _, _, ..], _ | "in", _, VFilter(..) -> "in"
+            "in", _, VPath([_, _, _, ..]) -> "in"
+            "in", _, _ -> "="
+            _, _, _ -> o
           }
           Ok(Plain(p, o, v))
         }
@@ -3433,14 +3521,29 @@ fn named_list(
                             _ -> True
                           }
                         })
-                      let q = option.unwrap(own, q)
-                      Ok(
-                        Field(
-                          ..f,
-                          items: [TypeItem(item)],
-                          preds: Block(f.preds.conn, [Setting("qty", q), ..clauses]),
-                        ),
-                      )
+                      // the count is said once, on the named list
+                      case own {
+                        Some(_) ->
+                          Error(MapError(
+                            t
+                              <> " already says how many items it holds: write "
+                              <> f.name
+                              <> " {"
+                              <> t
+                              <> "...} with no count:",
+                            file,
+                            f.line,
+                            3,
+                          ))
+                        None ->
+                          Ok(
+                            Field(
+                              ..f,
+                              items: [TypeItem(item)],
+                              preds: Block(f.preds.conn, [Setting("qty", q), ..clauses]),
+                            ),
+                          )
+                      }
                     }
                   }
                 _ -> default_count(f, is_list)

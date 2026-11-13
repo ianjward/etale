@@ -235,7 +235,8 @@ Claims {True}
 # the late stops, keep first, then collect from the kept list. A
 # condition is one comparison, or several joined by '&' or by '|'. Each
 # comparison tests a field of the items against a number, a text, a
-# range, a choice or a constant. It can also test the one value of a
+# range, a choice, a constant or another field of the same item, as in
+# '(stops.delay > stops.allowed)'. It can also test the one value of a
 # type such as True, as in '(orders.big = True)'. Kept and collected
 # lists visit each item once, so they are linear. 'Every item' is a kept
 # count compared with a count.
@@ -248,7 +249,9 @@ Claims {True}
 # record, of the same type. With 'unique: code' on the customers list,
 # each order matches exactly one customer. The checker refuses a text
 # that breaks the rule, and it names the first order that matches no
-# customer.
+# customer. Either side may be a list collected from a list field,
+# 'all_stops {Stop...} (trains.stops)', which joins every train's stops,
+# and the right side may be a kept list.
 #
 # Context. A path that starts with a type name and goes on to a field
 # reaches the nearest record of that type around this one. Inside a
@@ -524,8 +527,10 @@ Arithmetic {Sum | Difference | Product}  # One operator kind per calculation
 # The checker must prove that the divisor is never 0, from its allowed
 # values, its choice of values or its count. If it cannot, the line is
 # an error. The exact quotient may need any number of places, so its
-# field rounds it with 'round:'. '1 / 3' is the exact value one third,
-# never a decimal cut short.
+# field rounds it with 'round:', unless the checker proves it exact, as
+# '(hour_minutes / Minutes_Per_Hour)' is when hour_minutes is 'hour *
+# Minutes_Per_Hour'. '1 / 3' is the exact value one third, never a
+# decimal cut short.
 Quotient {}                              # Example: 'total / 3'
   dividend {Term}
   divisor {Term}
@@ -712,14 +717,15 @@ Places_Property {}                       # Example: 'places: 2'
     3. {places}
 
 # Rounding. 'round:' goes after a calculation and takes the unit to
-# round to: 'round: 0.1' gives one place. A tie goes to the even multiple,
+# round to: 'round: 0.1' gives one place, and 'round: 0.05' the nearest
+# multiple of 0.05. A tie goes to the even multiple,
 # so sums of rounded values do not drift. One word after the unit
 # changes that: 'away' (a tie away from zero), 'lower' (toward the lower
 # number, also when negative: -2.5 to -3) or 'higher' (toward the higher
 # number: -2.5 to -2). Rounding rules are fixed by the language and
 # cannot be declared, so no rule name can say one thing and do another.
-# A quotient always needs 'round:'. A rounded value takes its places from
-# its unit.
+# A quotient needs 'round:' unless it is exact. A rounded value takes its
+# places from its unit.
 Round_Word {"away" | "lower" | "higher"}
 
 Round_Direction {}
@@ -752,11 +758,12 @@ Wrap_Property {}                         # Example: 'wrap_at: Minutes_Per_Day'
     2. {Gap}
     3. {modulus}
 
-# 'unique:' goes on a list and names a field of its items: no two items
-# of the list have the same value in that field. Its opposite, two equal
-# items, is positive and always decidable.
+# 'unique:' goes on a list and names a key of its items, a field or one
+# dot from it: no two items of the list have the same value there. It
+# holds on that list only, not on other lists of the same items. Its
+# opposite, two equal items, is positive and always decidable.
 Unique_Property {}                       # Example: 'unique: station'
-  key {Field_Name}
+  key {Path}
   text {Text}
     1. {"unique:"}
     2. {Gap}
