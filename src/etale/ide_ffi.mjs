@@ -2,6 +2,7 @@
 // draw; this file only owns the canvas, the DOM panels that hold editable text,
 // and the event wiring. Every frame is requestAnimationFrame-driven.
 import { toList } from "../gleam.mjs";
+import { setup_pane } from "./ai_ffi.mjs";
 
 let app = null;
 let model = null;
@@ -156,6 +157,8 @@ function wire(canvas) {
   // reaches the model, so a new file is saved with its last keys
   window.addEventListener("pagehide", () => { for (const f of [...pending.values()]) f(); });
   window.__ide = { command: (name) => { model = app.command(model, name); } };
+  // the AI pane asks for the working file and language.etale when it sends
+  setup_pane(() => app.context(model), (text) => app.digest(model, text));
 }
 
 // ---------------------------------------------------------------- drawing

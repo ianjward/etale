@@ -207,6 +207,25 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); c
 @media (max-width: 1420px) { .extra, #status { display: none; } #bar { gap: 8px; } #bar select { min-width: 0; max-width: 170px; }
   #bar .search { min-width: 120px; } }
 @media (max-width: 760px) { #status, #hint, .wide { display: none; } #bar { gap: 6px; } #bar select { flex: 1 1 auto; min-width: 0; max-width: 200px; } #info { max-height: 45%; top: auto; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); } }
+#ai { position: fixed; top: 52px; right: 10px; bottom: 10px; width: min(420px, 92vw); z-index: 20; display: flex; flex-direction: column;
+  background: var(--panel); color: var(--ink); border: 1px solid var(--stroke); border-radius: 10px; font: 13px var(--font-ui); box-shadow: 0 6px 24px rgba(0,0,0,.18); }
+#ai[hidden] { display: none; }
+#ai header { display: flex; gap: 6px; align-items: center; padding: 8px 10px; border-bottom: 1px solid var(--stroke); }
+#ai header select { flex: 1; min-width: 0; }
+#ai select, #ai input, #ai button, #ai textarea { font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--stroke); border-radius: 6px; padding: 4px 8px; }
+#ai button { cursor: pointer; } #ai button:hover { border-color: var(--accent); }
+#ai form { display: grid; gap: 6px; padding: 10px; border-bottom: 1px solid var(--stroke); }
+#ai form label { display: grid; grid-template-columns: 80px 1fr; align-items: center; gap: 8px; }
+#ai .note { margin: 2px 0; opacity: .75; font-size: 12px; }
+#ai .row { display: flex; gap: 6px; justify-content: flex-end; align-items: center; }
+#ai-log { flex: 1; overflow: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+#ai .msg { white-space: pre-wrap; overflow-wrap: anywhere; padding: 6px 9px; border-radius: 8px; border: 1px solid var(--stroke); }
+#ai .msg.user { align-self: flex-end; max-width: 85%; border-color: var(--accent); }
+#ai .msg.assistant { font-family: var(--font-code, monospace); font-size: 12.5px; }
+#ai .msg.warn { border-color: #c0392b; }
+#ai-ask { border-top: 1px solid var(--stroke); padding: 8px 10px; display: grid; gap: 6px; }
+#ai-ask textarea { resize: vertical; width: 100%; box-sizing: border-box; }
+#ai-size { flex: 1; opacity: .7; font-size: 12px; }
 </style>
 </head>
 <body>
@@ -272,6 +291,7 @@ document.addEventListener("DOMContentLoaded", () => {
   <button class="wide" onclick="__ide.command('probe')" title="Check a text against the selected type, or the type on the clicked line (P)">Add probe</button>
   <button class="wide extra" onclick="__ide.command('svg')" title="Save the data-flow graph as SVG">Export SVG</button>
   <button class="wide extra" onclick="__ide.command('theme')" title="Switch between light and dark">Theme</button>
+  <button id="aibtn" onclick="window.openAI && window.openAI()" title="Ask a model, local or hosted, about the working file">AI</button>
   <span class="search" role="search">
     <label for="search" class="sr">Search the project</label>
     <input id="search" type="search" placeholder="Search types, fields, text  ·  Ctrl+K" autocomplete="off" spellcheck="false" aria-controls="results">

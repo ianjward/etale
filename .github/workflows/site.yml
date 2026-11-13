@@ -37,6 +37,8 @@ jobs:
       - run: gleam --version
       - run: gleam test
       - run: node bin/etale.mjs bootstrap
+      - run: node bin/etale.mjs digest priv/language.etale --check
+      - run: node tools/ai_test.mjs
       - run: sh tools/build_ide.sh
       - run: node tools/build_site.mjs
       - uses: actions/upload-pages-artifact@v3

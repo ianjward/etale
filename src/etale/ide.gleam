@@ -12,6 +12,13 @@
 ////
 //// Gleam owns all state and decides what to draw; ide_ffi.mjs runs the canvas.
 
+import etale/check.{type Grid, type Report}
+import etale/decimal
+import etale/digest
+import etale/evaluate.{type Val, VInvalid, VNumber, VRecord, VSeqv, VText}
+import etale/graph.{type GNode, type Graph, DataWire, TypeWire}
+import etale/model
+import etale/program.{type Outcome, type Program}
 import gleam/dict.{type Dict}
 import gleam/float
 import gleam/int
@@ -19,12 +26,6 @@ import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/order
 import gleam/string
-import etale/check.{type Grid, type Report}
-import etale/decimal
-import etale/evaluate.{type Val, VInvalid, VNumber, VRecord, VSeqv, VText}
-import etale/graph.{type GNode, type Graph, DataWire, TypeWire}
-import etale/model
-import etale/program.{type Outcome, type Program}
 
 // ---------------------------------------------------------------- host
 
@@ -43,6 +44,10 @@ pub type App {
     command: fn(Model, String) -> Model,
     resize: fn(Model, Float, Float) -> Model,
     view: fn(Model, Ctx) -> Nil,
+    /// For the AI pane: the working file's name and text, and language.etale.
+    context: fn(Model) -> #(String, String, String),
+    /// For the AI pane: the digest of a text read as File.
+    digest: fn(Model, String) -> Result(String, String),
   )
 }
 
@@ -237,7 +242,38 @@ pub fn main() -> Nil {
 fn files_global() -> Files
 
 pub fn app() -> App {
-  App(init, frame, down, move, up, wheel, key, edit, command, resize, view)
+  App(
+    init,
+    frame,
+    down,
+    move,
+    up,
+    wheel,
+    key,
+    edit,
+    command,
+    resize,
+    view,
+    ai_context,
+    ai_digest,
+  )
+}
+
+fn ai_context(m: Model) -> #(String, String, String) {
+  let text = fn(path) {
+    case dict.get(m.files, path) {
+      Ok(t) -> t
+      Error(_) -> ""
+    }
+  }
+  #(program.display_path(m.main), text(m.main), text("/priv/language.etale"))
+}
+
+fn ai_digest(m: Model, text: String) -> Result(String, String) {
+  case m.base {
+    Ok(p) -> digest.digest(p, text)
+    Error(e) -> Error(e)
+  }
 }
 
 // ---------------------------------------------------------------- model
@@ -732,7 +768,8 @@ fn new_file(m: Model, name: String) -> Model {
     False -> name
   }
   let parts =
-    string.split(name, "/") |> list.filter(fn(s) { s != "" && s != "." && s != ".." })
+    string.split(name, "/")
+    |> list.filter(fn(s) { s != "" && s != "." && s != ".." })
   case list.reverse(parts) {
     [] -> m
     [base, ..dirs] -> {
@@ -759,7 +796,10 @@ fn new_file(m: Model, name: String) -> Model {
         )
         |> save_new_files
       let m = switch_to(m, path)
-      Model(..m, editing: ["code", ..list.filter(m.editing, fn(e) { e != "code" })])
+      Model(..m, editing: [
+        "code",
+        ..list.filter(m.editing, fn(e) { e != "code" })
+      ])
     }
   }
 }
@@ -904,7 +944,11 @@ fn show_loc_inner(m: Model, l: Loc) -> Model {
 fn close_pane(m: Model, path: String) -> Model {
   case path == m.main {
     True -> close_main(m)
-    False -> close_side(Model(..m, closed: [path, ..list.filter(m.closed, fn(q) { q != path })]), path)
+    False ->
+      close_side(
+        Model(..m, closed: [path, ..list.filter(m.closed, fn(q) { q != path })]),
+        path,
+      )
   }
 }
 
@@ -922,7 +966,13 @@ fn close_main(m: Model) -> Model {
           others(q) && !is_prelude(q)
         })
       {
-        Ok(q) -> Ok(#(Loc(q, q, result_or(dict.get(m.marks, q), 1), line_label(m, q, 1)), []))
+        Ok(q) ->
+          Ok(
+            #(
+              Loc(q, q, result_or(dict.get(m.marks, q), 1), line_label(m, q, 1)),
+              [],
+            ),
+          )
         Error(_) ->
           case list.find(presets(), fn(pr) { others(pr.0) }) {
             Ok(pr) -> Ok(#(Loc(pr.0, pr.0, 1, ""), []))

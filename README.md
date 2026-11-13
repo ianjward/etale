@@ -37,6 +37,7 @@ node bin/etale.mjs sequents examples/orders/orders.etale  # Its theory as geomet
 node bin/etale.mjs fmt examples/orders/orders.etale --check   # Validate spacing
 node bin/etale.mjs print examples/orders/orders.etale Line          # Print type source
 node bin/etale.mjs print examples/orders/orders.etale Order examples/orders/order_1042.txt   # Print values
+node bin/etale.mjs digest priv/language.etale --check   # The spec without comments, as the AI pane sends it
 gleam test                                        # Run test suite
 ./tools/build_ide.sh                              # Build dist/workspace.html
 ```
@@ -58,6 +59,8 @@ python3 -m http.server -d _site          # Open http://localhost:8000
 ## The Workspace
 
 Build it with `./tools/build_ide.sh`, then open `dist/workspace.html` in any browser to access a self-contained, infinite, zoomable canvas IDE. It is also published on the demo site.
+
+The **AI** button opens a pane for asking a model about the working file. A connection is OpenAI-compatible (a local server such as Ollama, llama.cpp's server or LM Studio, or a hosted provider) or Anthropic, with a base URL, a model name and an optional key. Each connection chooses what it sends with the working file: language.etale in full, its digest (`etale digest`), or nothing. Connections and keys stay in this browser's storage and never go into files, bundles or exports. A local server must allow the page's origin (for Ollama, `OLLAMA_ORIGINS`); a provider that refuses calls from a browser can be reached through a local proxy given as the base URL.
 
 #### UI Status Indicators
 

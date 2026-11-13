@@ -8,8 +8,10 @@
 ////   etale fmt FILE.etale [--write | --check]   the file in canonical spacing (Step 9)
 ////   etale print FILE.etale TYPE VALUE.json     the canonical text of a value (Step 9)
 ////   etale bundle FOLDER [-o OUT]             a project as one text (Step 10)
+////   etale digest FILE.etale [--check]          the file without comments or blank lines
 
 import etale/check
+import etale/digest
 import etale/evaluate.{type Val, VRecord, VSeqv}
 import etale/graph
 import etale/model
@@ -61,6 +63,8 @@ pub fn main() {
     ["graph", file, ..] -> cmd_graph(file, "graph.svg")
     ["fmt", file, ..rest] -> cmd_fmt(file, rest)
     ["sequents", file, ..] -> cmd_sequents(file)
+    ["digest", file, "--check", ..] -> cmd_digest(file, True)
+    ["digest", file, ..] -> cmd_digest(file, False)
     ["bundle", dir, "-o", out, ..] -> cmd_bundle(dir, Some(out))
     ["bundle", dir, ..] -> cmd_bundle(dir, None)
     ["print", file, type_name, "--json", json, ..] ->
@@ -93,7 +97,9 @@ const usage =
   etale print FILE.etale TYPE                a type's code
   etale print FILE.etale TYPE DATA           data's values, in canonical form (DATA: a text or JSON)
   etale print FILE.etale TYPE --text \"...\"   the same, inline (--json '{...}' for JSON)
-  etale bundle FOLDER [-o OUT]             a project as one text; check works on it too"
+  etale bundle FOLDER [-o OUT]             a project as one text; check works on it too
+  etale digest FILE.etale [--check]          the file without comments or blank lines; --check
+                                           reads it back as File and compares its declarations"
 
 pub fn prelude_path() -> String {
   home_dir() <> "/priv/language.etale"
@@ -554,6 +560,55 @@ fn cmd_graph(file: String, out: String) -> Int {
 }
 
 /// Print a file's theory as geometric sequents (docs/geometric.md).
+/// The digest the workspace's AI pane can send in place of the full file.
+fn cmd_digest(file: String, check_it: Bool) -> Int {
+  case start(False), read_file(abs(file)) {
+    Error(e), _ -> {
+      io.println("error: " <> e)
+      1
+    }
+    _, Error(_) -> {
+      io.println("error: cannot read " <> file)
+      1
+    }
+    Ok(p), Ok(text) ->
+      case digest.digest(p, text) {
+        Error(e) -> {
+          io.println("error: " <> file <> ": " <> e)
+          1
+        }
+        Ok(d) ->
+          case check_it {
+            False -> {
+              io.print(d)
+              0
+            }
+            True ->
+              case digest.check(p, text, d) {
+                Ok(n) -> {
+                  io.println(
+                    "digest of "
+                    <> file
+                    <> ": "
+                    <> int.to_string(string.length(d))
+                    <> " of "
+                    <> int.to_string(string.length(text))
+                    <> " characters; matched File in exactly one way, with the same "
+                    <> int.to_string(n)
+                    <> " declarations",
+                  )
+                  0
+                }
+                Error(e) -> {
+                  io.println("error: " <> file <> ": " <> e)
+                  1
+                }
+              }
+          }
+      }
+  }
+}
+
 fn cmd_sequents(file: String) -> Int {
   // language.etale is already loaded as the prelude: print its own theory
   let loaded = case abs(file) == prelude_path() {
