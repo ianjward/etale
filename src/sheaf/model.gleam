@@ -8,7 +8,7 @@ import gleam/option.{type Option, None, Some}
 import gleam/string
 import sheaf/decimal.{type Decimal}
 
-pub const folds = ["qty", "sum"]
+pub const folds = ["qty", "sum", "min", "max"]
 
 /// Names no field may take (the header of language.sheaf). Inside the model the
 /// line's own value is the path 'val', and folds end a path in qty or sum.

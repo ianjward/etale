@@ -752,8 +752,11 @@ pub fn check(p: Program, type_name: String, text: String) -> Outcome {
           evaluate.settle(p.ev, v)
           let recs = evaluate.all_records(p.ev, v)
           list.each(recs, fn(r) { evaluate.evaluate_all(p.ev, r) })
-          // fields that reach a record around their own are decided only now
-          case record_failures(recs) {
+          // fields that reach a record around their own are decided only now,
+          // and so is the order of each ordered list
+          case
+            list.append(record_failures(recs), evaluate.order_violations(p.ev, v))
+          {
             [] -> Outcome(True, type_name, Some(v), [], "", False, recs)
             fails ->
               Outcome(
@@ -788,6 +791,7 @@ pub fn check(p: Program, type_name: String, text: String) -> Outcome {
               let fails =
                 record_failures(recs)
                 |> list.append(evaluate.unique_violations(p.ev, v))
+                |> list.append(evaluate.order_violations(p.ev, v))
               let fails =
                 list.append(
                   list.filter(fails, fn(x) { !string.contains(x, "INVALID") }),

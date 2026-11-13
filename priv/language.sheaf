@@ -741,8 +741,10 @@ Round_Property {}                        # Example: 'round: 0.01 away'
 # names the number at which it wraps: '(due.minutes + delay) wrap_at:
 # Minutes_Per_Day'. With both, 'round:' comes first. A value read from
 # the text is checked, never wrapped. A calculation that might not fit
-# its field's type is an error that names three fixes: 'wrap_at:', a
-# wider type, or a rule.
+# its field's type is an error that names two fixes: 'wrap_at:' or a
+# wider type. A 'wrap_at:' on a value that can never wrap is refused.
+# After a wrap, 00:10 is below 23:50, so a wrapped value is compared
+# with another field by '=' only, and it is never a list's 'order:' key.
 Wrap_Property {}                         # Example: 'wrap_at: Minutes_Per_Day'
   modulus {Named_End}
   text {Text}

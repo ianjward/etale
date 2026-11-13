@@ -7,8 +7,8 @@ Hours_Per_Day {Integer} (24)
 Later_By {Integer} (5)
 
 # 1. A claim about wrapped arithmetic. 'later' is not 'hour + Later_By': at
-#    hour 20 it is 1. The prover bounds a wrapped field by [0, m) and cannot
-#    prove it.
+#    hour 20 it is 1. A wrapped value is compared with another field by '='
+#    only, so the claim is refused before the prover is asked.
 Clock {}
   hour {Integer} (0..23)
   later {Integer} (hour + Later_By) wrap_at: Hours_Per_Day

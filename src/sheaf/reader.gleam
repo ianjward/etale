@@ -19,6 +19,7 @@
 import gleam/dict.{type Dict}
 import gleam/int
 import gleam/list
+import gleam/order
 import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
@@ -1186,6 +1187,36 @@ fn count_needs_list(sc: Scan) -> Result(Nil, MapError) {
 
 const not_built = " is not built yet in this build"
 
+/// 'order: due.minutes' on a list: its items' keys never go down. The key is
+/// a field of the item, or one dot from it, kept as text so that no path of
+/// the record that holds the list seems to name it.
+fn list_order(
+  sc: Scan,
+  ps: List(#(String, Prop)),
+) -> Result(List(Clause), MapError) {
+  case list.key_find(ps, "order") {
+    Error(_) -> Ok([])
+    Ok(POrder(p)) ->
+      case p {
+        [first, ..] ->
+          case upper_first(first) {
+            True ->
+              err(
+                sc,
+                "on a list, order: names a key of its items, e.g. order: station",
+              )
+            False ->
+              case list.length(p) <= 2 {
+                True -> Ok([Setting("order", VStr(string.join(p, ".")))])
+                False -> err(sc, "a key has one dot, e.g. order: due.minutes")
+              }
+          }
+        [] -> err(sc, "order: names a key of the list's items, e.g. order: station")
+      }
+    Ok(_) -> err(sc, "order: names a key of the list's items, e.g. order: station")
+  }
+}
+
 fn order_not_built(sc: Scan, ps: List(#(String, Prop))) -> Result(Nil, MapError) {
   case list.key_find(ps, "order") {
     Ok(_) -> err(sc, "order:" <> not_built)
@@ -2021,7 +2052,7 @@ fn single_line(
             ["count", "unique", "order"],
             "a list",
           ))
-          use _ <- result.try(order_not_built(sc, t.props))
+          use order <- result.try(list_order(sc, t.props))
           let qty = case count_value(t.props) {
             Some(v) -> [Setting("qty", v)]
             None -> []
@@ -2034,7 +2065,10 @@ fn single_line(
             Field(
               ..f,
               items: [one],
-              preds: Block(AndConn, list.flatten([qty, [Flag("list")], unique])),
+              preds: Block(
+                AndConn,
+                list.flatten([qty, [Flag("list")], unique, order]),
+              ),
               comment: t.comment,
             ),
           )
@@ -2699,7 +2733,51 @@ fn method_fold(
           )
         False -> Ok(VPath([x, "sum"]))
       }
+    "min", Some(fld) | "max", Some(fld) ->
+      Ok(folded([b.list, fld, m], b.conditions))
+    "min", None | "max", None ->
+      case dict.has_key(lists, x) {
+        True ->
+          Error(
+            "." <> m <> " takes a list of numbers: collect a number field first, e.g. delays {Integer...} (" <> x <> ".delay)",
+          )
+        False -> Ok(VPath([x, m]))
+      }
     _, _ -> Error("." <> m <> not_built)
+  }
+}
+
+/// '.min' and '.max' exist only on a list that is never empty: a stored list
+/// whose count starts at 1 or more, read through no condition.
+fn never_empty(st: RecordState, x: String, m: String) -> Result(Nil, String) {
+  let empty =
+    x
+    <> " may be empty, so it has no "
+    <> case m {
+      "min" -> "least"
+      _ -> "greatest"
+    }
+    <> " value. Use a list that is never empty, such as one with count: 1.."
+  case m == "min" || m == "max" {
+    False -> Ok(Nil)
+    True ->
+      case base_of(st.lists, x) {
+        Error(msg) -> Error(msg)
+        Ok(Base(_, Some(_), _)) -> Error(empty)
+        Ok(Base(stored, None, _)) ->
+          case list.find(st.fields, fn(g) { g.name == stored }) {
+            Ok(g) ->
+              case model.qty(g) {
+                Some(#(Some(lo), _)) ->
+                  case decimal.compare(lo.value, decimal.from_int(1)) {
+                    order.Lt -> Error(empty)
+                    _ -> Ok(Nil)
+                  }
+                _ -> Error(empty)
+              }
+            Error(_) -> Error(empty)
+          }
+      }
   }
 }
 
@@ -2798,7 +2876,7 @@ fn settle_field(
   }
   case whole {
     Some(#(x, m)) ->
-      case method_fold(st.lists, x, m) {
+      case never_empty(st, x, m) |> result.try(fn(_) { method_fold(st.lists, x, m) }) {
         Ok(v) -> {
           let st = RecordState(..st, read: [x, ..st.read])
           let clauses =
@@ -3060,6 +3138,7 @@ fn settle_file(entries: List(Entry), file: String) -> Result(List(Entry), MapErr
                 case c {
                   Flag("list") -> False
                   Setting("unique", _) -> False
+                  Setting("order", VStr(_)) -> True
                   _ -> True
                 }
               }),

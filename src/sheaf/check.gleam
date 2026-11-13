@@ -386,8 +386,8 @@ fn check_settings(
 }
 
 fn mod_message() -> String {
-  "'mod =' needs a positive number written out, e.g. mod = 7: "
-  <> "a zero, negative or computed divisor has no guard"
+  "wrap_at: needs a constant above 0, e.g. wrap_at: Hours_Per_Day: "
+  <> "a zero or negative wrap has no guard"
 }
 
 /// The written divisor of a field's 'mod', when it has one.
@@ -473,7 +473,7 @@ fn check_record(c: Ctx, d: Decl) -> Nil {
             <> f.name
             <> " {Needs}' has no condition, so it would always hold; give it one, e.g. "
             <> f.name
-            <> " {Needs} total >= 0",
+            <> " {Needs} (total >= 0)",
           where,
         )
       _ -> Nil
@@ -513,7 +513,7 @@ fn check_record(c: Ctx, d: Decl) -> Nil {
                 c,
                 d,
                 f.line,
-                "a record may use its own type only as a list whose count starts at 0, e.g. {Node 0..} or {Chain 0..1}",
+                "a record may use its own type only as a list whose count starts at 0, e.g. children {Node...} or next {Chain} count: 0..1",
                 where,
               )
             False -> type_ok(c, d, n, f.line, rec_ok)
@@ -573,7 +573,7 @@ fn check_record(c: Ctx, d: Decl) -> Nil {
                   c,
                   d,
                   f.line,
-                  "a range or a choice of values is compared with '=' (membership)",
+                  "a range or a choice of values is compared with in, e.g. (delay in 2..9)",
                   where,
                 )
               _, _ -> Nil
@@ -590,6 +590,8 @@ fn check_record(c: Ctx, d: Decl) -> Nil {
       None -> Nil
     }
     check_numbers(c, d, f)
+    check_wraps(c, d, f)
+    check_list_order(c, d, f)
     case f.role {
       model.Claim -> prove_claim(c, d, f)
       model.Computed -> {
@@ -989,10 +991,16 @@ fn walk(
                 False -> Nil
               }
               case step, fld {
-                "sum", Some(fl) ->
+                "sum", Some(fl) | "min", Some(fl) | "max", Some(fl) ->
                   case evaluate.items_numeric(c.ev, fl.items) {
                     False ->
-                      err(c, d, line, "'.sum' totals a numeric field", where)
+                      err(
+                        c,
+                        d,
+                        line,
+                        "'." <> step <> "' takes a list of numbers",
+                        where,
+                      )
                     True -> Nil
                   }
                 _, _ -> Nil
@@ -1226,7 +1234,7 @@ type Kind {
 /// a field is a number when its type is numeric.
 fn path_kind(c: Ctx, d: Decl, parts: List(String)) -> Kind {
   case list.last(parts) {
-    Ok("qty") | Ok("sum") -> Number
+    Ok("qty") | Ok("sum") | Ok("min") | Ok("max") -> Number
     _ ->
       case parts {
         ["val", ..] -> Unknown
@@ -1925,6 +1933,31 @@ fn def_bounds(c: Ctx, rec: Decl, fl: Field) -> #(B, B) {
           let #(qlo, qhi) = atom_bounds(c, rec, string.join(parts, "."), None)
           #(bmax(lo, qlo), bmin(hi, qhi))
         }
+        // the least or greatest item lies within the items' own bounds
+        Ok("min") | Ok("max") ->
+          case parts {
+            [list_name, name, _] ->
+              case model.field(rec, list_name) {
+                Some(lf) ->
+                  case model.base(lf) {
+                    TypeItem(t) ->
+                      case model.record_of(c.decls, t) {
+                        Some(it) ->
+                          case model.field(it, name) {
+                            Some(inn) -> {
+                              let #(ilo, ihi) = def_bounds(c, it, inn)
+                              #(bmax(lo, ilo), bmin(hi, ihi))
+                            }
+                            None -> #(lo, hi)
+                          }
+                        None -> #(lo, hi)
+                      }
+                    _ -> #(lo, hi)
+                  }
+                None -> #(lo, hi)
+              }
+            _ -> #(lo, hi)
+          }
         _ -> sum_bounds(c, rec, fl, lo, hi)
       }
     _, _ -> sum_bounds(c, rec, fl, lo, hi)
@@ -3376,5 +3409,197 @@ fn method_name(step: String) -> String {
   case step {
     "qty" -> "count"
     other -> other
+  }
+}
+
+/// The field a path names, from this record: a field, a field of a field's
+/// record, or a field of a record around this one ('Train.max_delay').
+fn path_field(c: Ctx, d: Decl, p: List(String)) -> Option(Field) {
+  case p {
+    [x] -> model.field(d, x)
+    [x, y] ->
+      case model.field(d, x) {
+        Some(fl) ->
+          case model.base(fl) {
+            TypeItem(t) ->
+              case model.record_of(c.decls, t) {
+                Some(rd) -> model.field(rd, y)
+                None -> None
+              }
+            _ -> None
+          }
+        None ->
+          case model.record_of(c.decls, x) {
+            Some(rd) -> model.field(rd, y)
+            None -> None
+          }
+      }
+    _ -> None
+  }
+}
+
+fn wraps(c: Ctx, d: Decl, p: List(String)) -> Bool {
+  case path_field(c, d, p) {
+    Some(fl) -> option.is_some(model.setting(fl.preds, "mod"))
+    None -> False
+  }
+}
+
+/// Wraps (language.sheaf, Step 5). A value from a 'wrap_at:' calculation is
+/// compared with another field by '=' only: after the wrap, 00:10 is below
+/// 23:50. A wrap that can never happen is refused, and a calculation that may
+/// not fit its field's type must say what to do: wrap, or a wider type.
+fn check_wraps(c: Ctx, d: Decl, f: Field) -> Nil {
+  let where = d.name <> "." <> f.name
+  let ordering = ["<", "<=", ">", ">="]
+  let compare = fn(b: model.Block, line: Int) {
+    list.each(model.plains(b), fn(cl) {
+      case cl {
+        Plain(p, op, VPath(q)) ->
+          case list.contains(ordering, op) {
+            False -> Nil
+            True ->
+              case wraps(c, d, p), wraps(c, d, q) {
+                False, False -> Nil
+                wp, _ -> {
+                  let name = case wp {
+                    True -> string.join(p, ".")
+                    False -> string.join(q, ".")
+                  }
+                  err(
+                    c,
+                    d,
+                    line,
+                    name
+                      <> " comes from a wrap_at: calculation, so after the wrap 00:10 compares below 23:50. Compare the values before the wrap",
+                    where,
+                  )
+                }
+              }
+          }
+        _ -> Nil
+      }
+    })
+  }
+  compare(f.preds, f.line)
+  case f.mapping {
+    Some(m) -> list.each(m.cases, fn(cs) { compare(cs.preds, cs.line) })
+    None -> Nil
+  }
+  case f.role, definition(f) {
+    model.Computed, Some(VArith(op, _) as def)
+      if op == "+" || op == "-" || op == "*"
+    -> {
+      let #(lo, hi) = value_bounds(c, d, def, 0)
+      case mod_of(f) {
+        Some(m) ->
+          case bcmp(lo, d0()) != order.Lt && bcmp(hi, Fin(m)) == order.Lt {
+            True ->
+              err(
+                c,
+                d,
+                f.line,
+                f.name
+                  <> " is at most "
+                  <> bfmt(hi)
+                  <> ", so it never wraps. Remove wrap_at:",
+                where,
+              )
+            False -> Nil
+          }
+        None -> {
+          let #(tlo, thi) = type_bounds(c, model.base(f), [])
+          let fits = fn(b: B, t: B) {
+            case b, t {
+              Fin(_), Fin(_) -> True
+              _, Fin(_) -> False
+              _, _ -> True
+            }
+          }
+          let reach = case
+            bcmp(hi, thi) == order.Gt || !fits(hi, thi),
+            bcmp(lo, tlo) == order.Lt || !fits(lo, tlo)
+          {
+            True, _ -> Some(hi)
+            _, True -> Some(lo)
+            _, _ -> None
+          }
+          case reach {
+            Some(b) ->
+              err(
+                c,
+                d,
+                f.line,
+                f.name
+                  <> " can reach "
+                  <> bfmt(b)
+                  <> ", but "
+                  <> model.item_text(model.base(f))
+                  <> " holds "
+                  <> bfmt(tlo)
+                  <> ".."
+                  <> bfmt(thi)
+                  <> ". Choose one: wrap_at:, or a wider type",
+                where,
+              )
+            None -> Nil
+          }
+        }
+      }
+    }
+    _, _ -> Nil
+  }
+}
+
+/// 'order: key' on a list: the key is a number field of the items, or one dot
+/// from them, that does not come from a wrap. Ordering by a text needs an
+/// order on its field, which this build does not have yet.
+fn check_list_order(c: Ctx, d: Decl, f: Field) -> Nil {
+  let where = d.name <> "." <> f.name
+  let bad = fn(msg) { err(c, d, f.line, msg, where) }
+  case model.setting(f.preds, "order") {
+    Some(VStr(key)) -> {
+      let parts = string.split(key, ".")
+      case model.record_of(c.decls, item_name(f)) {
+        None ->
+          bad(
+            f.name
+            <> " holds "
+            <> item_name(f)
+            <> " items, not records, so there is no key. Order the list it is collected from",
+          )
+        Some(it) ->
+          case parts, path_field(c, it, parts) {
+            [first, ..], None ->
+              case model.field(it, first) {
+                None -> bad(it.name <> " has no field " <> first)
+                Some(_) -> bad(it.name <> " has no field " <> key)
+              }
+            _, Some(kf) ->
+              case field_kind(c, kf, []), wraps(c, it, parts) {
+                _, True ->
+                  bad(
+                    key
+                    <> " wraps, so 00:10 orders before 23:50. Order by a value that does not wrap",
+                  )
+                Number, False -> Nil
+                NotNumber("a record"), False ->
+                  bad(
+                    key
+                    <> " is "
+                    <> model.item_text(model.base(kf))
+                    <> ", a record, which has no order. Name one of its number fields, e.g. order: due.minutes",
+                  )
+                _, False ->
+                  bad(
+                    key
+                    <> " is not a number: ordering a list by a text is not built yet in this build",
+                  )
+              }
+            [], None -> bad("order: names a key of the list's items")
+          }
+      }
+    }
+    _ -> Nil
   }
 }

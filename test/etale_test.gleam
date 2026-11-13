@@ -254,8 +254,8 @@ fn geometric_mistakes() -> Outcome {
       "wrap_at: takes a constant",
     ),
     expect(
-      string.contains(text, "cannot prove later >= hour"),
-      "a wrapped field is not its definition",
+      string.contains(text, "later comes from a wrap_at: calculation"),
+      "a wrapped field is compared with another field by = only",
     ),
     expect(
       list.key_find(ok.claims, "Clock.in_day") |> is_ok,
@@ -884,7 +884,7 @@ fn tied_by_rules() -> Outcome {
       "a rule tying a product to the inputs",
     ),
     expect(
-      refused_by(run("xor_ab_c"), "Assoc.ab_c_takes_ab_out_and_c"),
+      refused_by(run("xor_ab_c"), "Assoc.ab_c_takes_ab_and_c"),
       "a rule tying a product to another product",
     ),
   ])
@@ -1115,10 +1115,10 @@ fn division_and_rounding() -> Outcome {
     ),
     expect(
       string.contains(
-        errors_of(string.replace(third_src, "round: 0.01", "round: 0.1")),
-        "cannot prove third <= 0.33",
+        errors_of(string.replace(third_src, "<= 0.33", "<= 0.32")),
+        "cannot prove third <= 0.32",
       ),
-      "a coarser unit is only within half of it",
+      "1.00 / 3 rounds to 0.33, so third <= 0.32 is not proved",
     ),
     expect(
       refused_with(
@@ -1396,6 +1396,7 @@ pub fn main() {
     #("division and rounding", division_and_rounding),
     #("parentheses check or work out", value_checks_or_works_out),
     #("rules, claims and mapping inputs", rules_claims_and_inputs),
+    #("ordered lists, min and max, wraps", ordered_lists_and_wraps),
   ]
   let failed =
     list.fold(tests, 0, fn(failed, t) {
@@ -1510,6 +1511,133 @@ fn rules_claims_and_inputs() -> Outcome {
     expect(
       is_ok(source("Two_Digits {Digit...} count: 2\n")),
       "a refinement adds",
+    ),
+  ])
+}
+
+const clock_src =
+  "Hours_Per_Day {Integer} (24)
+Minutes_Per_Hour {Integer} (60)
+Minutes_Per_Day {Integer} (Hours_Per_Day * Minutes_Per_Hour)
+Hour {Integer} (0..Hours_Per_Day - 1)
+Minute {Integer} (0..Minutes_Per_Hour - 1)
+Minute_Of_Day {Integer} (0..Minutes_Per_Day - 1)
+Max_Delay {Integer} (120)
+
+Time {}
+  hour {Hour}
+  minute {Minute}
+  hour_minutes {Integer} (hour * Minutes_Per_Hour)
+  minutes {Minute_Of_Day} (hour_minutes + minute)
+  text {Text}
+    1. {hour} digits: 2
+    2. {\":\"}
+    3. {minute} digits: 2
+
+Stop {}
+  due {Time}
+  delay {Integer} (0..Max_Delay)
+  arrives {Minute_Of_Day} (due.minutes + delay) wrap_at: Minutes_Per_Day
+  text {Text}
+    1. {due}
+    2. {\" +\"}
+    3. {delay}
+    4. {Newline}
+"
+
+/// 'order:' on a list, '.min' and '.max', and the checks on wraps (the 13
+/// November decisions).
+fn ordered_lists_and_wraps() -> Outcome {
+  let train =
+    "Train {}\n  stops {Stop...} count: 1.., order: due.minutes\n"
+    <> "  delays {Integer...} (stops.delay)\n  least_delay {Integer} (delays.min)\n"
+    <> "  most_delay {Integer} (delays.max)\n"
+  let assert Ok(#(p, rep)) = source(clock_src <> "\n" <> train)
+  let ok = program.check(p, "Train", "09:41 +0\n23:50 +20\n")
+  let swapped = program.check(p, "Train", "23:50 +20\n09:41 +0\n")
+  let flagged = fn(text, needle) {
+    case source(text) {
+      Ok(#(_, r)) -> string.contains(msgs(r), needle)
+      Error(e) -> string.contains(e.msg, needle)
+    }
+  }
+  let with_train = fn(line) {
+    clock_src <> "\nTrain {}\n  stops {Stop...} count: 1..\n" <> line <> "\n"
+  }
+  all([
+    expect(check.errors(rep) == [], "a train checks clean: " <> msgs(rep)),
+    expect(ok.ok, "stops in due order"),
+    expect(num(get(p, ok.value, "least_delay")) == "0", ".min"),
+    expect(num(get(p, ok.value, "most_delay")) == "20", ".max"),
+    expect(
+      !swapped.ok
+        && list.any(swapped.failures, fn(f) {
+        string.contains(f, "is ordered by due.minutes")
+      }),
+      "stops out of order are refused",
+    ),
+    expect(
+      flagged(
+        string.replace(
+          clock_src,
+          "(hour_minutes + minute)",
+          "(hour_minutes + minute) wrap_at: Minutes_Per_Day",
+        ),
+        "never wraps",
+      ),
+      "a wrap that never happens",
+    ),
+    expect(
+      flagged(
+        string.replace(clock_src, " wrap_at: Minutes_Per_Day", ""),
+        "arrives can reach 1559",
+      ),
+      "a calculation that may not fit its type",
+    ),
+    expect(
+      flagged(
+        clock_src <> "  late {Needs} (arrives >= due.minutes)\n",
+        "arrives comes from a wrap_at: calculation",
+      ),
+      "a wrapped value compared with another field",
+    ),
+    expect(
+      flagged(
+        clock_src <> "\nTrain {}\n  stops {Stop...} order: arrives\n",
+        "arrives wraps",
+      ),
+      "a wrapped key",
+    ),
+    expect(
+      flagged(
+        clock_src <> "\nTrain {}\n  stops {Stop...} order: due\n",
+        "a record, which has no order",
+      ),
+      "a record key",
+    ),
+    expect(
+      flagged(
+        clock_src <> "\nTrain {}\n  stops {Stop...} order: due.minutes.x\n",
+        "a key has one dot",
+      ),
+      "a key with two dots",
+    ),
+    expect(
+      flagged(
+        with_train(
+          "  late_stops {Stop...} (stops.delay >= 2)\n  late_delays {Integer...} (late_stops.delay)\n  least {Integer} (late_delays.min)",
+        ),
+        "may be empty",
+      ),
+      ".min on a kept list",
+    ),
+    expect(
+      flagged(
+        clock_src
+          <> "\nTrain {}\n  stops {Stop...}\n  delays {Integer...} (stops.delay)\n  most {Integer} (delays.max)\n",
+        "may be empty",
+      ),
+      ".max on a list that may be empty",
     ),
   ])
 }
