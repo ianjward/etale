@@ -1685,7 +1685,31 @@ fn weather() -> Outcome {
     ),
     expect(refused_by("12 4 sun", "12 4 snow", "snow_is_cold"), "warm snow"),
     expect(!run(string.replace(good, "07 -3", "7 -3")).ok, "an hour written 7"),
+    expect(
+      average_proved("Reading_Value {Integer} (-60..60)"),
+      "an average of items typed by a named whole-number type",
+    ),
+    expect(
+      !average_proved("Reading_Value {Integer | Decimal}"),
+      "an average of items that may hold places stays unproved",
+    ),
   ])
+}
+
+/// Whether the list facts prove an average is at most the greatest, for
+/// items whose value has the type declared by the given line.
+fn average_proved(value_type: String) -> Bool {
+  let text =
+    value_type
+    <> "\nItem {}\n  reading {Reading_Value}\n  text {Text}\n    1. {reading}\n    2. {Newline}\n"
+    <> "Items {}\n  items {Item...} count: 1..\n  readings {Integer...} (items.reading)\n"
+    <> "  most {Integer} (readings.max)\n  total {Integer} (readings.sum)\n"
+    <> "  average {Decimal} (total / items.count) round: 0.1\n"
+    <> "  within {Claims} (average <= most)\n"
+  case source(text) {
+    Ok(#(_, rep)) -> list.key_find(rep.claims, "Items.within") |> is_ok
+    Error(_) -> False
+  }
 }
 
 fn timetable() -> Outcome {
