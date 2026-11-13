@@ -494,7 +494,13 @@ fn run_m(p: Parser, m: M, pos: Int) -> Results {
         })
       })
     Filt(_, base, check, what) -> {
-      let rs = run(p, base, pos)
+      // A record's rules are checked on every reading before at most cap are
+      // kept, so a reading that fails a rule never hides one that holds.
+      let rs = case p.enforce, m_of(p, base) {
+        True, Cat(name, record, parts) ->
+          cat_results(p, name, record, parts, pos, False)
+        _, _ -> run(p, base, pos)
+      }
       case p.enforce {
         False -> rs
         True ->
@@ -511,27 +517,12 @@ fn run_m(p: Parser, m: M, pos: Int) -> Results {
               })
             case keep {
               [] -> Error(Nil)
-              _ -> Ok(#(e, keep))
+              _ -> Ok(#(e, take(keep)))
             }
           })
       }
     }
-    Cat(name, record, parts) -> {
-      let front = cat_front(p, parts, pos, None)
-      list.map(front, fn(f) {
-        let #(e, partials) = f
-        #(
-          e,
-          list.map(partials, fn(ps) {
-            let kids = list.reverse(ps)
-            case record {
-              True -> Node(Some(name), pos, e, NRec(kids))
-              False -> Node(Some(name), pos, e, NLay(kids))
-            }
-          }),
-        )
-      })
-    }
+    Cat(name, record, parts) -> cat_results(p, name, record, parts, pos, True)
     Seq(name, elem, lo, hi, edecl) -> run_seq(p, name, elem, lo, hi, edecl, pos)
     Inter(name, first, others) ->
       list.filter_map(run(p, first, pos), fn(r) {
@@ -568,6 +559,72 @@ fn inter_ok(
   ok
 }
 
+/// A record's or layout's readings for every end: up to cap per end when
+/// limit is True, every reading when False.
+fn cat_results(
+  p: Parser,
+  name: String,
+  record: Bool,
+  parts: List(#(String, Int)),
+  pos: Int,
+  limit: Bool,
+) -> Results {
+  let front = cat_front(p, parts, pos, None, limit)
+  list.map(front, fn(f) {
+    let #(e, partials) = f
+    #(e, list.map(partials, fn(ps) { cat_node(name, record, pos, e, ps) }))
+  })
+}
+
+fn cat_node(
+  name: String,
+  record: Bool,
+  pos: Int,
+  e: Int,
+  ps: List(#(String, Node)),
+) -> Node {
+  let kids = list.reverse(ps)
+  case record {
+    True -> Node(Some(name), pos, e, NRec(kids))
+    False -> Node(Some(name), pos, e, NLay(kids))
+  }
+}
+
+/// A record's or layout's readings of exactly text[pos, end): up to cap when
+/// limit is True, every reading when False.
+fn cat_exact(
+  p: Parser,
+  name: String,
+  record: Bool,
+  parts: List(#(String, Int)),
+  pos: Int,
+  end: Int,
+  limit: Bool,
+) -> List(Node) {
+  let #(init, last) = split_last(parts)
+  let front = cat_front(p, init, pos, Some(end), limit)
+  let finished = case last {
+    None ->
+      case list.key_find(front, end) {
+        Ok(ps) -> ps
+        Error(_) -> []
+      }
+    Some(#(label, pid)) ->
+      list.flat_map(front, fn(f) {
+        let #(at, partials) = f
+        list.flat_map(run_exact(p, pid, at, end), fn(n) {
+          list.map(partials, fn(partial) { [#(label, n), ..partial] })
+        })
+      })
+  }
+  let nodes =
+    list.map(finished, fn(ps) { cat_node(name, record, pos, end, ps) })
+  case limit {
+    True -> take(nodes)
+    False -> nodes
+  }
+}
+
 /// Partial records after each part in turn: for every end position reached,
 /// up to cap lists of (label, node), last part first. Kept by end in a dict,
 /// so a part with many possible ends costs one step per end.
@@ -576,6 +633,7 @@ fn cat_front(
   parts: List(#(String, Int)),
   pos: Int,
   upto: Option(Int),
+  limit: Bool,
 ) -> List(#(Int, List(List(#(String, Node))))) {
   list.fold(parts, [#(pos, [[]])], fn(front, part) {
     let #(label, pid) = part
@@ -592,7 +650,10 @@ fn cat_front(
           True ->
             list.fold(partials, acc, fn(acc, partial) {
               list.fold(nodes, acc, fn(acc, n) {
-                add_to(acc, e, [#(label, n), ..partial])
+                case limit {
+                  True -> add_to(acc, e, [#(label, n), ..partial])
+                  False -> add_all(acc, e, [#(label, n), ..partial])
+                }
               })
             })
         }
@@ -653,6 +714,15 @@ fn seq_nodes(
       _, _ -> Ok(n)
     }
   })
+}
+
+/// Like add_to, with no cap: for a record whose rules are checked before its
+/// readings are counted.
+fn add_all(d: Dict(Int, List(a)), e: Int, x: a) -> Dict(Int, List(a)) {
+  case dict.get(d, e) {
+    Ok(xs) -> dict.insert(d, e, [x, ..xs])
+    Error(_) -> dict.insert(d, e, [x])
+  }
 }
 
 fn add_to(d: Dict(Int, List(a)), e: Int, x: a) -> Dict(Int, List(a)) {
@@ -787,7 +857,11 @@ fn exact_m(p: Parser, m: M, pos: Int, end: Int) -> List(Node) {
       })
       |> take
     Filt(_, base, check, what) -> {
-      let nodes = run_exact(p, base, pos, end)
+      let nodes = case p.enforce, m_of(p, base) {
+        True, Cat(name, record, parts) ->
+          cat_exact(p, name, record, parts, pos, end, False)
+        _, _ -> run_exact(p, base, pos, end)
+      }
       case p.enforce {
         False -> nodes
         True ->
@@ -799,34 +873,11 @@ fn exact_m(p: Parser, m: M, pos: Int, end: Int) -> List(Node) {
             }
             ok
           })
+          |> take
       }
     }
-    Cat(name, record, parts) -> {
-      let #(init, last) = split_last(parts)
-      let front = cat_front(p, init, pos, Some(end))
-      let finished = case last {
-        None ->
-          case list.key_find(front, end) {
-            Ok(ps) -> ps
-            Error(_) -> []
-          }
-        Some(#(label, pid)) ->
-          list.flat_map(front, fn(f) {
-            let #(at, partials) = f
-            list.flat_map(run_exact(p, pid, at, end), fn(n) {
-              list.map(partials, fn(partial) { [#(label, n), ..partial] })
-            })
-          })
-      }
-      list.map(finished, fn(ps) {
-        let kids = list.reverse(ps)
-        case record {
-          True -> Node(Some(name), pos, end, NRec(kids))
-          False -> Node(Some(name), pos, end, NLay(kids))
-        }
-      })
-      |> take
-    }
+    Cat(name, record, parts) ->
+      cat_exact(p, name, record, parts, pos, end, True)
     Seq(name, elem, lo, hi, edecl) -> {
       let partials = exact_seq(p, elem, lo, hi, pos, end)
       seq_nodes(p, name, edecl, pos, end, partials)
