@@ -355,7 +355,8 @@ fn libraries_clean() -> Outcome {
       "priv/stdlib/dates.sheaf", "priv/stdlib/text.sheaf",
       "priv/stdlib/rounding.sheaf", "examples/orders/orders.sheaf",
       "examples/proofs/proofs.sheaf", "examples/meeting/meeting.sheaf",
-      "examples/xor/xor.sheaf",
+      "examples/xor/xor.sheaf", "examples/train/train.sheaf",
+      "examples/book/book.sheaf", "examples/temperature/temperature.sheaf",
     ],
     fn(f) {
       let #(_, rep) = load(f)
@@ -1618,7 +1619,7 @@ fn ordered_lists_and_wraps() -> Outcome {
     expect(
       flagged(
         clock_src <> "\nTrain {}\n  stops {Stop...} order: due.minutes.x\n",
-        "a key has one dot",
+        "a path has one dot",
       ),
       "a key with two dots",
     ),
