@@ -101,8 +101,54 @@ for (const [type, text, expected] of own) {
     got === expected, got);
 }
 
-// 7. The engine stays small: its own files, without the tests and the judge.
-const code_lines = ['read', 'declarations', 'rules', 'checks', 'etale'].map((name) =>
+// 7. Worked-out fields, rules, claims and mappings, which the judge compares with main.
+const worked = [
+  ['priv/stdlib/dates.etale', 'Date', '2024-02-29', 'accepted'],
+  ['priv/stdlib/dates.etale', 'Date', '2023-02-29', 'refused'],          // a rule: valid = True
+  ['priv/stdlib/dates.etale', 'Date', '1900-02-29', 'refused'],
+  ['priv/stdlib/dates.etale', 'Date', '2000-02-29', 'accepted'],
+  ['examples/book/book.etale', 'Book', 'examples/book/book_unknown.txt', 'refused'],   // a relation of two lists
+  ['examples/xor/xor.etale', 'Assoc', 'examples/xor/xor_bc.txt', 'refused'],
+  ['examples/xor/xor.etale', 'Assoc', 'examples/xor/xor_ab_c.txt', 'refused'],
+  ['examples/timetable/timetable.etale', 'Stop', 'Oslo S 10:05 +12\n', 'refused'],      // no Train around it
+  ['examples/timetable/timetable.etale', 'Stop', 'Oslo S 10:05 +1\n', 'accepted'],      // on time, so no Train is needed
+  ['examples/mistakes/mistakes.etale', 'Grade', '60', 'refused'],         // two cases apply
+  ['examples/mistakes/mistakes.etale', 'Grade', '70', 'accepted'],
+  ['examples/mistakes/mistakes.etale', 'Pair', '65', 'refused'],          // a claim that is false here
+  ['examples/mistakes/mistakes.etale', 'Label', '5', 'refused'],          // arithmetic on a text
+  ['examples/mistakes/mistakes.etale', 'Note', 'a few words', 'refused'], // no Basket around it
+];
+for (const [file, type, data, expected] of worked) {
+  if (!loaded.has(file)) loaded.set(file, reader(load(path.join(home, file)).rules));
+  const text = data.includes('/') ? fs.readFileSync(path.join(home, data), 'utf8') : data;
+  const got = verdict(loaded.get(file).ways(type, text));
+  test(type + ' on ' + JSON.stringify(data) + ' is ' + expected, got === expected, got);
+}
+const value_of = (file, type, text, field) => {
+  const { count, node } = (file ? reader(load(path.join(home, file)).rules) : language_reader).read(type, text);
+  const value = count === 1 ? node.memo?.get(field) : undefined;
+  return value?.top !== undefined ? Number(value.top) / Number(value.bottom) : value;
+};
+const stops = (...delays) => 'R10 60\n' + delays.map((delay, index) =>
+  ['Asker', 'Lier', 'Drammen', 'Oslo S'][index] + ' 0' + index + ':00 +' + delay + '\n').join('');
+const values = [
+  ['examples/timetable/timetable.etale', 'Train', stops(1, 0, 0, 0), 'average_delay', 0.2],   // a tie goes to even
+  ['examples/timetable/timetable.etale', 'Train', stops(3, 0, 0, 0), 'average_delay', 0.8],
+  ['examples/timetable/timetable.etale', 'Train', stops(1, 1, 2), 'average_delay', 1.3],
+  ['examples/timetable/timetable.etale', 'Train', stops(3, 0, 9), 'late_stop_count', 2],
+  ['examples/timetable/timetable.etale', 'Time', '23:50', 'minutes', 1430],
+  ['priv/stdlib/dates.etale', 'Date', '2023-02-28', 'r4', 3],                              // wrap_at: 4
+  ['priv/stdlib/bits.etale', 'Byte', '01000001', 'number', 65],
+  ['examples/train/train.etale', 'Journey', fs.readFileSync(path.join(home, 'examples/train/journey.txt'), 'utf8'), 'delay', 19],
+  [null, 'And_Gate', 'TRUEFALSE', 'out', 'FALSE'],                                         // a mapping in the seed
+];
+for (const [file, type, text, field, expected] of values) {
+  const got = value_of(file, type, text, field);
+  test(type + '.' + field + ' on ' + JSON.stringify(text.slice(0, 20)) + ' is ' + expected, got === expected, String(got));
+}
+
+// 8. The engine stays small: its own files, without the tests and the judge.
+const code_lines = ['read', 'evaluate', 'declarations', 'rules', 'checks', 'etale'].map((name) =>
   fs.readFileSync(path.join(home, 'engine', name + '.mjs'), 'utf8').split('\n')
     .filter((line) => line.trim() !== '' && !line.trim().startsWith('//')).length);
 const total = code_lines.reduce((a, b) => a + b, 0);

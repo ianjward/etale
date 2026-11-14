@@ -3,16 +3,21 @@
 //
 // It compares the verdicts accepted, refused and two readings on:
 //   A. every type of language.etale against a pool of texts;
-//   B. every file of the library and the examples: its own types against the pool, and
-//      against the data texts of its folder with near misses.
+//   B. every file of the library and the examples: its own types against the pool, against
+//      the data texts of its folder with near misses, and against texts made for its
+//      worked-out fields (made_texts).
 // A type is fully carried when nothing that it reaches has a line that the rules leave out.
 // A difference on a fully carried type fails the run. Other differences are counted, with main's
 // reason: they come from lines that the engine does not carry yet.
+//
+// On every text that both accept, every field of every record must have the same value as in
+// main, or the run fails.
 import fs from 'node:fs';
 import path from 'node:path';
 import { Worker, isMainThread } from 'node:worker_threads';
 import { home, seed, load, language_again } from './etale.mjs';
 import { reader } from './read.mjs';
+import { Exact, Sequence, INVALID, LATER, exact } from './evaluate.mjs';
 
 if (isMainThread) {                                   // main's checker needs a deep stack
   const worker = new Worker(new URL(import.meta.url), { resourceLimits: { stackSizeMb: 512 } });
@@ -49,9 +54,100 @@ function main_checker() {
     verdict(program_of_file, type, text) {
       const outcome = program.check(program_of_file, type, text);
       const verdict = outcome.ambiguous ? 'two readings' : outcome.ok ? 'accepted' : 'refused';
-      return { verdict, reason: [outcome.error, ...new Set(outcome.failures.toArray())].filter(Boolean).join('; ') };
+      return { verdict, reason: [outcome.error, ...new Set(outcome.failures.toArray())].filter(Boolean).join('; '),
+        records: outcome.ok ? outcome.records.toArray() : [] };
     },
+    show: globalThis.__load('etale/evaluate.mjs').show,
   };
+}
+
+// The values of every field of every record, main's against the engine's: a list of
+// differences, and how many values were compared.
+function value_differences(checker, records, node) {
+  const main_value = (value) => {
+    const kind = value.constructor.name;
+    if (kind === 'VNumber') return 'number ' + fraction(exact(checker.show(value)));
+    if (kind === 'VText') return 'text ' + JSON.stringify(value[0]);
+    if (kind === 'VRecord') return value[0].decl.name + ' at ' + value[0].node.s + '..' + value[0].node.e;
+    if (kind === 'VSeqv') return '[' + value.items.toArray().map(main_value).join(', ') + ']';
+    return kind === 'VInvalid' ? 'INVALID' : kind;
+  };
+  const engine_value = (value) => {
+    if (value instanceof Exact) return 'number ' + fraction(value);
+    if (typeof value === 'string') return 'text ' + JSON.stringify(value);
+    if (value instanceof Sequence) return '[' + value.items.map(engine_value).join(', ') + ']';
+    if (value === INVALID || value === LATER) return value.description;
+    return value.head + ' at ' + value.start + '..' + value.end;
+  };
+  const engine_records = new Map();
+  const visit = (value) => {
+    if (value instanceof Sequence) return value.items.forEach(visit);
+    const key = value?.head + ' at ' + value?.start + '..' + value?.end;
+    if (!value?.rule?.record || engine_records.has(key)) return;
+    engine_records.set(key, value);
+    for (const each of value.memo?.values() ?? []) visit(each);
+  };
+  for (let at = node; at; at = at.rule?.parts.length === 1 && !at.rule.record ? at.values[0] : null) visit(at);
+  const differences = [];
+  let compared = 0;
+  for (const record of records) {
+    const key = record.decl.name + ' at ' + record.node.s + '..' + record.node.e;
+    const found = engine_records.get(key);
+    if (!found) { differences.push(key + ': no such record in the engine'); continue; }
+    for (const [name, value] of record.cache) {
+      if (!found.memo?.has(name)) continue;          // main's own names, such as '2.' or 'stops.count'
+      compared++;
+      const [mine, theirs] = [engine_value(found.memo.get(name)), main_value(value)];
+      if (mine !== theirs) differences.push(key + ' ' + name + ': main ' + theirs + ', engine ' + mine);
+    }
+  }
+  return { differences, compared };
+}
+function fraction(number) {
+  return number.top + (number.bottom === 1n ? '' : '/' + number.bottom);
+}
+
+// Texts made for the worked-out fields of the library and the examples: dates around leap
+// years, every byte and every xor text, scores, windows, chains, and trains whose delays
+// round in every way.
+function made_texts(file) {
+  const two = (number) => String(number).padStart(2, '0');
+  const texts = [];
+  const stations = ['Asker', 'Lier', 'Drammen', 'Oslo S', 'Sande', 'Holm', 'Skoger', 'Hokksund', 'Vestfossen', 'Kongsberg'];
+  const train = (line, max, delays, kind) => line + (kind ? ' ' + kind : '') + ' ' + max + '\n'
+    + delays.map((delay, index) => stations[index] + ' ' + two(index * 2) + ':' + two(index * 5) + ' +' + delay + '\n').join('');
+  const delays = [[1, 0, 0, 0], [3, 0, 0, 0], [1, 1, 2], [2, 2, 1], [0, 0, 0, 0, 0, 0, 0, 0, 0, 5], [9, 10, 0],
+    [60, 0, 0, 0, 0, 0, 0], [0], [12], [2, 30], [61, 0], [120]];
+  if (file.endsWith('dates.etale')) {
+    for (const year of ['0000', '1600', '1900', '2000', '2023', '2024', '2100', '9999']) {
+      for (let month = 1; month <= 12; month++) for (let day = 1; day <= 31; day++) texts.push(year + '-' + two(month) + '-' + two(day));
+    }
+  }
+  if (file.endsWith('bits.etale')) for (let number = 0; number < 256; number++) texts.push(number.toString(2).padStart(8, '0'));
+  if (file.endsWith('xor.etale')) for (let number = 0; number < 2048; number++) texts.push(number.toString(2).padStart(11, '0'));
+  if (file.endsWith('logic.etale')) texts.push('TRUETRUE', 'TRUEFALSE', 'FALSETRUE', 'FALSEFALSE');
+  if (file.endsWith('mistakes.etale')) for (let number = 0; number <= 100; number++) texts.push(String(number), two(number % 10) + number);
+  if (file.endsWith('proofs.etale')) {
+    for (let start = 0; start <= 10; start += 3) for (let finish = 20; finish <= 30; finish += 4) texts.push(start + '..' + finish);
+    texts.push('+1', '+1+2', '+9+9+9+9', '+0+0');
+  }
+  if (file.endsWith('temperature.etale')) for (let degrees = -90; degrees <= 60; degrees += 7) texts.push('oslo ' + degrees);
+  if (file.includes('/timetable/') || file.includes('/train/')) {
+    const kind = file.includes('/train/');
+    for (const max of [10, 30, 60]) {
+      delays.forEach((each, index) => texts.push(train('R1' + index, max, each, kind && (index % 2 ? 'slow' : 'fast'))));
+    }
+    for (const delay of [0, 1, 2, 9, 10, 20]) texts.push('Oslo S 23:50 +' + delay + '\n');
+    if (kind) texts.push(train('R1', 60, [3, 4], 'fast') + train('R2', 30, [1, 2, 0], 'slow'));
+    else texts.push(train('R1', 60, [3, 4]) + '---\nAsker\nLier\n', train('R1', 60, [3, 4]) + '---\nLier\nAsker\n');
+  }
+  if (file.endsWith('orders/orders.etale') && !file.includes('/shop/')) {
+    for (const units of [1, 3, 10, 999]) {
+      for (const price of ['0.00', '1.99', '49.99', '500.00']) texts.push('order 7\nABC-1234 x' + units + ' @ ' + price + '\nXYZ-0001 x2 @ ' + price + '\n');
+    }
+  }
+  if (file.includes('/shop/')) texts.push('2024-02-29\nABC123 19.99\nXYZ999 0.01\n', '2023-02-29\nABC123 19.99\n');
+  return texts;
 }
 
 // The pool: whole files, blocks, lines, words, boxes and parentheses of every file, some texts
@@ -117,12 +213,24 @@ function judge() {
     const owners_left_out = new Set(left_out.map((line) => line.split(/[ .]/)[0]));
     const carried = (type) => ![...reach(type)].some((head) => owners_left_out.has(head.split('.')[0]));
     const group = { title, types: types.length, texts: texts.length, pairs: 0, same: 0, differ: new Map(),
-      failing: 0, by_rules: 0 };
+      failing: 0, by_rules: 0, values: 0 };
     for (const text of texts) {
       for (const type of types) {
         const from_host = checker.verdict(host, type, text);
-        const from_engine = ['refused', 'accepted', 'two readings'][ways.ways(type, text)];
+        const reading = ways.read(type, text);
+        const from_engine = ['refused', 'accepted', 'two readings'][reading.count];
         group.pairs++;
+        if (from_host.verdict === 'accepted' && from_engine === 'accepted') {
+          const { differences, compared } = value_differences(checker, from_host.records, reading.node);
+          group.values += compared;
+          for (const difference of differences) {
+            group.failing++;
+            const key = 'FAILING value ' + type + ': ' + difference;
+            const entry = group.differ.get(key) ?? { count: 0, example: text };
+            entry.count++;
+            group.differ.set(key, entry);
+          }
+        }
         if (from_host.verdict === from_engine) { group.same++; continue; }
         // Expected until rules are carried: main refuses by a rule, or picks one of the
         // engine's readings by one. Anything else, or any difference on a fully carried type,
@@ -166,21 +274,22 @@ function judge() {
       return [text.slice(0, at) + text.slice(at + 1), text.slice(0, at) + text[at] + text.slice(at)];
     }).flat());
     const types = engine.declarations.map((declaration) => declaration.name);
-    compare(file, host, engine.rules, types, [...new Set([...pool, ...data, ...near])], engine.left_out);
+    compare(file, host, engine.rules, types, [...new Set([...pool, ...data, ...near, ...made_texts(file)])], engine.left_out);
   }
 
   // The report: the log, the step summary, and notes on the run.
   const summary = [];
   const details = [];
-  const total = { pairs: 0, same: 0, by_rules: 0 };
+  const total = { pairs: 0, same: 0, by_rules: 0, values: 0 };
   for (const group of groups) {
     if (group.note !== undefined) { summary.push(group.title + ': skipped, ' + group.note); continue; }
     total.pairs += group.pairs;
     total.same += group.same;
     total.by_rules += group.by_rules;
+    total.values += group.values;
     summary.push(group.title + ': ' + group.types + ' types x ' + group.texts + ' texts, ' + group.same + ' of '
       + group.pairs + ' the same' + (group.by_rules ? ', ' + group.by_rules + ' by rules not carried' : '')
-      + (group.failing ? ', ' + group.failing + ' FAILING' : ''));
+      + (group.values ? ', ' + group.values + ' values' : '') + (group.failing ? ', ' + group.failing + ' FAILING' : ''));
     const differ = [...group.differ].sort((a, b) => Number(b[0].startsWith('FAILING')) - Number(a[0].startsWith('FAILING'))
       || b[1].count - a[1].count);
     if (differ.length) details.push(group.title + ':');
@@ -189,7 +298,8 @@ function judge() {
     }
   }
   const seconds = Math.round((performance.now() - began) / 1000);
-  summary.push('all: ' + total.same + ' of ' + total.pairs + ' the same, ' + total.by_rules + ' by rules not carried');
+  summary.push('all: ' + total.same + ' of ' + total.pairs + ' the same, ' + total.by_rules + ' by rules not carried; '
+    + total.values + ' values of fields compared');
   const verdict_line = (failures === 0
     ? 'The judge: every difference comes from a rule that the engine does not carry yet'
     : 'The judge: ' + failures + ' FAILING differences') + ' (' + seconds + ' s).';

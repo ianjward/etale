@@ -5,25 +5,21 @@
 // A part is a literal, or one or more types that must all read the same characters (the
 // reading and the ways come from the first type). A part may be a list of items, with a
 // least and a most count, and no item of a list is empty. A rule may also say which numbers
-// its whole text may write (ranges), how many decimal places it writes (places), and that
-// the number one part writes compares with the number another part writes, or with a fixed
-// number (needs).
+// its whole text may write (ranges) and how many decimal places it writes (places). A
+// record's rule names its stored fields among its parts, and may have fields worked out from
+// them: values, kept and collected lists, mappings, rules and claims (see rules.mjs).
 //
 // From one start in a text, the engine finds every place where a head can end, the number of
 // ways it can end there (1, or 2 for "two or more"), and one reading for each end. A reading
 // is a node: its head, its rule, where it starts and ends, and one value for each part of the
 // rule: a node for a type, null for a literal, and a chain of item values for a list (read
-// it with items_of).
-
-const compare = {
-  '=': (left, right) => left === right,
-  '<': (left, right) => left < right,
-  '<=': (left, right) => left <= right,
-  '>': (left, right) => left > right,
-  '>=': (left, right) => left >= right,
-};
+// it with items_of). A record with a field that is INVALID has no reading (evaluate.mjs).
+// Once the whole text has one reading, the fields that reach a record around their own are
+// worked out, and a failed rule, claim or mapping refuses the text.
+import { evaluator } from './evaluate.mjs';
 
 export function reader(rules, shortcut = true) {
+  const numeric = new Set(rules.filter((rule) => rule.number).map((rule) => rule.head));
   const rules_of = new Map();
   for (const rule of rules) {
     if (!rules_of.has(rule.head)) rules_of.set(rule.head, []);
@@ -40,7 +36,7 @@ export function reader(rules, shortcut = true) {
     let set = shortcut && own_rules.length > 0 ? new Set() : null;
     for (const rule of own_rules) {
       const [part] = rule.parts;
-      const bare = rule.parts.length === 1 && !part.list && !rule.ranges && !rule.needs;
+      const bare = rule.parts.length === 1 && !part.list && !rule.ranges && !rule.fields;
       const plain = set && bare && rule.places === undefined;
       const inner = plain && part.types?.length === 1 ? characters_of(part.types[0]) : null;
       if (plain && part.literal?.length === 1) set.add(part.literal);
@@ -54,26 +50,25 @@ export function reader(rules, shortcut = true) {
   function session(text) {
     const found = new Map();
     const nowhere = new Map();
-    const number = (start, end) => Number(text.slice(start, end));
+    const evaluation = evaluator(text, numeric);
+    const broken = [];                                // what refused the readings of the whole text
     const merge = (ends, end, count, node) => {
       const old = ends.get(end);
       if (old) old.count = Math.min(old.count + count, 2);
       else ends.set(end, { count: Math.min(count, 2), node });
     };
 
-    // Do a rule's ranges, places and needs hold, when its parts end at these bounds?
-    function holds(rule, bounds) {
+    // Do a rule's ranges and places hold on this reading, and is no field of it INVALID?
+    function holds(rule, node) {
       if (rule.ranges || rule.places !== undefined) {
-        const written = text.slice(bounds[0], bounds[bounds.length - 1]);
+        const written = text.slice(node.start, node.end);
         const value = Number(written);
         const inside = ([low, high]) => (low === null || value >= low) && (high === null || value <= high);
         if (rule.ranges && !rule.ranges.some(inside)) return false;
         const places = written.includes('.') ? written.length - written.indexOf('.') - 1 : 0;
         if (rule.places !== undefined && places !== rule.places) return false;
       }
-      return (rule.needs ?? []).every((need) => compare[need.comparison](
-        number(bounds[need.left], bounds[need.left + 1]),
-        need.value ?? number(bounds[need.right], bounds[need.right + 1])));
+      return !rule.fields || evaluation.valid(node);
     }
 
     // Every place where a text that starts here can end as this type.
@@ -88,9 +83,9 @@ export function reader(rules, shortcut = true) {
       const ends = new Map();
       found.set(key, ends);                           // asked again here, it has no reading yet
       for (const rule of rules_of.get(type) ?? []) {
-        // A rule with needs keeps every way to place its parts apart; any other rule keeps
+        // A rule with fields keeps every way to place its parts apart; any other rule keeps
         // one entry for each end.
-        const apart = rule.needs !== undefined;
+        const apart = rule.fields !== undefined;
         let reached = [{ bounds: [start], count: 1, values: [] }];
         for (const part of rule.parts) {
           const next = new Map();
@@ -107,8 +102,9 @@ export function reader(rules, shortcut = true) {
           reached = [...next.values()];
         }
         for (const { bounds, count, values } of reached) {
-          const end = bounds[bounds.length - 1];
-          if (holds(rule, bounds)) merge(ends, end, count, { head: type, rule, start, end, values });
+          const node = { head: type, rule, start, end: bounds[bounds.length - 1], values };
+          if (holds(rule, node)) merge(ends, node.end, count, node);
+          else if (start === 0 && node.end === text.length) broken.push(...(node.failures ?? []));
         }
       }
       return ends;
@@ -148,7 +144,12 @@ export function reader(rules, shortcut = true) {
       return ends;
     }
 
-    return (head) => ends_of(head, 0).get(text.length) ?? { count: 0, node: null };
+    return (head) => {
+      const whole = ends_of(head, 0).get(text.length) ?? { count: 0, node: null, failures: [...new Set(broken)] };
+      if (whole.count !== 1) return whole;
+      const failures = evaluation.settle(whole.node);
+      return failures.length ? { count: 0, node: whole.node, failures } : whole;
+    };
   }
 
   return {

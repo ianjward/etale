@@ -30,7 +30,7 @@ export function declarations_of(text, file) {
     while (node.head === 'Single_Item' || node.head === 'Union_Item') node = inner(node);
     if (node.head === 'Type_Name') return { type: slice(node) };
     if (node.head === 'String_Literal') return { literal: decode(slice(node)) };
-    if (node.head === 'Number_Literal') return { literal: slice(node) };
+    if (node.head === 'Number_Literal') return { literal: slice(node), number: true };
     return { characters: [decode(slice(value(node, 'low'))), decode(slice(value(node, 'high')))] };
   }
   function base_box(node) {
@@ -46,7 +46,7 @@ export function declarations_of(text, file) {
   // Fixed values: numbers, constants by name, and + - * of them.
   function expression(node) {
     while (['Named_End', 'Term', 'Calculation'].includes(node.head)) node = inner(node);
-    if (node.head === 'Number_Literal') return { number: Number(slice(node)) };
+    if (node.head === 'Number_Literal') return { number: slice(node) };
     if (node.head === 'Path') return { name: slice(node) };
     if (node.head === 'Arithmetic') {
       const calculation = inner(node);
@@ -85,7 +85,7 @@ export function declarations_of(text, file) {
       if (kind.head === 'Count_Property') {
         const quantity = inner(value(kind, 'allowed'));
         if (quantity.head === 'Natural') {
-          const count = { number: Number(slice(quantity)) };
+          const count = { number: slice(quantity) };
           found.count = { least: count, most: count };
         } else {
           const { low, high } = range(quantity);
@@ -93,27 +93,72 @@ export function declarations_of(text, file) {
         }
       } else if (kind.head === 'Digits_Property') found.digits = Number(slice(value(kind, 'digits')));
       else if (kind.head === 'Places_Property') found.places = Number(slice(value(kind, 'places')));
+      else if (kind.head === 'Round_Property') {
+        const direction = optional(kind, 'direction');
+        found.round = { unit: slice(value(kind, 'unit')), direction: direction ? slice(value(direction, 'word')) : 'even' };
+      } else if (kind.head === 'Wrap_Property') found.wrap = expression(value(kind, 'modulus'));
       else found.left_out.push(slice(kind));
     }
     return found;
   }
 
-  // A rule that compares one field with another field or a fixed value.
-  function need(node) {
-    const conditions = inner(node);
-    if (conditions.head !== 'And_Conditions' || items_of(value(conditions, 'rest')).length > 0) return null;
-    const condition = value(conditions, 'first');
-    const comparison = inner(value(condition, 'comparison'));
-    if (comparison.head !== 'Symbol_Comparison') return null;
-    const left = slice(value(condition, 'field'));
-    const right = inner(value(condition, 'right'));
-    const symbol = slice(value(comparison, 'symbol'));
-    if (left.includes('.')) return null;
-    if (right.head === 'Number_Literal') return { left, comparison: symbol, value: expression(right) };
-    if (right.head !== 'Path' || slice(right).includes('.')) return null;
-    const name = slice(right);
-    if (name[0] === name[0].toUpperCase()) return { left, comparison: symbol, value: { name } };
-    return { left, comparison: symbol, right: name };
+  // Values in calculations and conditions: numbers, texts, paths, + - * /, ranges, choices
+  // and ranges of characters.
+  function term(node) {
+    while (['Value', 'Choice_Value', 'Term', 'Calculation', 'Named_End', 'Range_Literal'].includes(node.head)) node = inner(node);
+    const ends = (low, high) => ({ range: [low && term(low), high && term(high)] });
+    switch (node.head) {
+      case 'Number_Literal': return { number: slice(node) };
+      case 'String_Literal': return { text: decode(slice(node)) };
+      case 'Path': return { path: slice(node).split('.') };
+      case 'Quotient': return { op: '/', terms: [term(value(node, 'dividend')), term(value(node, 'divisor'))] };
+      case 'Multi_Value': return { choice: list(node, 'first', 'rest').map(term) };
+      case 'Lower_Range': return ends(node.values[0], null);
+      case 'Upper_Range': return ends(null, node.values[1]);
+      case 'Character_Range': return { characters: ['low', 'high'].map((end) => decode(slice(value(node, end)))) };
+      case 'Arithmetic': {
+        const calculation = inner(node);
+        return { op: { Sum: '+', Difference: '-', Product: '*' }[calculation.head], terms: list(calculation, 'first', 'rest').map(term) };
+      }
+      default: return ends(value(node, 'low'), value(node, 'high'));
+    }
+  }
+
+  // A condition: comparisons joined by & (all) or by | (any).
+  function condition(node) {
+    while (node.head === 'Conditions' || node.head === 'Or_Conditions') node = inner(node);
+    if (node.head === 'Single_Choice') return { any: [comparison(node)] };
+    return { [node.head === 'And_Conditions' ? 'all' : 'any']: list(node, 'first', 'rest').map(comparison) };
+  }
+  function comparison(node) {
+    let kind = value(node, 'comparison');
+    if (kind.head === 'Comparison') kind = inner(kind);
+    const symbol = kind.head === 'Symbol_Comparison' ? slice(value(kind, 'symbol')) : 'in';
+    return { path: slice(value(node, 'field')).split('.'), comparison: symbol, right: term(value(node, 'right')) };
+  }
+
+  // A mapping: its inputs, and its cases. With one input, a case gives only its values.
+  function mapping(node, line) {
+    const head = value(node, 'head');
+    const inputs_node = value(head, 'inputs');
+    const second = optional(inputs_node, 'second');
+    const inputs = [slice(value(inputs_node, 'first')), ...(second ? [slice(value(second, 'next'))] : [])];
+    const cases = items_of(value(node, 'cases')).map((case_node) => {
+      const output = inner(value(case_node, 'output'));
+      const when = inner(value(case_node, 'when'));
+      const single = (symbol, right) => ({ all: [{ path: [inputs[0]], comparison: symbol, right: term(right) }] });
+      return {
+        output: output.head === 'Range_Box' ? term(value(output, 'range')) : output_item(inner(value(output, 'item'))),
+        when: when.head === 'Conditions' ? condition(when)
+          : when.head === 'Bound_Case' ? single(slice(value(when, 'symbol')), value(when, 'bound'))
+          : single('=', when),
+      };
+    });
+    return { name: slice(value(head, 'name')), line, role: 'mapping', inputs, cases };
+  }
+  function output_item(node) {
+    if (node.head === 'Type_Name') return { type: slice(node) };
+    return node.head === 'String_Literal' ? { text: decode(slice(node)) } : { number: slice(node) };
   }
 
   function refinement(node) {
@@ -153,21 +198,32 @@ export function declarations_of(text, file) {
     return { ...head, kind: 'layout', positions };
   }
 
+  // A field line: stored, worked out (a calculation, or a list kept or collected from a list),
+  // a rule, a claim or a mapping.
   function field_line(node) {
     const line = line_of(node);
-    if (node.head === 'Mapped_Field') return { name: slice(value(value(node, 'head'), 'name')), line, role: 'mapping' };
+    if (node.head === 'Mapped_Field') return mapping(node, line);
     const name = slice(value(node, 'name'));
     if (node.head === 'Union_Field_Line') return { name, line, role: 'stored', ...union_box(value(node, 'base')) };
     const box = base_box(value(node, 'base'));
     const extra = parens(optional(node, 'parens'));
-    const { count, places, left_out } = properties(optional(node, 'properties'));
+    const { count, places, round, wrap, left_out } = properties(optional(node, 'properties'));
     const base = box.items[0].type;
     const field = { name, line, role: 'stored', ...box };
     if (places !== undefined) field.places = places;
     if (base === 'Needs' || base === 'Claims') {
       field.role = base === 'Needs' ? 'rule' : 'claim';
-      if (field.role === 'rule' && extra.conditions) field.need = need(extra.conditions);
-    } else if (extra.calculation || extra.conditions) field.role = 'worked';
+      if (extra.conditions) field.condition = condition(extra.conditions);
+    } else if (extra.calculation) {
+      field.role = box.list ? 'collected' : 'worked';
+      field.value = term(extra.calculation);
+    } else if (extra.conditions) {
+      field.role = 'kept';
+      field.condition = condition(extra.conditions);
+      if (!box.list) left_out.push('a condition');
+    }
+    if (round) field.round = round;
+    if (wrap) field.wrap = wrap;
     if (extra.allowed) field.allowed = extra.allowed;
     if (count) field.count = count;
     if (left_out.length) field.left_out = left_out;

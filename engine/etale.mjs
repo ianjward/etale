@@ -69,57 +69,64 @@ function scope_of(file, root) {
   return [...seen];
 }
 
-// The types and constants that a declaration names.
+// The types and constants that a declaration names: in its items, its fixed values, and the
+// paths of its fields that start with a type.
 function names_used(declaration) {
-  const names = [];
-  const expression = (value) => {
-    if (!value) return;
-    if (value.name !== undefined) names.push(value.name);
-    for (const term of value.terms ?? []) expression(term);
+  const names = [...(declaration.types ?? [])];
+  const walk = (value) => {
+    if (Array.isArray(value)) return value.forEach(walk);
+    if (!value || typeof value !== 'object') return;
+    if (typeof value.type === 'string') names.push(value.type);
+    for (const name of [value.name, value.path?.[0]]) if (/^[A-Z]/.test(name ?? '')) names.push(name);
+    Object.values(value).forEach(walk);
   };
-  const line = (each) => {
-    for (const item of each.items ?? []) if (item.type) names.push(item.type);
-    for (const { low, high } of each.allowed ?? []) { expression(low); expression(high); }
-    if (each.count) { expression(each.count.least); expression(each.count.most); }
-    if (each.need?.value) expression(each.need.value);
-  };
-  line(declaration);
-  expression(declaration.constant);
-  for (const type of declaration.types ?? []) names.push(type);
-  for (const each of [...(declaration.positions ?? []), ...(declaration.fields ?? []), ...(declaration.shape ?? [])]) {
-    line(each);
-  }
+  walk({ ...declaration, name: undefined });
   return names;
 }
 
-// A file and what it needs from the files that it sees, as rules. The root is where groups
-// start: the repository, as in main's tests.
+// A file and what it needs from the files that it sees, as rules. A name in a declaration
+// from another file is looked up from that file: in it, then in the files that it sees. The
+// root is where groups start: the repository, as in main's tests.
 let language_declarations;
 export function load(file, text, root = home) {
   const own = read_file(file, text);
   if (own.count !== 1) return { ...own, rules: [], left_out: [], problems: [] };
   const problems = [];
-  const visible = new Map();
-  for (const other of scope_of(file, root)) {
-    for (const declaration of read_file(other).declarations) {
-      visible.set(declaration.name, [...(visible.get(declaration.name) ?? []), declaration]);
+  const files = new Map([[file, own.declarations]]);
+  const declared_in = (each) => {
+    if (!files.has(each)) files.set(each, read_file(each).declarations);
+    return files.get(each);
+  };
+  const scopes = new Map();
+  const seen_from = (each) => {
+    if (scopes.has(each)) return scopes.get(each);
+    const visible = new Map(declared_in(each).map((declaration) => [declaration.name, [declaration]]));
+    for (const other of scope_of(each, root)) {
+      for (const declaration of declared_in(other)) {
+        if (!declared_in(each).some((mine) => mine.name === declaration.name)) {
+          visible.set(declaration.name, [...(visible.get(declaration.name) ?? []), declaration]);
+        }
+      }
     }
-  }
+    scopes.set(each, visible);
+    return visible;
+  };
   language_declarations ??= language_again().declarations;
   const in_language = new Set(language_declarations.map((declaration) => declaration.name));
   const included = new Map(own.declarations.map((declaration) => [declaration.name, declaration]));
   for (const declaration of own.declarations) {
     if (in_language.has(declaration.name)) problems.push(declaration.name + ' is declared in language.etale');
   }
-  const waiting = [...own.declarations];
+  const waiting = own.declarations.map((declaration) => [declaration, file]);
   while (waiting.length > 0) {
-    for (const name of names_used(waiting.pop())) {
+    const [declaration, from] = waiting.pop();
+    for (const name of names_used(declaration)) {
       if (included.has(name) || in_language.has(name) || name === 'Integer' || name === 'Decimal') continue;
-      const found = visible.get(name) ?? [];
+      const found = seen_from(from).get(name) ?? [];
       if (found.length > 1) problems.push(name + ' is declared in ' + found.map((each) => each.file).join(' and '));
       if (found.length === 0) continue;
       included.set(name, found[0]);
-      waiting.push(found[0]);
+      waiting.push([found[0], path.join(home, found[0].file)]);
     }
   }
   const declarations = [...included.values()];
@@ -165,9 +172,9 @@ const commands = {
   },
   read(type, file, data) {
     const loaded = load(path.resolve(file));
-    const ways = reader(loaded.rules).ways(type, fs.readFileSync(data, 'utf8'));
-    console.log(['refused', 'accepted', 'two readings'][ways]);
-    return ways === 1 ? 0 : 1;
+    const { count, failures = [] } = reader(loaded.rules).read(type, fs.readFileSync(data, 'utf8'));
+    console.log(['refused', 'accepted', 'two readings'][count] + failures.map((failure) => '\n  ' + failure).join(''));
+    return count === 1 ? 0 : 1;
   },
   rules(file) {
     const loaded = load(path.resolve(file));
