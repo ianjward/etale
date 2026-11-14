@@ -152,7 +152,7 @@ const commands = {
     if (path.resolve(file) === language) {
       const problems = refusals(seed, new Map(language_again().declarations.map((each) => [each.name, each])));
       for (const problem of problems) console.log(problem);
-      return problems.length > 0 || commands.self();
+      return problems.length > 0 ? 1 : commands.self();
     }
     const loaded = load(path.resolve(file));
     if (loaded.count !== 1) {
