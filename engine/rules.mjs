@@ -10,7 +10,7 @@
 // { least, most } and allowed values are [{ low, high }...], each an expression or null:
 // { number }, { name } of a constant, or { op, terms } with + - * on fixed values.
 // A slot is a position: { number, items, list, count }, or in a shape { number, field, digits }.
-// A field is { name, line, role, items, list, count, allowed, need }, where role is stored,
+// A field is { name, line, role, items, list, count, allowed, places, need }, where role is stored,
 // worked, rule, claim or mapping, and a rule may have a need: { left, comparison, right } with
 // two field names, or { left, comparison, value } with an expression.
 // Each declaration may list, in left_out, what its lines say that the rules do not carry.
@@ -74,9 +74,10 @@ export function rules_of(declarations, scope = declarations, heads_made_before =
     if (line.items.length > 1) {
       make(owner, () => line.items.map((item) => ({ head: owner, parts: [item_part(item)] })));
     }
-    if (line.allowed) {
+    if (line.allowed || (line.places !== undefined && line.role === 'stored')) {
       const inner = part;
-      make(owner, () => [{ head: owner, parts: [inner], ranges: ranges_of(line.allowed) }]);
+      make(owner, () => [{ head: owner, parts: [inner], ...(line.allowed ? { ranges: ranges_of(line.allowed) } : {}),
+        ...(line.places !== undefined ? { places: line.places } : {}) }]);
       part = { types: [owner] };
     }
     if (name !== undefined) part = { name, ...part };

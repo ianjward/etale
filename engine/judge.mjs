@@ -116,16 +116,23 @@ function judge() {
     const reach = reaches(engine_rules);
     const owners_left_out = new Set(left_out.map((line) => line.split(/[ .]/)[0]));
     const carried = (type) => ![...reach(type)].some((head) => owners_left_out.has(head.split('.')[0]));
-    const group = { title, types: types.length, texts: texts.length, pairs: 0, same: 0, differ: new Map(), failing: 0 };
+    const group = { title, types: types.length, texts: texts.length, pairs: 0, same: 0, differ: new Map(),
+      failing: 0, by_rules: 0 };
     for (const text of texts) {
       for (const type of types) {
         const from_host = checker.verdict(host, type, text);
         const from_engine = ['refused', 'accepted', 'two readings'][ways.ways(type, text)];
         group.pairs++;
         if (from_host.verdict === from_engine) { group.same++; continue; }
-        const fully = carried(type);
-        if (fully) group.failing++;
-        const key = (fully ? 'FULLY CARRIED ' : '') + type + ': main ' + from_host.verdict
+        // Expected until rules are carried: main refuses by a rule, or picks one of the
+        // engine's readings by one. Anything else, or any difference on a fully carried type,
+        // fails the run.
+        const by_rules = from_host.reason.startsWith('the text has the right shape but breaks rules')
+          || (from_host.verdict === 'accepted' && from_engine === 'two readings');
+        const failing = carried(type) || !by_rules;
+        if (failing) group.failing++;
+        else group.by_rules++;
+        const key = (failing ? 'FAILING ' : '') + type + ': main ' + from_host.verdict
           + (from_host.verdict === 'refused' ? ' (' + from_host.reason + ')' : '') + ', engine ' + from_engine;
         const entry = group.differ.get(key) ?? { count: 0, example: text };
         entry.count++;
@@ -163,19 +170,30 @@ function judge() {
   }
 
   // The report: the log, the step summary, and notes on the run.
-  const lines = [];
+  const summary = [];
+  const details = [];
+  const total = { pairs: 0, same: 0, by_rules: 0 };
   for (const group of groups) {
-    if (group.note !== undefined) { lines.push(group.title + ': skipped, ' + group.note); continue; }
-    lines.push(group.title + ': ' + group.types + ' types, ' + group.texts + ' texts, ' + group.same + ' of '
-      + group.pairs + ' the same' + (group.failing ? ', ' + group.failing + ' on fully carried types' : ''));
-    for (const [key, { count, example }] of [...group.differ].sort((a, b) => b[1].count - a[1].count).slice(0, 8)) {
-      lines.push('    ' + count + ' x ' + key.slice(0, 300) + ', e.g. ' + JSON.stringify(example.slice(0, 80)));
+    if (group.note !== undefined) { summary.push(group.title + ': skipped, ' + group.note); continue; }
+    total.pairs += group.pairs;
+    total.same += group.same;
+    total.by_rules += group.by_rules;
+    summary.push(group.title + ': ' + group.types + ' types x ' + group.texts + ' texts, ' + group.same + ' of '
+      + group.pairs + ' the same' + (group.by_rules ? ', ' + group.by_rules + ' by rules not carried' : '')
+      + (group.failing ? ', ' + group.failing + ' FAILING' : ''));
+    const differ = [...group.differ].sort((a, b) => Number(b[0].startsWith('FAILING')) - Number(a[0].startsWith('FAILING'))
+      || b[1].count - a[1].count);
+    if (differ.length) details.push(group.title + ':');
+    for (const [key, { count, example }] of differ.slice(0, 6)) {
+      details.push('    ' + count + ' x ' + key.slice(0, 240) + ', e.g. ' + JSON.stringify(example.slice(0, 60)));
     }
   }
   const seconds = Math.round((performance.now() - began) / 1000);
+  summary.push('all: ' + total.same + ' of ' + total.pairs + ' the same, ' + total.by_rules + ' by rules not carried');
   const verdict_line = (failures === 0
-    ? 'The judge: no difference on any fully carried type'
-    : 'The judge: ' + failures + ' differences on fully carried types') + ' (' + seconds + ' s).';
+    ? 'The judge: every difference comes from a rule that the engine does not carry yet'
+    : 'The judge: ' + failures + ' FAILING differences') + ' (' + seconds + ' s).';
+  const lines = [...summary, '', ...details];
   console.log(lines.join('\n') + '\n' + verdict_line);
   if (process.env.GITHUB_STEP_SUMMARY) {
     fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, '## The new engine against main\n\n```\n' + lines.join('\n')
@@ -183,8 +201,8 @@ function judge() {
   }
   if (process.env.GITHUB_ACTIONS) {
     const escape = (text) => text.replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
-    const chunks = [];
-    for (let index = 0; index < lines.length; index += 25) chunks.push(lines.slice(index, index + 25).join('\n'));
+    const chunks = [summary.join('\n')];
+    for (let index = 0; index < details.length; index += 14) chunks.push(details.slice(index, index + 14).join('\n'));
     chunks.slice(0, 8).forEach((chunk, index) => console.log('::notice title=Judge ' + (index + 1) + '::' + escape(chunk)));
     console.log((failures ? '::error' : '::notice') + ' title=Judge verdict::' + verdict_line);
   }

@@ -160,9 +160,10 @@ export function declarations_of(text, file) {
     if (node.head === 'Union_Field_Line') return { name, line, role: 'stored', ...union_box(value(node, 'base')) };
     const box = base_box(value(node, 'base'));
     const extra = parens(optional(node, 'parens'));
-    const { count, left_out } = properties(optional(node, 'properties'));
+    const { count, places, left_out } = properties(optional(node, 'properties'));
     const base = box.items[0].type;
     const field = { name, line, role: 'stored', ...box };
+    if (places !== undefined) field.places = places;
     if (base === 'Needs' || base === 'Claims') {
       field.role = base === 'Needs' ? 'rule' : 'claim';
       if (field.role === 'rule' && extra.conditions) field.need = need(extra.conditions);
