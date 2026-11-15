@@ -46,18 +46,7 @@ export function rules_of(declarations, scope = declarations, heads_made_before =
   const left_out = [];
   const made = new Set(heads_made_before);
 
-  // A fixed value, exactly; null stays null.
-  function value_of(expression) {
-    if (expression === null || expression === undefined) return null;
-    if (expression.number !== undefined) return exact(String(expression.number));
-    if (expression.name !== undefined) {
-      if (!constants.has(expression.name)) throw new Error(expression.name + ' is not a constant');
-      return constants.get(expression.name);
-    }
-    const join = { '+': plus, '-': minus, '*': times };
-    if (!join[expression.op]) throw new Error('not a fixed value');
-    return expression.terms.map(value_of).reduce(join[expression.op]);
-  }
+  const value_of = (expression) => fixed_value(expression, constants);
   const to_number = (fixed) => (fixed === null ? null : Number(fixed.top) / Number(fixed.bottom));
   const as_number = (expression) => to_number(value_of(expression));
   for (const declaration of scope) {
@@ -93,10 +82,8 @@ export function rules_of(declarations, scope = declarations, heads_made_before =
   function item_part(item) {
     if (item.literal !== undefined) return { literal: item.literal };
     if (item.characters) {
-      const [first, last] = item.characters.map((character) => character.codePointAt(0));
       const head = JSON.stringify(item.characters[0]) + '..' + JSON.stringify(item.characters[1]);
-      make(head, () => Array.from({ length: last - first + 1 },
-        (_, index) => ({ head, parts: [{ literal: String.fromCodePoint(first + index) }] })));
+      make(head, () => characters(item.characters).map((literal) => ({ head, parts: [{ literal }] })));
       return { types: [head] };
     }
     return { types: [written_as[item.type] ?? item.type] };
@@ -141,21 +128,12 @@ export function rules_of(declarations, scope = declarations, heads_made_before =
     return part_of({ ...field, items: [{ type: head }] }, owner + '.' + field.name, field.name);
   }
 
-  // The value of a type that has one value, such as True or a constant, or undefined.
-  function one_value(name, seen = new Set()) {
-    if (constants.has(name)) return { number: decimal_text(constants.get(name)) };
-    const declaration = by_name.get(name);
-    if (!declaration || seen.has(name) || !['union', 'refinement'].includes(declaration.kind)) return undefined;
-    if (declaration.items.length !== 1 || declaration.list || declaration.count || declaration.allowed) return undefined;
-    const [item] = declaration.items;
-    if (item.literal !== undefined) return item.number ? { number: item.literal } : { text: item.literal };
-    return item.type && one_value(item.type, seen.add(name));
-  }
+  const one_of = (name) => one_value(by_name, constants, name);
 
   // A term with its constants and types of one value written out, and its ranges fixed.
   function resolve(term) {
     if (term.path?.length === 1 && /^[A-Z]/.test(term.path[0])) {
-      const fixed = one_value(term.path[0]);
+      const fixed = one_of(term.path[0]);
       if (!fixed) throw new Error(term.path[0] + ' has no one value');
       return fixed;
     }
@@ -215,7 +193,7 @@ export function rules_of(declarations, scope = declarations, heads_made_before =
         } else if (field.role === 'mapping') {
           const cases = field.cases.flatMap(({ output, when }) => {
             if (!output.range) {
-              const value = output.type ? one_value(output.type) : output;
+              const value = output.type ? one_of(output.type) : output;
               if (!value) throw new Error(output.type + ' has no one value');
               return [{ output: value, when: condition_of(when) }];
             }
@@ -322,6 +300,36 @@ export function rules_of(declarations, scope = declarations, heads_made_before =
   }
   return { rules, left_out };
 }
+
+// A fixed value, exactly: a number, a constant by name, or + - * of fixed values. Null stays
+// null. Constants gives each constant's value by name.
+export function fixed_value(expression, constants) {
+  if (expression === null || expression === undefined) return null;
+  if (expression.number !== undefined) return exact(String(expression.number));
+  if (expression.name !== undefined) {
+    const fixed = constants.get(expression.name);
+    if (fixed === undefined) throw new Error(expression.name + ' is not a constant');
+    return fixed;
+  }
+  const join = { '+': plus, '-': minus, '*': times }[expression.op];
+  if (!join) throw new Error('not a fixed value');
+  return expression.terms.map((term) => fixed_value(term, constants)).reduce(join);
+}
+
+// The value of a type that has one value, such as True or a constant, or undefined.
+export function one_value(by_name, constants, name, seen = new Set()) {
+  if (constants.has(name)) return { number: decimal_text(constants.get(name)) };
+  const declaration = by_name.get(name);
+  if (!declaration || seen.has(name) || !['union', 'refinement'].includes(declaration.kind)) return undefined;
+  if (declaration.items.length !== 1 || declaration.list || declaration.count || declaration.allowed) return undefined;
+  const [item] = declaration.items;
+  if (item.literal !== undefined) return item.number ? { number: item.literal } : { text: item.literal };
+  return item.type && one_value(by_name, constants, item.type, seen.add(name));
+}
+
+// The characters of a range such as "A".."Z", in code-point order.
+export const characters = ([first, last]) => Array.from({ length: last.codePointAt(0) - first.codePointAt(0) + 1 },
+  (_, index) => String.fromCodePoint(first.codePointAt(0) + index));
 
 // A rule in plain words, for people.
 export function in_words(rule) {

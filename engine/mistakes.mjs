@@ -38,6 +38,18 @@ export function mistakes_of(text) {
       with_lines('relation with another condition', replace(at, line.replace(/\)\s*$/, ' & 1 = 1)')));
     }
     if (/= True\b/.test(code)) with_lines('a type of many values', replace(at, line.replace('= True', '= Digit')));
+    const places = code.match(/places: ([1-9]\d*)/);
+    if (places && is_field(line)) {
+      with_lines('places lowered', replace(at, line.replace(places[0], 'places: ' + (Number(places[1]) - 1))));
+    }
+    // not through a field with a dot, such as rest.total: main counts no places there, and its
+    // bounds of a rounded field that reads itself so never end
+    const calculation = code.match(/\(([^()]*)\)\s*$/);
+    if (calculation && is_field(line) && !/\.\.\.\}/.test(code) && /[-+*/.]/.test(calculation[1])
+      && !/[<>=|&,]|\.\.|\.(?!(count|sum|min|max)\b)[a-z]/.test(calculation[1])) {
+      with_lines('rounded to 1', replace(at, line.replace(calculation[0].trimEnd(), calculation[0].trimEnd() + ' round: 1')));
+    }
+    if (is_field(line) && / = "/.test(code)) with_lines('a text compared with <', replace(at, line.replace(' = "', ' < "')));
     const range = code.match(/\((-?\d+)\.\.(\d+)\)/);
     if (range) {
       const [all, low, high] = range;

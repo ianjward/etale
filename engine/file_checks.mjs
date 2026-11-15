@@ -7,33 +7,19 @@
 // two declarations of one name; files that use each other), the fields of a record (reserved
 // names, a field twice, a rule with no condition), paths (an unknown field, a field below,
 // a list read as one value, a method in the middle), a path to a record around this one that
-// may not be there, and mappings (their inputs, their cases, coverage, disjointness and every
-// output produced).
+// may not be there, mappings (their inputs, their cases, coverage, disjointness and every
+// output produced), and numbers (arithmetic and order on what is not a number, also in a kept
+// list's condition; 'places:' and 'wrap_at:' only on numbers; a calculation gives a number;
+// decimal places that would need rounding, and a 'round:' with nothing to round; a product or
+// a quotient that reads two terms through a recursive field; a layout too small for its range).
 import { Exact, exact, plus, minus, times, decimal_text } from './evaluate.mjs';
+import { fixed_value, one_value, characters } from './rules.mjs';
 
 const reserved = ['value', 'text', 'count', 'sum', 'min', 'max'];
 const methods = ['count', 'sum', 'min', 'max'];
 const built_in = ['Integer', 'Decimal'];
 const literal_numbers = ['Integer_Literal', 'Decimal_Literal', 'Number_Literal'];
 const is_type_name = (name) => /^[A-Z]/.test(name ?? '');
-
-// The kinds of error that the engine carries, by the start of main's message.
-const carried = [
-  /: unknown type '/, /: type '.*' is used before it is declared/, /refers to itself; only a record field/,
-  /a record may use its own type only as a list/, /' is reserved \(/, /: field '.*' is declared twice/,
-  /\{Needs\}' has no condition/, /: unknown field '/, /cannot refer to itself/, /is declared below '/,
-  /is a list: read it with a method/, /a method ends the path/, /' reads a list, but /, /' takes a list of numbers/,
-  /' has no field '/, /' has no fields /, /' is not a record, so '/, /is not declared above this line/,
-  /has more than one inhabitant, so it is not a value/, /, so it must always sit inside /, /a relation between two lists/,
-  /two lists are related with in only/, /a relation is between two/, /are compared as single numbers or texts/,
-  /: a relation compares fields of the same type/,
-  /files use each other in a cycle/, /is already declared \(first declared at/, /is a built-in type/,
-  /mapping input '/, /a case output is a singleton/, /^[^ ]* error: case output /, /a case is a box/,
-  /a case predicate /, /is constrained twice in one case/, /takes one of a set of values; compare it with/,
-  /a value in this case is not a value of input/, /cases do not cover every input/, /cases are not disjoint/,
-  /no case produces /, /' is not a single value/, /a case compares to a literal or a range/,
-];
-export const carried_kind = (error) => carried.some((kind) => kind.test(error));
 
 // ---------- Numbers, exactly
 
@@ -118,8 +104,11 @@ export function file_errors(loaded) {
       for (const path of field_paths(field, declaration, relations)) check_path(declaration, field, path, above);
       for (const [comparison, clauses] of relations) check_relation(declaration, field, comparison, clauses);
       if (field.role === 'mapping') check_mapping(declaration, field, above);
+      check_numbers(declaration, field, where);
+      check_field_numbers(declaration, field, where);
       above.push(field.name);
     }
+    check_filters(declaration);
   }
 
   // The paths that main checks one by one in a field: its calculation, and the comparisons of
@@ -513,27 +502,31 @@ export function file_errors(loaded) {
     if (found.kind === 'union') {
       if (!numeric(by_name, [item])) return any;
       const each = found.items.map((one) => type_bounds(one, deeper));
-      return each.some((one) => one.low === null) || each.some((one) => one.high === null) ? {
-        low: each.some((one) => one.low === null) ? null : lowest(each.map((one) => one.low)),
-        high: each.some((one) => one.high === null) ? null : highest(each.map((one) => one.high)),
-      } : { low: lowest(each.map((one) => one.low)), high: highest(each.map((one) => one.high)) };
+      return { low: each.some((one) => one.low === null) ? null : lowest(each.map((one) => one.low)),
+        high: each.some((one) => one.high === null) ? null : highest(each.map((one) => one.high)) };
     }
     if (found.kind === 'intersection') return type_bounds({ type: found.types[0] }, deeper);
     if (found.kind === 'record') return any;
     let bounds = allowed_bounds(found.allowed);
     if (found.kind === 'layout' && built_in.includes(found.items[0]?.type)) {
       const signed = found.positions.some((slot) => slot.items.length === 1 && slot.items[0].literal === '-');
-      let digits = 0;
-      for (const slot of found.positions) {
-        if (slot.items.every((each) => each.literal !== undefined)) continue;
-        if (!slot.count) digits += 1;
-        else if (slot.count.most === null) { digits = null; break; } else digits += Number(fixed_value(slot.count.most, constants).top);
-      }
-      const capacity = digits === null ? null : minus(exact('1' + '0'.repeat(digits)), exact('1'));
+      const capacity = digit_capacity(found);
       bounds = narrow(bounds, { low: signed ? (capacity && minus(exact('0'), capacity)) : exact('0'), high: capacity });
     }
     if (found.kind === 'refinement') bounds = narrow(bounds, type_bounds(found.items[0], deeper));
     return bounds;
+  }
+
+  // The largest number that a layout of a number writes, or null when it has no most.
+  function digit_capacity(layout) {
+    let digits = 0;
+    for (const slot of layout.positions) {
+      if (slot.items.every((each) => each.literal !== undefined)) continue;
+      if (!slot.count) digits += 1;
+      else if (slot.count.most === null) return null;
+      else digits += Number(fixed_value(slot.count.most, constants).top);
+    }
+    return minus(exact('1' + '0'.repeat(digits)), exact('1'));
   }
 
   // The values of a finite union, in order, or undefined.
@@ -555,8 +548,214 @@ export function file_errors(loaded) {
     return values.filter((value, index) => values.findIndex((each) => same(each, value)) === index);
   }
 
+  // ---------- Numbers
+
+  // What a path holds for arithmetic and order, as main sees it: 'number', what it is when it is
+  // not one ('TRUE or FALSE', 'a record', or its type), or undefined when that is not known. A
+  // method gives a number, and a kept or a collected list is not a field.
+  function kind_of(record, [head, ...rest]) {
+    if (rest.length && methods.includes(rest.at(-1))) return 'number';
+    const field = field_of(record, head);
+    if (!field) return rest.length && by_name.get(head)?.kind === 'record' ? kind_of(by_name.get(head), rest) : undefined;
+    if (rest.length) {
+      const inner = field.items.length === 1 && record_of(field.items[0].type);
+      return inner && field_of(inner, rest[0]) ? kind_of(inner, rest) : undefined;
+    }
+    if (['rule', 'claim'].includes(field.role)) return 'TRUE or FALSE';
+    if (numeric(by_name, field.items)) return 'number';
+    if (field.role !== 'mapping' && field.items.length === 1 && record_of(field.items[0].type)) return 'a record';
+    return field.items.map((item) => item.type ?? (item.number ? item.literal : JSON.stringify(item.literal))).join(' | ');
+  }
+  const kinds = (record, term) => (term.path ? [[term.path.join('.'), kind_of(record, term.path)]]
+    : term.text !== undefined ? [[JSON.stringify(term.text), 'text']] : (term.terms ?? []).flatMap((each) => kinds(record, each)));
+  const not_number = ([, kind]) => kind !== undefined && kind !== 'number';
+  const verbs = { '+': 'added', '-': 'subtracted', '*': 'multiplied', '/': 'divided' };
+
+  // The order that the text field a path reaches names, 'order: Station_Order.rank'.
+  function text_order(record, [head, step]) {
+    const first = field_of(record, head);
+    const field = step === undefined ? first : field_of(record_of(first ? first.items[0]?.type : head), step);
+    return field?.order && !field.list && !field.count ? field.order.path.join('.') : undefined;
+  }
+
+  // Arithmetic and order take numbers: '(code * Two)' with code a Digit is an error.
+  function check_numbers(record, field, where) {
+    const complain = (name, kind, why) => error(record, field.line, name + ' is ' + kind + ', not a number, so it cannot be '
+      + why, where);
+    const in_arithmetic = (term) => term?.op && kinds(record, term).filter(not_number)
+      .forEach(([name, kind]) => complain(name, kind, verbs[term.op]));
+    if (field.role === 'worked') in_arithmetic(field.value);
+    if (!['rule', 'claim'].includes(field.role) || !field.condition) return;
+    for (const { path, comparison: symbol, right } of field.condition.all ?? field.condition.any) {
+      in_arithmetic(right);
+      if (!['<', '<=', '>', '>='].includes(symbol)) continue;
+      const order = text_order(record, path);
+      if (order !== undefined) {
+        if (right.text === undefined && (right.path && text_order(record, right.path)) !== order) {
+          error(record, field.line, 'two texts compared with ' + symbol + ' must name the same order: ' + path.join('.')
+            + ' is ordered by ' + order, where);
+        }
+        continue;
+      }
+      for (const [name, kind] of [[path.join('.'), kind_of(record, path)], ...kinds(record, right)].filter(not_number)) {
+        complain(name, kind, 'compared with ' + symbol + (['TRUE or FALSE', 'a record'].includes(kind) ? ''
+          : '. Texts take = only, unless their field names an order, e.g. ' + name + ' {' + kind + '} order: Station_Order.rank'));
+      }
+    }
+  }
+
+  // The decimal places of a calculation as main counts them: a literal's own, the larger for
+  // + and -, the sum for *; a field's 'places:', or its type's, or those of its calculation; 0
+  // for a count or an Integer field. Undefined when they are not known.
+  const field_places = (field) => field.places ?? (field.round ? decimals(field.round.unit)
+    : field.items.length === 1 ? type_places(field.items[0].type, []) : undefined);
+  function type_places(name, seen) {
+    const found = by_name.get(name);
+    if (!found || seen.includes(name)) return undefined;
+    if (['refinement', 'layout'].includes(found.kind) && found.places !== undefined) return found.places;
+    const base = found.kind === 'refinement' ? found.items[0]?.type : found.kind === 'intersection' ? found.types[0] : undefined;
+    return base && type_places(base, [name, ...seen]);
+  }
+  function places_of(record, term, seen = []) {
+    if (term.number !== undefined) return decimals(String(term.number));
+    if (term.name !== undefined) {
+      const fixed = by_name.get(term.name)?.constant;
+      return fixed === undefined || seen.includes(term.name) ? undefined : places_of(record, fixed, [term.name, ...seen]);
+    }
+    if (term.op) {
+      const each = term.terms.map((one) => places_of(record, one, seen));
+      return each.includes(undefined) ? undefined : term.op === '*' ? each.reduce((a, b) => a + b) : Math.max(...each);
+    }
+    const [name, step] = term.path ?? [];
+    if (step !== undefined) return step === 'count' ? 0 : undefined;
+    if (constants.has(name)) return places_of(record, { name }, seen);
+    const field = field_of(record, name);
+    if (!field) return undefined;
+    if (field_places(field) !== undefined) return field_places(field);
+    if (field.role === 'worked') return seen.includes(name) ? undefined : places_of(record, field.value, [name, ...seen]);
+    return ['Integer', 'Integer_Literal'].includes(field.items[0]?.type) ? 0 : undefined;
+  }
+
+  // A field's numbers: 'places:' and 'wrap_at:' only on numbers, a calculation that gives a
+  // number, its places, and the recursion rule on products and quotients.
+  function check_field_numbers(record, field, where) {
+    const number = numeric(by_name, field.items);
+    if ((field.places !== undefined || field.round) && !number) {
+      error(record, field.line, "'places=' applies only to numeric values", record.name);
+    }
+    if (field.wrap !== undefined) {
+      if (!number) error(record, field.line, "'mod=' applies only to numeric values", record.name);
+      let wrap;
+      try {
+        wrap = fixed_value(field.wrap, constants);
+      } catch {}
+      if (!wrap || compare(wrap, exact('0')) <= 0) {
+        error(record, field.line, 'wrap_at: needs a constant above 0, e.g. wrap_at: Hours_Per_Day: a zero or negative wrap has '
+          + 'no guard', record.name);
+      }
+    }
+    if (field.role !== 'worked') return;
+    if (!number && !['True', 'False'].includes(field.items[0]?.type)) {
+      error(record, field.line, 'a computed field produces a number, TRUE or FALSE, never text, a record or a sequence', where);
+    }
+    const { value, round } = field;
+    const held = field_places(field);
+    const got = value.op === '/' ? undefined : places_of(record, value);
+    // a unit of 1, 0.1, 0.01 and so on; main does not look at a unit such as 0.05
+    const plain_unit = round && same(exact(round.unit), new Exact(1n, 10n ** BigInt(decimals(round.unit))));
+    if (!round && held !== undefined && got > held) {
+      error(record, field.line, 'the value has ' + got + ' decimal places but the field holds ' + held + '; rounding never happens'
+        + ' implicitly: add round: with the unit to round to, e.g. round: 0.01', where);
+    } else if (plain_unit && got <= held) {
+      error(record, field.line, 'nothing to round: the calculation has at most ' + got + ' decimal places and the field holds '
+        + held + ', so drop round:', where);
+    }
+    const recursive = record.fields.filter((each) => each.role === 'stored' && each.items[0]?.type === record.name);
+    const through = (term) => term.path && !methods.includes(term.path[1]) && recursive.some((each) => each.name === term.path[0]);
+    if (value.op === '*' && value.terms.filter(through).length > 1) {
+      error(record, field.line, 'a product may read at most one factor through a recursive field (this would double the size of '
+        + 'the number at every level)', where);
+    }
+    if (value.op === '/' && value.terms.every(through)) {
+      error(record, field.line, 'a quotient may not read both its dividend and its divisor through a recursive field', where);
+    }
+  }
+
+  // A kept list's condition is checked as a filter of its item type wherever main's reader
+  // writes it into a method that reads the list: a field whose whole value is that method; a
+  // method in a calculation or a condition, once, as a field named by its path; and a count of
+  // its own, at its line, for a kept list that nothing reads.
+  function check_filters(record) {
+    const lists = new Map(record.fields.filter((each) => ['kept', 'collected'].includes(each.role)).map((each) => [each.name, each]));
+    const source = (view) => (view.role === 'kept' ? (view.condition.all ?? view.condition.any)[0].path[0] : view.value.path[0]);
+    const read = new Set();
+    const named = new Set();
+    function filter(name, line, where) {
+      const comparisons = [];
+      for (; lists.has(name); name = source(lists.get(name))) {
+        const view = lists.get(name);
+        if (view.role === 'kept') comparisons.push(...(view.condition.all ?? view.condition.any));
+      }
+      const stored = field_of(record, name);
+      if (!comparisons.length || !stored) return;
+      const item = record_of(stored.items[0]?.type);
+      if (!item) return error(record, line, "a kept list keeps some items of a list of records, and '" + name + "' is not one", where);
+      const inside = (term) => (term.path?.length === 2 && term.path[0] === name ? { path: term.path.slice(1) }
+        : term.op ? { ...term, terms: term.terms.map(inside) } : term);
+      for (const { path, comparison: symbol, right } of comparisons) {
+        const ordering = ['<', '<=', '>', '>='].includes(symbol);
+        const found = [...(ordering ? [[path.slice(1).join('.'), kind_of(item, path.slice(1))]] : []),
+          ...(ordering || right.op ? kinds(item, inside(right)) : [])];
+        for (const [what, kind] of found.filter(not_number)) {
+          error(record, line, what + ' is ' + kind + ', not a number, so it cannot be '
+            + (symbol === '=' ? 'used in arithmetic' : 'compared with ' + symbol), item.name + ' (a filter)');
+        }
+      }
+    }
+    const reads = (name) => {
+      for (; lists.has(name); name = source(lists.get(name))) read.add(name);
+    };
+    for (const field of record.fields.filter((each) => !lists.has(each.name))) {
+      const [x, m] = field.role === 'worked' && field.value.path ? field.value.path : [];
+      if (methods.includes(m)) {
+        reads(x);
+        filter(x, field.line, record.name + '.' + field.name);
+        continue;
+      }
+      const paths = [];
+      const walk_term = (term) => term && (term.path ? paths.push(term.path) : (term.terms ?? []).forEach(walk_term));
+      walk_term(field.value);
+      for (const { path, right } of ['rule', 'claim'].includes(field.role) && field.condition
+        ? field.condition.all ?? field.condition.any : []) {
+        paths.push(path);
+        walk_term(right);
+      }
+      for (const [list, method] of paths.filter((path) => methods.includes(path[1]))) {
+        reads(list);
+        if (named.has(list + '.' + method)) continue;
+        named.add(list + '.' + method);
+        filter(list, field.line, record.name + '.' + list + '.' + method);
+      }
+    }
+    for (const view of lists.values()) {
+      if (view.role === 'kept' && !read.has(view.name)) filter(view.name, view.line, record.name + '.' + view.name + '.count');
+    }
+  }
+
   for (const declaration of mine) {
     check_context(declaration);
+    if (['refinement', 'layout'].includes(declaration.kind) && declaration.places !== undefined
+      && !numeric(by_name, [{ type: declaration.name }])) {
+      error(declaration, declaration.line, "'places=' applies only to numeric values");
+    }
+    if (declaration.kind === 'layout' && built_in.includes(declaration.items[0]?.type) && declaration.allowed?.length === 1) {
+      const capacity = digit_capacity(declaration);
+      const high = declaration.allowed[0].high && fixed_value(declaration.allowed[0].high, constants);
+      if (capacity && high && compare(capacity, high) < 0) {
+        error(declaration, declaration.line, 'the val range does not fit what the layout holds (at most ' + decimal_text(capacity)
+          + ')');
+      }
+    }
     for (const name of [...types_of(declaration.items), ...(declaration.types ?? [])]) {
       type_ok(declaration, name, declaration.line, false);
     }
@@ -637,14 +836,13 @@ function stopping_error(loaded) {
 
 // ---------- Values
 
+const decimals = (text) => (text.includes('.') ? text.length - text.indexOf('.') - 1 : 0);
 const same = (a, b) => (typeof a === 'string' || typeof b === 'string' ? a === b : compare(a, b) === 0);
 const value_text = (value) => (typeof value === 'string'
   ? (value === 'TRUE' || value === 'FALSE' ? value : JSON.stringify(value)) : decimal_text(value));
 const number_of = (end) => exact(String(end.number ?? end));
 const unique_numbers = (numbers) => [...numbers].sort(compare).filter((number, index, all) => index === 0
   || compare(all[index - 1], number) !== 0);
-const characters = ([first, last]) => Array.from({ length: last.codePointAt(0) - first.codePointAt(0) + 1 },
-  (_, index) => String.fromCodePoint(first.codePointAt(0) + index));
 const item_text = (item) => (item.type ?? (item.text !== undefined ? JSON.stringify(item.text) : item.number));
 
 // The constants of the scope: a refinement whose parentheses hold a fixed value.
@@ -665,29 +863,6 @@ function constants_of(by_name) {
   for (const name of by_name.keys()) value(name, []);
   return constants;
 }
-function fixed_value(expression, constants) {
-  if (expression.number !== undefined) return exact(String(expression.number));
-  if (expression.name !== undefined) {
-    const fixed = constants.get(expression.name);
-    if (fixed === undefined) throw new Error(expression.name + ' is not a constant');
-    return fixed;
-  }
-  const join = { '+': plus, '-': minus, '*': times }[expression.op];
-  if (!join) throw new Error('not a fixed value');
-  return expression.terms.map((term) => fixed_value(term, constants)).reduce(join);
-}
-
-// The one value of a type that has one: a constant, or a literal through refinements.
-function one_value(by_name, constants, name, seen = new Set()) {
-  if (constants.has(name)) return { number: decimal_text(constants.get(name)) };
-  const found = by_name.get(name);
-  if (!found || seen.has(name) || !['union', 'refinement'].includes(found.kind)) return undefined;
-  if (found.items.length !== 1 || found.list || found.count || found.allowed) return undefined;
-  const [item] = found.items;
-  if (item.literal !== undefined) return item.number ? { number: item.literal } : { text: item.literal };
-  return item.type && one_value(by_name, constants, item.type, seen.add(name));
-}
-
 function numeric(by_name, items, seen = new Set()) {
   return items.every((item) => {
     if (item.number) return true;
