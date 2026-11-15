@@ -97,6 +97,8 @@ export function declarations_of(text, file) {
         const direction = optional(kind, 'direction');
         found.round = { unit: slice(value(kind, 'unit')), direction: direction ? slice(value(direction, 'word')) : 'even' };
       } else if (kind.head === 'Wrap_Property') found.wrap = expression(value(kind, 'modulus'));
+      else if (kind.head === 'Unique_Property') found.unique = { path: slice(value(kind, 'key')).split('.') };
+      else if (kind.head === 'Order_Property') found.order = { path: slice(value(kind, 'key')).split('.') };
       else found.left_out.push(slice(kind));
     }
     return found;
@@ -207,7 +209,7 @@ export function declarations_of(text, file) {
     if (node.head === 'Union_Field_Line') return { name, line, role: 'stored', ...union_box(value(node, 'base')) };
     const box = base_box(value(node, 'base'));
     const extra = parens(optional(node, 'parens'));
-    const { count, places, round, wrap, left_out } = properties(optional(node, 'properties'));
+    const { count, places, round, wrap, unique, order, left_out } = properties(optional(node, 'properties'));
     const base = box.items[0].type;
     const field = { name, line, role: 'stored', ...box };
     if (places !== undefined) field.places = places;
@@ -224,6 +226,8 @@ export function declarations_of(text, file) {
     }
     if (round) field.round = round;
     if (wrap) field.wrap = wrap;
+    if (unique) field.unique = unique;
+    if (order) field.order = order;
     if (extra.allowed) field.allowed = extra.allowed;
     if (count) field.count = count;
     if (left_out.length) field.left_out = left_out;

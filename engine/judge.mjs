@@ -138,9 +138,24 @@ function made_texts(file) {
       delays.forEach((each, index) => texts.push(train('R1' + index, max, each, kind && (index % 2 ? 'slow' : 'fast'))));
     }
     for (const delay of [0, 1, 2, 9, 10, 20]) texts.push('Oslo S 23:50 +' + delay + '\n');
+    // 'unique:' and 'order:': a station twice, stops out of time order or at the same time
+    const head = 'R1' + (kind ? ' fast' : '') + ' 60\n';
+    texts.push(head + 'Asker 00:00 +1\nAsker 01:00 +2\n', head + 'Asker 02:00 +1\nLier 01:00 +2\n',
+      head + 'Asker 01:00 +1\nLier 01:00 +2\n', head + 'Lier 01:00 +1\nAsker 01:00 +2\n');
     if (kind) texts.push(train('R1', 60, [3, 4], 'fast') + train('R2', 30, [1, 2, 0], 'slow'));
-    else texts.push(train('R1', 60, [3, 4]) + '---\nAsker\nLier\n', train('R1', 60, [3, 4]) + '---\nLier\nAsker\n');
+    else {
+      // an index in and out of the order of Station_Order.rank, where a space comes first
+      // and "a" ranks with "A"
+      // and "a" ranks with "A". One train stops at each station, so the index lists them all.
+      for (const index of [['Asker', 'Lier'], ['Lier', 'Asker'], ['Oslo', 'Oslo S'], ['Oslo S', 'Oslo'],
+        ['Oslo S', 'OsloA'], ['OsloA', 'Oslo S'], ['asker', 'Lier'], ['Lier', 'asker'], ['Asker', 'asker'],
+        ['asker', 'Asker'], ['Asker', 'Asker'], ['Asker', 'Lier', 'Asker']]) {
+        const trains = [...new Set(index)].map((station, at) => 'R' + (at + 1) + ' 60\n' + station + ' 0' + at + ':00 +1\n');
+        texts.push(trains.join('') + '---\n' + index.join('\n') + '\n');
+      }
+    }
   }
+  if (file.endsWith('book.etale')) texts.push('C001 Ann\nC001 Bo\n---\n1 C001\n', 'C001 Ann\nC002 Ann\n---\n1 C002\n');
   if (file.endsWith('orders/orders.etale') && !file.includes('/shop/')) {
     for (const units of [1, 3, 10, 999]) {
       for (const price of ['0.00', '1.99', '49.99', '500.00']) texts.push('order 7\nABC-1234 x' + units + ' @ ' + price + '\nXYZ-0001 x2 @ ' + price + '\n');
@@ -300,9 +315,9 @@ function judge() {
   const seconds = Math.round((performance.now() - began) / 1000);
   summary.push('all: ' + total.same + ' of ' + total.pairs + ' the same, ' + total.by_rules + ' by rules not carried; '
     + total.values + ' values of fields compared');
-  const verdict_line = (failures === 0
-    ? 'The judge: every difference comes from a rule that the engine does not carry yet'
-    : 'The judge: ' + failures + ' FAILING differences') + ' (' + seconds + ' s).';
+  const verdict_line = (failures > 0 ? 'The judge: ' + failures + ' FAILING differences'
+    : total.same === total.pairs ? 'The judge: every verdict and every value the same as main'
+    : 'The judge: every difference comes from a rule that the engine does not carry yet') + ' (' + seconds + ' s).';
   const lines = [...summary, '', ...details];
   console.log(lines.join('\n') + '\n' + verdict_line);
   if (process.env.GITHUB_STEP_SUMMARY) {

@@ -3,7 +3,7 @@
 A small engine that grows beside the Gleam host, which stays as it is. The Gleam host is the
 judge: on every type and every text that CI tries, both must give the same verdict, and on
 every text that both accept, every field of every record must have the same value. When the
-engine carries everything, the Gleam host can go.
+engine also checks files as main does, the Gleam host can go.
 
 To run the judge without CI, build main's checker first (it needs Gleam):
 
@@ -76,6 +76,12 @@ evaluate.mjs works out the fields over the reading, as language.etale says:
 - A list is one value only when it holds at most one item, and then 0 when it is empty.
 - A relation between two lists of the record, '(orders.customer in customers.code)', holds
   when every value on the left is a value on the right.
+- 'unique: code' on a list: while the text is read, a list with two items of the same key has
+  no reading. Numbers are the same by value, anything else by its text.
+- 'order: due.minutes' on a list: once the text is read, a key below the one before it refuses
+  the text. 'order: Station_Order.rank' on a text field names the mapping that ranks its
+  characters, and its texts compare by those ranks, character by character: in a list's
+  order and with < <= > >=. A text with a character that has no rank is never out of order.
 
 A refused text names what refused it:
 
@@ -87,14 +93,17 @@ refused
 
 ## What it carries, and what not yet
 
-Carried: unions, intersections, refinements, layouts, records with their stored fields and text
-shapes, counts, allowed values, constants by name, 'digits:', 'places:', a field that holds a
-named list of records, worked-out values, kept and collected lists, methods (count, sum, min,
-max), mappings, rules, claims, relations between lists, paths to a record around this one,
-'round:' and 'wrap_at:'.
+Every line of every file in the repo is carried: unions, intersections, refinements, layouts,
+records with their stored fields and text shapes, counts, allowed values, constants by name,
+'digits:', 'places:', a field that holds a named list of records, worked-out values, kept and
+collected lists, methods (count, sum, min, max), mappings, rules, claims, relations between
+lists, paths to a record around this one, 'round:', 'wrap_at:', 'unique:' and 'order:'. A line
+that the rules cannot carry is listed by 'node engine/etale.mjs rules FILE'.
 
-Not carried yet: 'unique:' and 'order:'. A text can break one of these and still be accepted by
-the engine. 'node engine/etale.mjs rules FILE' lists them for a file.
+Not done yet: checking a file the way main does. The engine checks texts against a file; it
+does not yet refuse a file for its own mistakes, such as a calculation that might not fit its
+type, a claim that does not hold for every text, or a name in the wrong form. Main reports
+errors in examples/mistakes, and 'node engine/etale.mjs check' reports none there.
 
 ## The two refusals
 

@@ -13,13 +13,16 @@
 // ways it can end there (1, or 2 for "two or more"), and one reading for each end. A reading
 // is a node: its head, its rule, where it starts and ends, and one value for each part of the
 // rule: a node for a type, null for a literal, and a chain of item values for a list (read
-// it with items_of). A record with a field that is INVALID has no reading (evaluate.mjs).
+// it with items_of). A record with a field that is INVALID, or a 'unique:' list with two
+// items of the same key, has no reading (evaluate.mjs).
 // Once the whole text has one reading, the fields that reach a record around their own are
 // worked out, and a failed rule, claim or mapping refuses the text.
 import { evaluator } from './evaluate.mjs';
 
 export function reader(rules, shortcut = true) {
   const numeric = new Set(rules.filter((rule) => rule.number).map((rule) => rule.head));
+  // the rules whose readings are checked: a record with fields or a 'unique:' list
+  const checked = new Set(rules.filter((rule) => rule.fields || rule.parts.some((part) => part.unique)));
   const rules_of = new Map();
   for (const rule of rules) {
     if (!rules_of.has(rule.head)) rules_of.set(rule.head, []);
@@ -68,7 +71,7 @@ export function reader(rules, shortcut = true) {
         const places = written.includes('.') ? written.length - written.indexOf('.') - 1 : 0;
         if (rule.places !== undefined && places !== rule.places) return false;
       }
-      return !rule.fields || evaluation.valid(node);
+      return !checked.has(rule) || evaluation.valid(node);
     }
 
     // Every place where a text that starts here can end as this type.
@@ -83,9 +86,9 @@ export function reader(rules, shortcut = true) {
       const ends = new Map();
       found.set(key, ends);                           // asked again here, it has no reading yet
       for (const rule of rules_of.get(type) ?? []) {
-        // A rule with fields keeps every way to place its parts apart; any other rule keeps
-        // one entry for each end.
-        const apart = rule.fields !== undefined;
+        // A checked rule keeps every way to place its parts apart; any other rule keeps one
+        // entry for each end.
+        const apart = checked.has(rule);
         let reached = [{ bounds: [start], count: 1, values: [] }];
         for (const part of rule.parts) {
           const next = new Map();

@@ -28,6 +28,9 @@
 //   { name, inputs, cases: [{ output, when }] }                  a mapping
 //   { name, needs: condition }  and  { name, claims: condition } a rule and a claim
 // A comparison between a field of the items of two lists of the record has relation: true.
+// A stored list's part may have unique and order, each the path of a key of its items, and a
+// stored text's part may have ranks: the rank of each character, from the mapping that its
+// 'order:' names.
 import { exact, plus, minus, times, decimal_text, term_words as term, condition_words as condition } from './evaluate.mjs';
 
 const written_as = { Integer: 'Integer_Literal', Decimal: 'Decimal_Literal' };
@@ -244,6 +247,31 @@ export function rules_of(declarations, scope = declarations, heads_made_before =
     return fields;
   }
 
+  const worked = new Map();
+  const worked_fields = (declaration) => {
+    if (!worked.has(declaration)) worked.set(declaration, fields_of(declaration));
+    return worked.get(declaration);
+  };
+
+  // The ranks that a mapping such as Station_Order.rank gives characters: each case whose
+  // output is a number and whose one comparison is = to a text or a choice of texts. The first
+  // case for a character counts.
+  function ranks_of([type, name, ...more]) {
+    const declaration = by_name.get(type);
+    if (more.length || declaration?.kind !== 'record') return undefined;
+    const mapping = worked_fields(declaration).find((field) => field.name === name && field.cases);
+    if (!mapping) return undefined;
+    const ranks = {};
+    for (const { output, when } of mapping.cases) {
+      const [only, ...others] = when.all ?? when.any;
+      if (output.number === undefined || others.length || !['=', 'in'].includes(only.comparison)) continue;
+      for (const right of only.right.choice ?? [only.right]) {
+        if (right.text !== undefined && !Object.hasOwn(ranks, right.text)) ranks[right.text] = output.number;
+      }
+    }
+    return ranks;
+  }
+
   for (const declaration of declarations) {
     const head = declaration.name;
     for (const what of declaration.left_out ?? []) left_out.push(head + ' (' + what + ')');
@@ -272,14 +300,22 @@ export function rules_of(declarations, scope = declarations, heads_made_before =
         const field = stored.find((each) => each.name === slot.field);
         if (!field) throw new Error(head + ': its text shape names ' + slot.field + ', not a stored field');
         const part = field_part(head, field, slot.digits);
-        return field.items.every((item) => item.number || (item.type && numeric(item.type))) ? { ...part, number: true } : part;
+        if (field.items.every((item) => item.number || (item.type && numeric(item.type)))) part.number = true;
+        for (const what of ['unique', 'order']) {
+          if (!field[what]) continue;
+          const ranks = !part.list && what === 'order' ? ranks_of(field.order.path) : undefined;
+          if (part.list) part[what] = field[what].path;
+          else if (ranks) part.ranks = ranks;
+          else left_out.push(head + '.' + field.name + ' (' + what + ': ' + field[what].path.join('.') + ')');
+        }
+        return part;
       });
       for (const field of declaration.fields) {
         for (const what of field.left_out ?? []) {
           if (what !== 'a condition') left_out.push(head + '.' + field.name + ' (' + what + ')');
         }
       }
-      const fields = fields_of(declaration);
+      const fields = worked_fields(declaration);
       rules.push({ head, record: true, parts, ...(fields.length ? { fields } : {}) });
     }
     if (numeric(head)) for (const rule of rules.slice(made_from)) if (rule.head === head) rule.number = true;
@@ -297,7 +333,9 @@ export function in_words(rule) {
   const one = (part) =>
     how_many(part)
     + (part.literal !== undefined ? JSON.stringify(part.literal) : part.types.join(' and also '))
-    + (part.name ? ' (' + part.name + ')' : '');
+    + (part.name ? ' (' + [part.name, part.unique && 'no two with the same ' + part.unique.join('.'),
+      part.order && 'ordered by ' + part.order.join('.'), part.ranks && 'ordered by the ranks of its characters']
+      .filter(Boolean).join(', ') + ')' : '');
   const range = ([low, high]) =>
     low === null ? 'at most ' + high : high === null ? 'at least ' + low : 'from ' + low + ' to ' + high;
   const field = (each) => each.name + (

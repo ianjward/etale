@@ -4,9 +4,10 @@
 // record (a node of a record's rule), a list, INVALID, or LATER: it reaches a record around
 // this one, so it is worked out only once the whole text is read.
 //
-// While the text is read, a record whose field is INVALID has no reading (read.mjs asks
-// valid). Once the whole text is read, settle works out what was LATER, in the records
-// around each record, and gives every failed rule, claim or mapping.
+// While the text is read, a record whose field is INVALID, or with a 'unique:' list that has
+// two items with the same key, has no reading (read.mjs asks valid). Once the whole text is
+// read, settle works out what was LATER, in the records around each record, and gives every
+// failed rule, claim or mapping, and every 'order:' list whose keys go down.
 
 export const INVALID = Symbol('INVALID');
 export const LATER = Symbol('LATER');
@@ -52,6 +53,14 @@ export function decimal_text(number) {
   const cut = digits.length - Number(places);
   return (scaled < 0n ? '-' : '') + digits.slice(0, cut) + (places > 0n ? '.' + digits.slice(cut) : '');
 }
+
+const fraction_text = (number) => {
+  try {
+    return decimal_text(number);
+  } catch {
+    return number.top + '/' + number.bottom;
+  }
+};
 
 // a mod m, never negative: the arithmetic of 'wrap_at:'.
 function wrap(a, m) {
@@ -305,7 +314,11 @@ export function evaluator(text, numeric) {
     for (const each of comparison.right.choice ?? [comparison.right]) {
       const right = calculate(each, node, outside);
       if (stop(right)) return right;
-      if (holds(left, comparison.comparison, right)) return 'yes';
+      // two texts compare by the ranks of their characters when the field has an 'order:'
+      const ordering = ['<', '<=', '>', '>='].includes(comparison.comparison);
+      const side = ordering && typeof left === 'string' && typeof right === 'string'
+        ? rank_order(ranks_of(node, comparison.path, outside), left, right) : null;
+      if (side !== null ? holds_as[comparison.comparison](side) : holds(left, comparison.comparison, right)) return 'yes';
     }
     return 'no';
   }
@@ -318,6 +331,82 @@ export function evaluator(text, numeric) {
     }
     if (right instanceof Exact) return left instanceof Exact && holds_as[comparison](order(left, right));
     return equal && typeof right === 'string' && left === right;
+  }
+
+  // ---------- Keys of the items of a list, for 'unique:' and 'order:'
+
+  // An item's key: a field, or a field of a field's record.
+  function key_of(item, path, outside) {
+    let value = item;
+    for (const step of path) {
+      if (!is_record(value)) return INVALID;
+      const record = value;
+      value = get(record, step, outside);
+      outside = outside && [record, ...outside];
+    }
+    return value;
+  }
+  // What two keys must differ in: numbers by value, everything else by its text.
+  const key_text = (value) =>
+    value instanceof Exact ? fraction_text(value)
+    : typeof value === 'string' ? value
+    : value instanceof Sequence ? '[' + value.items.map(key_text).join(', ') + ']'
+    : is_record(value) ? text.slice(value.start, value.end)
+    : value.description;
+  // The ranks that the field a path reaches orders its texts by, if it has an 'order:'.
+  function ranks_of(record, path, outside) {
+    for (let at = 0; is_record(record); at++) {
+      const line = lines_of(record.rule).get(path[at]);
+      if (at === path.length - 1) return line?.part === undefined ? undefined : record.rule.parts[line.part].ranks;
+      record = get(record, path[at], outside);
+    }
+    return undefined;
+  }
+  // Two texts, character by character: the first ranks that differ decide, and a text that
+  // runs out first comes first. Null when there are no ranks, or a character has none.
+  function rank_order(ranks, a, b) {
+    if (!ranks) return null;
+    const [left, right] = [Array.from(a), Array.from(b)];
+    for (let at = 0; ; at++) {
+      if (at === left.length || at === right.length) return Math.sign(left.length - right.length);
+      if (!Object.hasOwn(ranks, left[at]) || !Object.hasOwn(ranks, right[at])) return null;
+      const side = order(exact(ranks[left[at]]), exact(ranks[right[at]]));
+      if (side !== 0) return side;
+    }
+  }
+  // While reading: no two items of a 'unique:' list share their key.
+  function distinct(node, part) {
+    const list = get(node, part.name, null);
+    const seen = new Map();
+    for (const [index, item] of (list instanceof Sequence ? list.items : []).entries()) {
+      if (!is_record(item)) return true;
+      const key = key_text(key_of(item, part.unique, null));
+      if (seen.has(key)) {
+        fail(node, node.head + '.' + part.name + ' is unique by ' + part.unique.join('.') + ', but items '
+          + seen.get(key) + ' and ' + (index + 1) + ' both have ' + JSON.stringify(key));
+        return false;
+      }
+      seen.set(key, index + 1);
+    }
+    return true;
+  }
+  // Once read: the first place where the keys of an 'order:' list go down, or null. Numbers go
+  // down by value, and texts by the ranks of their field's 'order:'; other keys never do.
+  function goes_down(record, part, outside) {
+    const list = record.memo.get(part.name);
+    const around = [record, ...outside];
+    const items = list instanceof Sequence ? list.items : [];
+    for (let at = 1; at < items.length; at++) {
+      const [before, after] = [items[at - 1], items[at]].map((item) => key_of(item, part.order, around));
+      const down = before instanceof Exact && after instanceof Exact ? order(before, after) > 0
+        : typeof before === 'string' && typeof after === 'string'
+          && rank_order(ranks_of(items[at - 1], part.order, around), before, after) === 1;
+      if (down) {
+        return record.head + '.' + part.name + ' is ordered by ' + part.order.join('.') + ', but item ' + (at + 1)
+          + ' has ' + key_text(after) + ', below item ' + at + "'s " + key_text(before);
+      }
+    }
+    return null;
   }
 
   // A relation between two lists of this record: every value on the left is a value on the right.
@@ -341,8 +430,9 @@ export function evaluator(text, numeric) {
   }
 
   return {
-    // While reading: no field of this record is INVALID.
-    valid: (node) => [...lines_of(node.rule).keys()].every((name) => get(node, name, null) !== INVALID),
+    // While reading: no field of this record is INVALID, and its 'unique:' lists hold.
+    valid: (node) => [...lines_of(node.rule).keys()].every((name) => get(node, name, null) !== INVALID)
+      && node.rule.parts.every((part) => !part.unique || distinct(node, part)),
     // Once the whole text is read: the value of the reading, its LATER fields worked out in
     // the records around each record, and the failures of every record that its fields hold.
     settle(node) {
@@ -352,6 +442,10 @@ export function evaluator(text, numeric) {
         if (!is_record(value)) return;
         for (const name of lines_of(value.rule).keys()) get(value, name, outside);
         failures.push(...(value.failures ?? []));
+        for (const part of value.rule.parts) {
+          const down = part.order && goes_down(value, part, outside);
+          if (down) failures.push(down);
+        }
         for (const part of value.rule.parts) if (part.name !== undefined) visit(value.memo.get(part.name), [value, ...outside]);
       };
       visit(item_value(node, false), []);

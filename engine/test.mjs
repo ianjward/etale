@@ -117,6 +117,14 @@ const worked = [
   ['examples/mistakes/mistakes.etale', 'Pair', '65', 'refused'],          // a claim that is false here
   ['examples/mistakes/mistakes.etale', 'Label', '5', 'refused'],          // arithmetic on a text
   ['examples/mistakes/mistakes.etale', 'Note', 'a few words', 'refused'], // no Basket around it
+  // 'unique:' and 'order:'
+  ['examples/book/book.etale', 'Book', 'C001 Ann\nC001 Bo\n---\n1 C001\n', 'refused'],
+  ['examples/timetable/timetable.etale', 'Train', 'R1 60\nAsker 02:00 +1\nLier 01:00 +2\n', 'refused'],
+  ['examples/timetable/timetable.etale', 'Train', 'R1 60\nAsker 01:00 +1\nLier 01:00 +2\n', 'accepted'],
+  ['examples/timetable/timetable.etale', 'Train', 'R1 60\nAsker 01:00 +1\nAsker 02:00 +2\n', 'refused'],
+  ['examples/timetable/timetable.etale', 'Timetable', 'R1 60\nOslo 00:00 +1\nR2 60\nOslo S 01:00 +1\n---\nOslo\nOslo S\n', 'accepted'],
+  ['examples/timetable/timetable.etale', 'Timetable', 'R1 60\nOslo 00:00 +1\nR2 60\nOslo S 01:00 +1\n---\nOslo S\nOslo\n', 'refused'],
+  ['examples/timetable/timetable.etale', 'Timetable', 'R1 60\nasker 00:00 +1\nR2 60\nLier 01:00 +1\n---\nasker\nLier\n', 'accepted'],
 ];
 for (const [file, type, data, expected] of worked) {
   if (!loaded.has(file)) loaded.set(file, reader(load(path.join(home, file)).rules));
