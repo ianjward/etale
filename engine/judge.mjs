@@ -18,6 +18,7 @@ import { Worker, isMainThread } from 'node:worker_threads';
 import { home, seed, load, language_again } from './etale.mjs';
 import { reader } from './read.mjs';
 import { Exact, Sequence, INVALID, LATER, exact } from './evaluate.mjs';
+import { main_checker } from './main.mjs';
 
 if (isMainThread) {                                   // main's checker needs a deep stack
   const worker = new Worker(new URL(import.meta.url), { resourceLimits: { stackSizeMb: 512 } });
@@ -25,40 +26,6 @@ if (isMainThread) {                                   // main's checker needs a 
   worker.on('error', (error) => { console.error(error); process.exitCode = 1; });
 } else {
   process.exit(judge());
-}
-
-// Main's checker, from the page that tools/build_ide.sh builds.
-function main_checker() {
-  const page = fs.readFileSync(path.join(home, 'dist', 'workspace.html'), 'utf8');
-  const scripts = [...page.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].map((match) => match[1]);
-  globalThis.window = globalThis;
-  (0, eval)(scripts.find((script) => script.includes('window.ETALE_FILES')));
-  const bundle = scripts.find((script) => script.includes('__defs'));
-  (0, eval)(bundle.replace(/window\.__etale = __load\([^)]*\);/, 'globalThis.__load = __load;'));
-  const program = globalThis.__load('etale/program.mjs');
-  const dictionary = globalThis.__load('../gleam_stdlib/gleam/dict.mjs');
-  const to_list = globalThis.__load('gleam.mjs').toList;
-  const files = globalThis.ETALE_FILES;
-  const nothing = program.memory_fs(dictionary.new$(), '/', '/', '');
-  const start = program.new$(files['/priv/language.etale'], nothing, true)[0];
-  const all = program.memory_fs(dictionary.from_list(to_list(Object.entries(files))), '/', '/', '/priv/stdlib');
-  const base = new program.Program(start.decls, start.order, start.index, start.files, start.loaded,
-    start.main_file, start.grammar, start.ev, start.prelude_report, start.report, all);
-  return {
-    files,
-    load(file) {
-      const result = program.load(base, '/' + file);
-      return result.isOk() ? result[0][0] : null;
-    },
-    base,
-    verdict(program_of_file, type, text) {
-      const outcome = program.check(program_of_file, type, text);
-      const verdict = outcome.ambiguous ? 'two readings' : outcome.ok ? 'accepted' : 'refused';
-      return { verdict, reason: [outcome.error, ...new Set(outcome.failures.toArray())].filter(Boolean).join('; '),
-        records: outcome.ok ? outcome.records.toArray() : [] };
-    },
-    show: globalThis.__load('etale/evaluate.mjs').show,
-  };
 }
 
 // The values of every field of every record, main's against the engine's: a list of

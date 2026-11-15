@@ -2,13 +2,14 @@
 
 A small engine that grows beside the Gleam host, which stays as it is. The Gleam host is the
 judge: on every type and every text that CI tries, both must give the same verdict, and on
-every text that both accept, every field of every record must have the same value. When the
-engine also checks files as main does, the Gleam host can go.
+every text that both accept, every field of every record must have the same value. On every
+file that CI tries, an error of a kind that the engine checks must be the same in both. When
+the engine checks every kind of error that main does, the Gleam host can go.
 
-To run the judge without CI, build main's checker first (it needs Gleam):
+To run the judges without CI, build main's checker first (it needs Gleam):
 
 ```
-sh tools/build_ide.sh && node engine/judge.mjs
+sh tools/build_ide.sh && node engine/judge.mjs && node engine/judge_files.mjs
 ```
 
 ## How it starts
@@ -100,10 +101,44 @@ collected lists, methods (count, sum, min, max), mappings, rules, claims, relati
 lists, paths to a record around this one, 'round:', 'wrap_at:', 'unique:' and 'order:'. A line
 that the rules cannot carry is listed by 'node engine/etale.mjs rules FILE'.
 
-Not done yet: checking a file the way main does. The engine checks texts against a file; it
-does not yet refuse a file for its own mistakes, such as a calculation that might not fit its
-type, a claim that does not hold for every text, or a name in the wrong form. Main reports
-errors in examples/mistakes, and 'node engine/etale.mjs check' reports none there.
+## Checks on a file
+
+file_checks.mjs finds the mistakes in a file's own declarations, before any text is read, and
+writes each in main's words, so the file judge can compare them line for line:
+
+```
+node engine/etale.mjs check examples/mistakes/mistakes.etale
+examples/mistakes/mistakes.etale:4: error: type 'Later' is used before it is declared (line 5); ...
+```
+
+Carried so far:
+
+- Names: a type that is unknown, used before it is declared, or used by itself; a name
+  declared twice, or a name of the language or a built-in name declared again; files that use
+  each other.
+- Fields of a record: a reserved name, a field written twice, a record that holds itself other
+  than as a list from 0, a rule with no condition.
+- Paths: an unknown field, a field below, a field that names itself, a step that is not a
+  field, a list read as one value, a method that is not last or not on a list, '.sum' on a list
+  that is not of numbers, a type that is not a value; a relation between two lists (each side a
+  field of the items, with 'in' only, on a line of its own).
+- A path to a record around this one, when something can hold this record without one around.
+- Mappings: their inputs, their outputs, each case as a box, and the three checks of
+  language.etale: the cases cover every input, no two cases overlap, and every output is
+  produced.
+
+They follow what main does, as the file judge found it. Main's reader writes a kept or a
+collected list into the paths that use it, so such a list is not a field: a path of two or more
+steps through one is checked as a path through its list, and only if the list is written
+above. In a record with a text shape, the stored fields come first, in the order of the shape.
+A field written with 'digits:' has a type of its own, such as 'Hour.2', declared just above its
+record. A constant in a path is already a number.
+
+Not carried yet: the numbers (a calculation on a text, decimal places, 'round:', 'wrap_at:',
+a divisor that may be 0), claims (the prover), costs, the checks on 'order:', 'unique:' and
+kept and collected lists, the recursion rule on products, and the mistakes that main's line
+reader finds before checking (a line in the wrong form). The file judge counts each of these
+by kind.
 
 ## The two refusals
 
@@ -118,12 +153,17 @@ Decided on 14 November 2026, for this engine only:
 ```
 node engine/etale.mjs self                 language.etale gives back the stored rules
 node engine/etale.mjs seed                 store the rules that language.etale gives
-node engine/etale.mjs check FILE           read FILE and what it sees; the two refusals
+node engine/etale.mjs check FILE           FILE's errors, in main's words; the two refusals
 node engine/etale.mjs read TYPE FILE DATA  is the text of DATA a TYPE of FILE?
 node engine/etale.mjs rules FILE           FILE's rules, in plain words
 node engine/test.mjs                       the tests, with node alone
-node engine/judge.mjs                      against main's checker; CI runs it
+node engine/judge.mjs                      texts, against main's checker; CI runs it
+node engine/judge_files.mjs                files, against main's checker; CI runs it
 ```
+
+The file judge tries every file of the library and the examples as it is, and with one mistake
+made in it at a time (mistakes.mjs): about 1,400 files. It takes about 4 minutes. With
+JUDGE_CACHE=FILE it keeps main's errors in FILE between runs.
 
 ## The files
 
@@ -132,9 +172,11 @@ node engine/judge.mjs                      against main's checker; CI runs it
 - declarations.mjs: the declarations of a file, from the engine's reading of it as File.
 - rules.mjs: declarations to rules, and a rule in plain words.
 - checks.mjs: the two refusals.
+- file_checks.mjs: the checks on a file.
 - etale.mjs: the command line, and what a file sees.
 - seed.json: the stored rules of language.etale.
-- test.mjs and judge.mjs: the tests and the judge.
+- test.mjs, judge.mjs and judge_files.mjs: the tests and the two judges. main.mjs loads main's
+  checker for the judges; mistakes.mjs makes the mistakes that the file judge tries.
 
-The engine itself, without the tests and the judge, must stay under 2,000 lines of code. The
-tests check that.
+The engine itself, without the tests and the judges, must stay under 2,000 lines of code. The
+tests check that. It is 1,927 now: the checks on a file are 649 of them.

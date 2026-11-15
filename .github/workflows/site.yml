@@ -42,6 +42,8 @@ jobs:
       - run: sh tools/build_ide.sh
       - name: The new engine against main's checker
         run: node engine/judge.mjs
+      - name: The new engine's file checks against main's
+        run: node engine/judge_files.mjs
       - run: node tools/build_site.mjs
       - uses: actions/upload-pages-artifact@v3
         with:

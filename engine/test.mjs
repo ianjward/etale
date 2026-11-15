@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { home, language, seed, read_file, language_again, stored_form, load } from './etale.mjs';
 import { reader } from './read.mjs';
+import { file_errors } from './file_checks.mjs';
 
 let failed = 0;
 const test = (what, ok, detail = '') => {
@@ -155,8 +156,32 @@ for (const [file, type, text, field, expected] of values) {
   test(type + '.' + field + ' on ' + JSON.stringify(text.slice(0, 20)) + ' is ' + expected, got === expected, String(got));
 }
 
-// 8. The engine stays small: its own files, without the tests and the judge.
-const code_lines = ['read', 'evaluate', 'declarations', 'rules', 'checks', 'etale'].map((name) =>
+// 8. The checks on a file, in main's words (the file judge compares them with main).
+const errors_of = (file, text) => file_errors(load(path.join(home, file), text));
+const mistakes = errors_of('examples/mistakes/mistakes.etale').map((error) => error.replace(/^[^:]*:/, ''));
+for (const expected of [
+  "4: error: type 'Later' is used before it is declared (line 5); a name resolves only to a type declared above [Early]",
+  "9: error: 'value' is reserved (value, text, count, sum, min, max) and cannot name a field [Bad_Name.value]",
+  "13: error: field 'b' is declared below 'a'; a field may name only fields above it [Wrong_Order.a]",
+  '19: error: items is a list: read it with a method, .count or .sum [Basket.has_four]',
+  '24: error: cases do not cover every input combination; missing: score = 40; score = 41 [Grade.pass]',
+  '24: error: cases are not disjoint: score = 49 matches cases 3, 4 [Grade.pass]',
+  "58: error: 'Note' reaches Basket.items, so it must always sit inside a Basket, but nothing holds it inside one [Note]",
+]) test('mistakes.etale:' + expected.slice(0, 70), mistakes.includes(expected), mistakes.join('\n'));
+const clean = files.map((file) => path.relative(home, file))
+  .filter((file) => !/mistakes|cycle|peek/.test(file) && !file.endsWith('language.etale'));
+const unclean = clean.filter((file) => errors_of(file).length > 0);
+test('the other ' + clean.length + ' files have no errors', unclean.length === 0, unclean.join(', '));
+test('a.etale and b.etale use each other', errors_of('examples/cycle/a.etale')[0]?.includes('files use each other in a cycle'));
+test('peek.etale does not see Code', errors_of('examples/shop/orders/peek.etale')[0]?.endsWith("unknown type 'Code' [Peek]"));
+const book = fs.readFileSync(path.join(home, 'examples/book/book.etale'), 'utf8');
+test('a relation names a field the items have', errors_of('examples/book/book.etale', book.replace('customers.code)',
+  'customers.nowhere)'))[0]?.endsWith("'Customer' has no field 'nowhere' [Book.each_order_has_its_customer]"));
+test('a name of the language may not be declared again', errors_of('examples/book/book.etale', book + 'Digit {"x"}\n')[0]
+  ?.includes("type 'Digit' is already declared (first declared at language.etale:"));
+
+// 9. The engine stays small: its own files, without the tests and the judges.
+const code_lines = ['read', 'evaluate', 'declarations', 'rules', 'checks', 'file_checks', 'etale'].map((name) =>
   fs.readFileSync(path.join(home, 'engine', name + '.mjs'), 'utf8').split('\n')
     .filter((line) => line.trim() !== '' && !line.trim().startsWith('//')).length);
 const total = code_lines.reduce((a, b) => a + b, 0);

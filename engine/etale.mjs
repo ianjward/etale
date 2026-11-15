@@ -2,7 +2,7 @@
 //
 //   node engine/etale.mjs self                 language.etale gives back the stored rules
 //   node engine/etale.mjs seed                 store the rules that language.etale gives
-//   node engine/etale.mjs check FILE           read FILE and what it sees; the two refusals
+//   node engine/etale.mjs check FILE           FILE's errors, as main gives them; the two refusals
 //   node engine/etale.mjs read TYPE FILE DATA  is the text of DATA a TYPE of FILE?
 //   node engine/etale.mjs rules FILE           FILE's rules, in plain words
 //
@@ -14,6 +14,7 @@ import { reader } from './read.mjs';
 import { declarations_of } from './declarations.mjs';
 import { rules_of, in_words } from './rules.mjs';
 import { refusals } from './checks.mjs';
+import { file_errors } from './file_checks.mjs';
 
 export const home = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 export const language = path.join(home, 'priv', 'language.etale');
@@ -90,7 +91,7 @@ function names_used(declaration) {
 let language_declarations;
 export function load(file, text, root = home) {
   const own = read_file(file, text);
-  if (own.count !== 1) return { ...own, rules: [], left_out: [], problems: [] };
+  if (own.count !== 1) return { ...own, file: shown(file), rules: [], left_out: [], problems: [] };
   const problems = [];
   const files = new Map([[file, own.declarations]]);
   const declared_in = (each) => {
@@ -118,13 +119,26 @@ export function load(file, text, root = home) {
     if (in_language.has(declaration.name)) problems.push(declaration.name + ' is declared in language.etale');
   }
   const waiting = own.declarations.map((declaration) => [declaration, file]);
+  const uses = new Map();                              // the files that each file takes types from
   while (waiting.length > 0) {
     const [declaration, from] = waiting.pop();
+    const from_file = shown(from);
+    const use = (other) => {
+      if (other === from_file) return;
+      if (!uses.has(from_file)) uses.set(from_file, []);
+      if (!uses.get(from_file).includes(other)) uses.get(from_file).push(other);
+    };
     for (const name of names_used(declaration)) {
-      if (included.has(name) || in_language.has(name) || name === 'Integer' || name === 'Decimal') continue;
+      if (in_language.has(name) || name === 'Integer' || name === 'Decimal') continue;
+      if (included.has(name)) {
+        if (!(from === file || seen_from(from).has(name))) continue;
+        use(from === file ? included.get(name).file : seen_from(from).get(name)[0].file);
+        continue;
+      }
       const found = seen_from(from).get(name) ?? [];
       if (found.length > 1) problems.push(name + ' is declared in ' + found.map((each) => each.file).join(' and '));
       if (found.length === 0) continue;
+      use(found[0].file);
       included.set(name, found[0]);
       waiting.push([found[0], path.join(home, found[0].file)]);
     }
@@ -134,7 +148,7 @@ export function load(file, text, root = home) {
   const made = rules_of(declarations, [...language_declarations, ...declarations], heads);
   const declared = new Map([...language_declarations, ...declarations].map((each) => [each.name, each]));
   const rules = [...seed, ...made.rules];
-  return { ...own, rules, left_out: made.left_out, declared, problems: [...problems, ...refusals(rules, declared)] };
+  return { ...own, file: shown(file), rules, left_out: made.left_out, declared, language: language_declarations, uses, problems: [...problems, ...refusals(rules, declared)] };
 }
 
 const commands = {
@@ -166,9 +180,10 @@ const commands = {
       console.log(file + ': does not read as File in one way (' + loaded.count + ')');
       return 1;
     }
-    for (const problem of loaded.problems) console.log(problem);
-    console.log(file + ': ' + loaded.declarations.length + ' declarations, ' + loaded.problems.length + ' problems');
-    return loaded.problems.length > 0 ? 1 : 0;
+    const problems = [...file_errors(loaded), ...loaded.problems];
+    for (const problem of problems) console.log(problem);
+    console.log(file + ': ' + loaded.declarations.length + ' declarations, ' + problems.length + ' problems');
+    return problems.length > 0 ? 1 : 0;
   },
   read(type, file, data) {
     const loaded = load(path.resolve(file));

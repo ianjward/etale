@@ -150,13 +150,16 @@ export function declarations_of(text, file) {
       const when = inner(value(case_node, 'when'));
       const single = (symbol, right) => ({ all: [{ path: [inputs[0]], comparison: symbol, right: term(right) }] });
       return {
+        line: line_of(case_node),
         output: output.head === 'Range_Box' ? term(value(output, 'range')) : output_item(inner(value(output, 'item'))),
         when: when.head === 'Conditions' ? condition(when)
           : when.head === 'Bound_Case' ? single(slice(value(when, 'symbol')), value(when, 'bound'))
           : single('=', when),
       };
     });
-    return { name: slice(value(head, 'name')), line, role: 'mapping', inputs, cases };
+    const output_box = value(head, 'base');
+    const items = inner(output_box).head === 'Union_Box' ? union_box(inner(output_box)).items : base_box(output_box).items;
+    return { name: slice(value(head, 'name')), line, role: 'mapping', items, inputs, cases };
   }
   function output_item(node) {
     if (node.head === 'Type_Name') return { type: slice(node) };
@@ -191,8 +194,9 @@ export function declarations_of(text, file) {
     const positions = items_of(value(node, 'positions')).map((content) => {
       const position = inner(content);
       const number = Number(slice(value(position, 'number')));
-      if (position.head === 'Union_Position_Line') return { number, ...union_box(value(position, 'base')) };
-      const slot = { number, ...base_box(value(position, 'base')) };
+      const line = line_of(position);
+      if (position.head === 'Union_Position_Line') return { number, line, ...union_box(value(position, 'base')) };
+      const slot = { number, line, ...base_box(value(position, 'base')) };
       const { count } = properties(optional(position, 'properties'));
       if (count) slot.count = count;
       return slot;
@@ -246,9 +250,9 @@ export function declarations_of(text, file) {
           const number = Number(slice(value(position, 'number')));
           const { count, digits } = properties(optional(position, 'properties'));
           if (position.head === 'Field_Position') {
-            return { number, field: slice(value(value(position, 'base'), 'field')), digits };
+            return { number, line: line_of(position), field: slice(value(value(position, 'base'), 'field')), digits };
           }
-          return { number, ...base_box(value(position, 'base')), ...(count ? { count } : {}) };
+          return { number, line: line_of(position), ...base_box(value(position, 'base')), ...(count ? { count } : {}) };
         });
       }
     }
