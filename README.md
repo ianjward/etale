@@ -1,35 +1,35 @@
 # Etale
 
 Etale is an experimental typed language that aims to be a human-readable version of positive
-(geometric) logic. Its grammar is priv/language.etale, which reads itself.
+(geometric) logic. Its grammar is language/language.etale, which reads itself.
 
 This branch is the smallest form of the repository: Etale files, and one small engine that
 reads, writes, checks and runs them. It needs Node 22 and nothing else. There are no tests.
 
 ## What is here
 
-- priv/language.etale: the language.
-- priv/stdlib/: the standard library.
-- engine/: the engine, about 2,100 lines of code.
-- bin/etale.mjs: the command line.
+- language/: every Etale file. language.etale is the language; every other file is the
+  standard library, which every file sees.
+- engine/: the engine, about 2,100 lines of code, with its command line in etale.mjs. It goes
+  once Etale runs on its own kernel.
 
 ## Commands
 
 ```
-node bin/etale.mjs self                  language.etale reads as File and gives the stored rules back
-node bin/etale.mjs seed                  store the rules that language.etale gives
-node bin/etale.mjs check FILE            FILE's mistakes
-node bin/etale.mjs fmt FILE [--write]    FILE in its canonical form
-node bin/etale.mjs read FILE TYPE DATA   is the text of DATA a TYPE of FILE?
-node bin/etale.mjs run FILE TYPE DATA    read DATA as a TYPE of FILE and show every value
-node bin/etale.mjs print FILE TYPE DATA  the canonical text of DATA
-node bin/etale.mjs rules FILE            FILE's rules, in plain words
+node engine/etale.mjs self                  language.etale reads as File and gives the stored rules back
+node engine/etale.mjs seed                  store the rules that language.etale gives
+node engine/etale.mjs check FILE            FILE's mistakes
+node engine/etale.mjs fmt FILE [--write]    FILE in its canonical form
+node engine/etale.mjs read FILE TYPE DATA   is the text of DATA a TYPE of FILE?
+node engine/etale.mjs run FILE TYPE DATA    read DATA as a TYPE of FILE and show every value
+node engine/etale.mjs print FILE TYPE DATA  the canonical text of DATA
+node engine/etale.mjs rules FILE            FILE's rules, in plain words
 ```
 
 For example, with a date from the standard library in date.txt:
 
 ```
-node bin/etale.mjs run priv/stdlib/dates.etale Date date.txt
+node engine/etale.mjs run language/dates.etale Date date.txt
 ```
 
 ## How it starts

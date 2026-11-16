@@ -47,7 +47,7 @@ export function file_errors(loaded) {
   const place = (name) => {
     const found = by_name.get(name);
     if (!found) return -1;
-    if (found.file !== file) return found.file === 'priv/language.etale' ? found.line : 5e5;
+    if (found.file !== file) return found.file === 'language/language.etale' ? found.line : 5e5;
     return 1e6 + found.line;
   };
   const constants = constants_of(by_name);
@@ -737,7 +737,7 @@ function stopping_error(loaded) {
     const before = first.get(declaration.name);
     if (before) {
       return file + ':' + declaration.line + ":1: type '" + declaration.name + "' is already declared (first declared at "
-        + before.file.replace(/^priv\/(?=language\.etale)/, '') + ':' + before.line + '); two files may not declare the same name';
+        + before.file.replace(/^language\/(?=language\.etale)/, '') + ':' + before.line + '); two files may not declare the same name';
     }
     if (built_in.includes(declaration.name)) {
       return file + ':' + declaration.line + ":1: type '" + declaration.name + "' is a built-in type";

@@ -22,8 +22,8 @@ import { printer } from './print.mjs';
 import { INVALID, Exact, Sequence, decimal_text } from './evaluate.mjs';
 
 const home = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
-const language = path.join(home, 'priv', 'language.etale');
-const library = path.join(home, 'priv', 'stdlib');
+const library = path.join(home, 'language');
+const language = path.join(library, 'language.etale');
 const seed_file = path.join(home, 'engine', 'seed.json');
 const with_newline = (text) => (text.endsWith('\n') ? text : text + '\n');
 const shown = (file) => path.relative(home, file);
