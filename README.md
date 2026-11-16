@@ -4,8 +4,7 @@ Etale is an experimental typed language that aims to be a human-readable version
 (geometric) logic. Its grammar is priv/language.etale, which reads itself.
 
 This branch is the smallest form of the repository: Etale files, and one small engine that
-reads, writes, checks and runs them. It needs Node 22 and nothing else. There are no tests,
-no Gleam host, no workspace and no site.
+reads, writes, checks and runs them. It needs Node 22 and nothing else. There are no tests.
 
 ## What is here
 
