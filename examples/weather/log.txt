@@ -1,0 +1,8 @@
+ST1 -5 TRUE 2.5
+GATE
+ROOF
+---
+07 -3 snow ROOF
+12 4 sun GATE
+21 1 rain ROOF
++1+2
