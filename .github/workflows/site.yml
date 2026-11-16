@@ -28,6 +28,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: The new engine's tests
+        run: node engine/test.mjs
       - name: Install Gleam
         run: |
           base=https://github.com/gleam-lang/gleam/releases/download/v$GLEAM_VERSION
@@ -38,6 +40,10 @@ jobs:
       - run: gleam test
       - run: node bin/etale.mjs bootstrap
       - run: sh tools/build_ide.sh
+      - name: The new engine against main's checker
+        run: node engine/judge.mjs
+      - name: The new engine's file checks against main's
+        run: node engine/judge_files.mjs
       - run: node tools/build_site.mjs
       - uses: actions/upload-pages-artifact@v3
         with:
