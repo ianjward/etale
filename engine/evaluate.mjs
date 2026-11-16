@@ -402,8 +402,7 @@ export function evaluator(text, numeric) {
         : typeof before === 'string' && typeof after === 'string'
           && rank_order(ranks_of(items[at - 1], part.order, around), before, after) === 1;
       if (down) {
-        return record.head + '.' + part.name + ' is ordered by ' + part.order.join('.') + ', but item ' + (at + 1)
-          + ' has ' + key_text(after) + ', below item ' + at + "'s " + key_text(before);
+        return record.head + '.' + part.name + ': item ' + (at + 1) + ' is out of order by ' + part.order.join('.');
       }
     }
     return null;

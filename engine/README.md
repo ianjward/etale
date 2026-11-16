@@ -115,12 +115,12 @@ that the rules cannot carry is listed by 'node engine/etale.mjs rules FILE'.
 
 ## Checks on a file
 
-file_checks.mjs finds the mistakes in a file's own declarations, before any text is read, and
-writes each in main's words, so the file judge can compare them line for line:
+file_checks.mjs finds the mistakes in a file's own declarations, before any text is read. The
+words are the engine's own; the file judge compares only the verdict with main's:
 
 ```
 node engine/etale.mjs check examples/mistakes/mistakes.etale
-examples/mistakes/mistakes.etale:4: error: type 'Later' is used before it is declared (line 5); ...
+examples/mistakes/mistakes.etale:4: error: type 'Later' is used before it is declared (line 5) [Early]
 ```
 
 Carried so far:
@@ -139,22 +139,18 @@ Carried so far:
   language.etale: the cases cover every input, no two cases overlap, and every output is
   produced.
 - Numbers: arithmetic and order on what is not a number, as '(code * Two)' with code a Digit,
-  also in the condition of a kept list where a method reads it; two texts compared with '<'
+  also in the condition of a kept list; two texts compared with '<'
   by different orders; 'places:' and 'wrap_at:' only on numbers, and a wrap above 0; a
   calculation gives a number, TRUE or FALSE; decimal places that would need rounding, and a
   'round:' with nothing to round; a product or a quotient that reads two of its terms through
   a recursive field; a layout of a number too small for its range.
 
-They follow what main does, as the file judge found it. Main's reader writes a kept or a
-collected list into the paths that use it, so such a list is not a field: a path of two or more
-steps through one is checked as a path through its list, and only if the list is written
-above. In a record with a text shape, the stored fields come first, in the order of the shape.
-A field written with 'digits:' has a type of its own, such as 'Hour.2', declared just above its
-record. A constant in a path is already a number. The places of a number are counted as main's
-decimals count them: + and - keep the larger number, * adds them. A kept list's condition is
-checked where main's reader writes it into a method that reads the list: in a field whose whole
-value is that method; once for each method inside a calculation or a condition; and, for a kept
-list that nothing reads, at its own line.
+A kept or a collected list is not a field: a path of two or more steps through one is checked
+as a path through its list, and only if the list is written above. A field names only fields
+above it, but in a record with a text shape its stored fields may be named from any line. A
+number written with 'digits: 2' must fit in 2 digits. A constant in a path is already a number.
+The places of a number: + and - keep the larger number, * adds them. A kept list's condition is
+checked once, at the kept list's own line.
 
 Not carried yet: what needs the bounds of a calculation (a divisor that may be 0, a quotient
 with no 'round:' that may not be exact, a calculation that may not fit its type and needs
@@ -176,7 +172,7 @@ Decided on 14 November 2026, for this engine only:
 ```
 node engine/etale.mjs self                 language.etale gives back the stored rules
 node engine/etale.mjs seed                 store the rules that language.etale gives
-node engine/etale.mjs check FILE           FILE's errors, in main's words; the two refusals
+node engine/etale.mjs check FILE           FILE's errors; the two refusals
 node engine/etale.mjs read TYPE FILE DATA  is the text of DATA a TYPE of FILE?
 node engine/etale.mjs rules FILE           FILE's rules, in plain words
 node engine/test.mjs                       the tests, with node alone
@@ -185,7 +181,9 @@ node engine/judge_files.mjs                files, against main's checker; CI run
 ```
 
 The file judge tries every file of the library and the examples as it is, and with one mistake
-made in it at a time (mistakes.mjs): about 1,500 files. It takes about 4 minutes. With
+made in it at a time (mistakes.mjs): about 1,500 files. Each must have the same verdict as main:
+refused by both, or by neither. A file that main refuses only for a kind of error that the
+engine does not carry yet is counted, not judged. It takes about 4 minutes. With
 JUDGE_CACHE=FILE it keeps main's errors in FILE between runs, and with JUDGE_MAIN=LOG it takes
 them from a CI log (see the top of this page).
 
@@ -202,6 +200,5 @@ them from a CI log (see the top of this page).
 - test.mjs, judge.mjs and judge_files.mjs: the tests and the two judges. main.mjs loads main's
   checker for the judges; mistakes.mjs makes the mistakes that the file judge tries.
 
-The engine itself, without the tests and the judges, must stay at or under 2,100 lines of code.
-The tests check that. It is 2,082 now: the checks on a file are 801 of them. (The cap was
-2,000 until 15 November 2026, when the checks on numbers did not fit under it.)
+The engine itself, without the tests and the judges, must stay at or under 2,000 lines of code.
+The tests check that.
