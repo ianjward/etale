@@ -1,2 +1,0 @@
-# Money, seen by every file in shop/ and below.
-Money {Decimal} (0.00..) places: 2

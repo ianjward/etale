@@ -1,9 +1,0 @@
-# The front file of catalog/: Item is seen outside this folder.
-Item {}
-  code {Code}
-  price {Money}
-  text {Text}
-    1. {code}
-    2. {" "}
-    3. {price}
-    4. {Newline}

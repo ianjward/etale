@@ -11,7 +11,6 @@ no Gleam host, no workspace and no site.
 
 - priv/language.etale: the language.
 - priv/stdlib/: the standard library.
-- examples/: theories, with the texts that are read as them beside them.
 - engine/: the engine, about 2,100 lines of code.
 - bin/etale.mjs: the command line.
 
@@ -28,10 +27,10 @@ node bin/etale.mjs print FILE TYPE DATA  the canonical text of DATA
 node bin/etale.mjs rules FILE            FILE's rules, in plain words
 ```
 
-For example:
+For example, with a date from the standard library in date.txt:
 
 ```
-node bin/etale.mjs run examples/weather/weather.etale Log examples/weather/log.txt
+node bin/etale.mjs run priv/stdlib/dates.etale Date date.txt
 ```
 
 ## How it starts
@@ -63,6 +62,6 @@ exactly one way, to the same values, or printing fails.
   quotient with no 'round:' that may not be exact, a calculation that needs 'wrap_at:', a
   'wrap_at:' that can never wrap.
 - Claims as a proof over every text. A claim is checked on each text that is read, not
-  proved for all texts. So examples/mistakes/geometric.etale passes 'check'.
+  proved for all texts.
 - The checks on 'order:', 'unique:' and on kept and collected lists, before any text is read.
 - The seed is JSON, not a text of an Etale type.

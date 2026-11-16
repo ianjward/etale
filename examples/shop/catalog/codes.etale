@@ -1,4 +1,0 @@
-# Private to catalog/: only files in this folder see Code.
-Code {Text}
-  1. {Uppercase...} count: 3
-  2. {Digit...} count: 3
