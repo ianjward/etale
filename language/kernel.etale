@@ -8,7 +8,7 @@
 # A function takes no values and gives one value. The value of 'main' is
 # the exit code of the program. The machine has one block of memory, and
 # it reads its input and writes its output one byte at a time. 'read'
-# gives -1 at the end of the input.
+# gives 4294967295 at the end of the input: 32 bits that are all 1.
 #
 # WebAssembly has no free jumps. So control flow uses nested blocks:
 # 'block' and 'loop' open a block, and 'end' closes it. 'break 0' leaves
@@ -42,8 +42,14 @@ Stack_Count {Integer} (0..2)
 # How many arguments of one kind an instruction has.
 Argument_Count {Integer} (0..1)
 
+# A number of the machine: a whole number of 32 bits, never below 0. A
+# value, a local's number and a count of blocks are all U32. Arithmetic
+# wraps at 4294967296, and divide, remainder and less treat every value
+# as a U32.
+U32 {Integer} (0..4294967295)
+
 Number_Argument {}                       # " 5", in "push 5"
-  amount {Integer}
+  amount {U32}
   text {Text}
     1. {" "}
     2. {amount}

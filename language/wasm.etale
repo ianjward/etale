@@ -15,14 +15,18 @@
 # number in each. This compiler always writes five, which WebAssembly
 # allows. So the size of each instruction is known from its word.
 #
-# A number in WebAssembly is an i32: a whole number of 32 bits, from
-# -2147483648 to 2147483647.
+# A kernel number is a U32. WebAssembly writes the number of i32.const,
+# the opcode of push, as a signed number: from -2147483648 to
+# 2147483647. So a number of 2147483648 or more is written as that
+# number less 4294967296: the same 32 bits.
 
 Two {Integer} (2)
 Part_Size {Integer} (128)                # seven bits of a number fit in one byte
 More_Follows {Integer} (128)             # the top bit of a byte: another byte follows
 Number_Size {Integer} (5)                # the bytes of a number, always five
 Locals_And_End {Integer} (4)             # three bytes for the locals, one for the end
+Half_Of_U32 {Integer} (2147483648)
+All_Of_U32 {Integer} (4294967296)
 
 Eight_Bits {Binary_Digit...} count: 8
 Extra_Bits {"" | "01000000" | "0000001000000000" | "0000000000000000"}
@@ -33,10 +37,12 @@ Compiled_Value_Word {Push_Word | "drop" | Local_Word | Arithmetic_Word | Compare
 Compiled_Word {Compiled_Value_Word | Block_Word | Break_Word | Return_Word}
 
 Compiled_Number {}                       # " 5", in "push 5"
-  amount {Integer} (-2147483648..2147483647)
-  # The number in five bytes, seven bits in each, lowest first.
-  first_part {Integer} (amount) wrap_at: Part_Size
-  less_first_part {Integer} (amount - first_part)
+  amount {U32}
+  moved_up {Integer} (amount + Half_Of_U32) wrap_at: All_Of_U32
+  signed {Integer} (moved_up - Half_Of_U32)
+  # signed in five bytes, seven bits in each, lowest first.
+  first_part {Integer} (signed) wrap_at: Part_Size
+  less_first_part {Integer} (signed - first_part)
   after_first_part {Integer} (less_first_part / Part_Size)
   second_part {Integer} (after_first_part) wrap_at: Part_Size
   less_second_part {Integer} (after_first_part - second_part)
@@ -239,9 +245,9 @@ Compiled_Instruction {}                  # "  push 5"
     {"01101010"} ("add")
     {"01101011"} ("subtract")
     {"01101100"} ("multiply")
-    {"01101101"} ("divide")
-    {"01101111"} ("remainder")
-    {"01001000"} ("less")
+    {"01101110"} ("divide")
+    {"01110000"} ("remainder")
+    {"01001001"} ("less")
     {"01000110"} ("equal")
     {"00101101"} ("load_byte")
     {"00111010"} ("store_byte")
