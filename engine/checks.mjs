@@ -74,8 +74,6 @@ export function refusals(rules, declared) {
     }
   };
   report(starts_with_itself(rules), 'can reach itself before it reads a character');
-  report(lists_of_empty_items(rules),
-    'holds a list, or an item that may be absent, whose item can be the empty text:'
-    + ' put a mark that always reads, such as a separator, in the item');
+  report(lists_of_empty_items(rules), 'holds a list, or an optional item, whose item can be the empty text');
   return messages;
 }

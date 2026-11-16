@@ -2,7 +2,7 @@
 //
 //   node engine/etale.mjs self                 language.etale gives back the stored rules
 //   node engine/etale.mjs seed                 store the rules that language.etale gives
-//   node engine/etale.mjs check FILE           FILE's errors, as main gives them; the two refusals
+//   node engine/etale.mjs check FILE           FILE's errors; the two refusals
 //   node engine/etale.mjs read TYPE FILE DATA  is the text of DATA a TYPE of FILE?
 //   node engine/etale.mjs rules FILE           FILE's rules, in plain words
 //

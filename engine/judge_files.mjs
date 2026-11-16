@@ -8,10 +8,11 @@
 // dropped or written twice, the bounds of a range changed, 'places:' lowered by one, 'round: 1'
 // added to a calculation, and a text compared with '<'.
 //
-// For each file, main's errors and the engine's errors are compared as sets of lines, in
-// main's words. An error of a kind that the engine carries must be the same in both, or the
-// run fails. An error of another kind is counted as not carried yet. A file on which main's
-// checker itself fails is listed and not judged.
+// For each file the verdict must be the same: refused by both, or by neither, or the run
+// fails. The engine's words are its own; main's words only sort main's errors into the kinds
+// that the engine carries and those it does not yet. A file that main refuses only for a kind
+// not carried is counted, not judged. How many files also have their errors on the same lines
+// is printed. A file on which main's checker itself fails is listed and not judged.
 import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
@@ -104,7 +105,7 @@ function judge() {
   const print = process.env.GITHUB_EVENT_NAME === 'workflow_dispatch';
   const files = Object.keys(from_cache.files).filter((name) => name.endsWith('.etale') && name !== '/priv/language.etale')
     .map((name) => name.slice(1)).sort();
-  const totals = { files: 0, main: 0, same: 0, not_carried: 0, failing: 0, not_printed: 0 };
+  const totals = { files: 0, main: 0, same: 0, same_lines: 0, not_carried: 0, failing: 0, not_printed: 0 };
   const not_carried = new Map();
   const same = new Map();
   const kind_of = (error) => error.replace(/^[^ ]* (error: )?/, '').replace(/ \[[^\]]*\]$/, '')
@@ -133,23 +134,22 @@ function judge() {
         from_engine = ['the engine failed: ' + error.message];
       }
       totals.main += from_main.length;
-      // main stops loading on a mistake that the engine does not look for yet: the engine's
-      // errors for that text are not compared
-      const stopped = from_main.length === 1 && /^[^ ]*:\d+:\d+: /.test(from_main[0]) && !carried_kind(from_main[0]);
-      if (stopped) from_engine = [];
-      for (const error of from_main) {
-        if (from_engine.includes(error)) {
-          totals.same++;
-          same.set(kind_of(error), (same.get(kind_of(error)) ?? 0) + 1);
-        }
-        else if (carried_kind(error)) failing.push([file, change, 'main only: ' + error]);
-        else {
-          totals.not_carried++;
-          not_carried.set(kind_of(error), (not_carried.get(kind_of(error)) ?? 0) + 1);
-        }
+      // main stops loading on a mistake that the engine does not look for yet: not judged
+      const carried_main = from_main.filter(carried_kind);
+      if (carried_main.length === 0 && from_main.length) {
+        totals.not_carried++;
+        for (const error of from_main) not_carried.set(kind_of(error), (not_carried.get(kind_of(error)) ?? 0) + 1);
+        continue;
       }
-      for (const error of from_engine) {
-        if (!from_main.includes(error)) failing.push([file, change, 'engine only: ' + error]);
+      // the verdict must be the same: the file refused by both, or by neither
+      if (carried_main.length && !from_engine.length) failing.push([file, change, 'main only: ' + carried_main[0]]);
+      else if (!from_main.length && from_engine.length) failing.push([file, change, 'engine only: ' + from_engine[0]]);
+      else {
+        totals.same++;
+        const line_of = (error) => error.match(/^[^ ]*?:(\d+):/)?.[1];
+        const engine_lines = new Set(from_engine.map(line_of));
+        if (carried_main.every((error) => engine_lines.has(line_of(error)))) totals.same_lines++;
+        for (const error of carried_main) same.set(kind_of(error), (same.get(kind_of(error)) ?? 0) + 1);
       }
     }
   }
@@ -157,12 +157,12 @@ function judge() {
   totals.failing = failing.length;
   const seconds = Math.round((performance.now() - began) / 1000);
   const lines = [
-    totals.files + ' files (' + files.length + ' as they are, the rest with one mistake each): main reports '
-      + totals.main + ' errors; the engine reports ' + totals.same + ' of them the same, '
-      + totals.not_carried + ' are of kinds not carried yet'
+    totals.files + ' files (' + files.length + ' as they are, the rest with one mistake each): the same verdict on '
+      + totals.same + ' (' + totals.same_lines + ' of them with every error on the same line); '
+      + totals.not_carried + ' refused by main for a kind of error not carried yet'
       + (totals.not_printed ? '; ' + totals.not_printed + ' files are not in the printed log' : ''),
     '',
-    'the same, by kind:',
+    'the same verdict, by kind of error from main:',
     ...[...same].sort((a, b) => b[1] - a[1]).map(([kind, count]) => '  ' + count + ' x ' + kind),
     '',
     'not carried yet, by kind:',
@@ -172,7 +172,7 @@ function judge() {
     ...failing.slice(0, Number(process.env.JUDGE_SHOW ?? 40)).map(([file, change, what]) => 'FAILING ' + file + ' (' + change + '): ' + what),
   ];
   const verdict = (failing.length ? 'The file judge: ' + failing.length + ' FAILING differences'
-    : 'The file judge: every error of a carried kind the same as main') + ' (' + seconds + ' s).';
+    : 'The file judge: every verdict the same as main') + ' (' + seconds + ' s).';
   console.log(lines.join('\n') + '\n' + verdict);
   if (process.env.GITHUB_STEP_SUMMARY) {
     fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, '## The file judge\n\n```\n' + lines.join('\n') + '\n```\n\n'

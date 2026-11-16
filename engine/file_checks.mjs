@@ -1,5 +1,5 @@
-// The checks on a file: what main's checker refuses in a file's own declarations, before any
-// text is read. Each error is written as main writes it, so the file judge can compare them:
+// The checks on a file: what is refused in a file's own declarations, before any text is read.
+// Each error is written
 //   FILE:LINE: error: MESSAGE [WHERE]
 // and an error that stops a file loading as   FILE:LINE:COLUMN: MESSAGE
 //
@@ -37,20 +37,18 @@ export function file_errors(loaded) {
   const errors = [];
   const stop = stopping_error(loaded);
   if (stop) return [stop];
-  const by_name = new Map([...declared].map(([name, declaration]) => [name, declaration]));
+  const by_name = new Map(declared);
   for (const declaration of own) by_name.set(declaration.name, declaration);
-  const mine = with_digits(own, file);
-  for (const declaration of mine) by_name.set(declaration.name, declaration);
   const error = (declaration, line, message, where = declaration.name) =>
     errors.push(file + ':' + line + ': error: ' + message + ' [' + where + ']');
 
-  // A type's place in the order in which main declares types: the language first, then the
-  // files that this file uses, then this file from the top.
+  // A type's place in the order of declaration: the language first, then the files that this
+  // file uses, then this file from the top.
   const place = (name) => {
     const found = by_name.get(name);
     if (!found) return -1;
     if (found.file !== file) return found.file === 'priv/language.etale' ? found.line : 5e5;
-    return 1e6 + found.line - (found.digits_of ? 0.5 : 0);
+    return 1e6 + found.line;
   };
   const constants = constants_of(by_name);
   const singleton = (name) => one_value(by_name, constants, name);
@@ -62,42 +60,32 @@ export function file_errors(loaded) {
     else if (name === declaration.name && !recursive_ok) {
       error(declaration, line, "'" + name + "' refers to itself; only a record field may, as a list whose count starts at 0");
     } else if (here > place(declaration.name)) {
-      error(declaration, line, "type '" + name + "' is used before it is declared (line " + by_name.get(name).line
-        + '); a name resolves only to a type declared above');
+      error(declaration, line, "type '" + name + "' is used before it is declared (line " + by_name.get(name).line + ')');
     }
   }
   const types_of = (items) => (items ?? []).filter((item) => item.type).map((item) => item.type);
 
   // ---------- Records
 
-  // The fields in main's order: with a text shape, the stored fields in the order that the
-  // shape names them, then the others as written. A kept or a collected list is not a field.
-  function in_order(declaration) {
-    const fields = declaration.fields.filter((each) => !['kept', 'collected'].includes(each.role));
-    if (!declaration.shape) return fields;
-    const placed = declaration.shape.filter((slot) => slot.field !== undefined)
-      .map((slot) => fields.find((each) => each.name === slot.field && each.role === 'stored')).filter(Boolean);
-    return [...placed, ...fields.filter((each) => each.role !== 'stored')];
-  }
-
+  // A field names only fields above it, but in a record with a text shape its stored fields,
+  // which the text gives first, may be named from any line. A kept or a collected list is not
+  // a field.
   function check_record(declaration) {
-    const above = [];
-    for (const field of in_order(declaration)) {
+    const fields = declaration.fields.filter((each) => !['kept', 'collected'].includes(each.role));
+    const above = declaration.shape ? fields.filter((each) => each.role === 'stored').map((each) => each.name) : [];
+    const seen = [];
+    for (const field of fields) {
       const where = declaration.name + '.' + field.name;
-      if (field.role === 'rule' && !field.condition) {
-        error(declaration, field.line, "'" + field.name + " {Needs}' has no condition, so it would always hold; give it one, e.g. "
-          + field.name + ' {Needs} (total >= 0)', where);
-      }
+      if (field.role === 'rule' && !field.condition) error(declaration, field.line, "'" + field.name + " {Needs}' has no condition", where);
       if (reserved.includes(field.name)) {
         error(declaration, field.line, "'" + field.name + "' is reserved (" + reserved.join(', ') + ') and cannot name a field', where);
       }
-      if (above.includes(field.name)) error(declaration, field.line, "field '" + field.name + "' is declared twice", where);
+      if (seen.includes(field.name)) error(declaration, field.line, "field '" + field.name + "' is declared twice", where);
       for (const name of types_of(['stored', 'worked'].includes(field.role) ? field.items : [])) {
         const recursive_ok = name === declaration.name && Boolean(field.list || field.count)
           && Number((field.count?.least ?? { number: 0 }).number) === 0;
         if (name === declaration.name && !recursive_ok) {
-          error(declaration, field.line, 'a record may use its own type only as a list whose count starts at 0, e.g. '
-            + 'children {Node...} or next {Chain} count: 0..1', where);
+          error(declaration, field.line, 'a record may hold its own type only as a list whose count starts at 0', where);
         } else type_ok(declaration, name, field.line, recursive_ok);
       }
       const relations = [];
@@ -107,19 +95,28 @@ export function file_errors(loaded) {
       check_numbers(declaration, field, where);
       check_field_numbers(declaration, field, where);
       above.push(field.name);
+      seen.push(field.name);
+    }
+    // a number written with 'digits: 2' must fit in 2 digits
+    for (const slot of declaration.shape ?? []) {
+      const field = slot.digits !== undefined && field_of(declaration, slot.field);
+      const high = field && type_bounds(field.items[0], []).high;
+      const most = exact('1' + '0'.repeat(slot.digits));
+      if (high && compare(high, most) >= 0) {
+        error(declaration, slot.line ?? field.line, field.name + ' does not fit in ' + slot.digits + ' digits', declaration.name);
+      }
     }
     check_filters(declaration);
   }
 
-  // The paths that main checks one by one in a field: its calculation, and the comparisons of
+  // The paths that are checked one by one in a field: its calculation, and the comparisons of
   // its condition that are not relations between lists or 'in'. A kept or a collected list is
   // not a field: a path through it is a path through the list that it comes from.
   function field_paths(field, record, relations = []) {
     const paths = [];
-    // the views written above this field: main's reader writes them out as it reads
     const views = new Map(record.fields.slice(0, record.fields.indexOf(field))
       .filter((each) => ['kept', 'collected'].includes(each.role)).map((each) => [each.name, each]));
-    // main's reader writes a path of two or more steps through a view as a path through its list
+    // a path of two or more steps through a kept or collected list is a path through its list
     const through_view = (path) => path?.length > 1 && views.has(path[0]);
     const through = (path, seen = []) => {
       const view = path.length > 1 && views.get(path[0]);
@@ -161,31 +158,20 @@ export function file_errors(loaded) {
     const example = field.name + ' {Needs} (' + left + ' in ' + other + ')';
     const bad = (message) => error(record, field.line, message, where);
     if (field.role === 'claim') return bad('a relation between two lists is a rule, not a claim: ' + example);
-    if (!['=', 'in'].includes(comparison)) {
-      return bad('two lists are related with in only: each item of ' + left_list + ' matches an item of ' + right_list
-        + ', ' + example);
-    }
+    if (!['=', 'in'].includes(comparison)) return bad('two lists are related with in only: ' + example);
     if (clauses !== 1) return bad('a relation between two lists is a line of its own, with no other condition: ' + example);
     if (left_list === right_list) return bad('a relation is between two different lists: ' + example);
     const item_of = (name) => record_of(field_of(record, name).items[0]?.type);
     const [left_item, right_item] = [item_of(left_list), item_of(right_list)];
-    if (!left_item || !right_item) {
-      return bad('a relation is between two lists of records: ' + left_list + ' and ' + right_list
-        + ' must each be a list of one record type');
-    }
+    if (!left_item || !right_item) return bad('a relation is between two lists of records');
     const [one, two] = [field_of(left_item, left_field), field_of(right_item, right_field)];
     if (!one) return bad("'" + left_item.name + "' has no field '" + left_field + "'");
     if (!two) return bad("'" + right_item.name + "' has no field '" + right_field + "'");
     const single = (each) => !each.list && !each.count && !record_of(each.items[0]?.type);
-    if (!single(one) || !single(two)) {
-      return bad(left + ' and ' + other + ' are compared as single numbers or texts: neither may be a list or a record');
-    }
+    if (!single(one) || !single(two)) return bad(left + ' and ' + other + ' must be single numbers or texts');
     const same_kind = item_text(one.items[0]) === item_text(two.items[0])
       || (numeric(by_name, one.items) && numeric(by_name, two.items));
-    if (!same_kind) {
-      bad(left + ' is ' + item_text(one.items[0]) + ' but ' + other + ' is ' + item_text(two.items[0])
-        + ': a relation compares fields of the same type');
-    }
+    if (!same_kind) bad('a relation compares fields of the same type: ' + left + ' and ' + other + ' are not');
   }
 
   // ---------- Paths
@@ -208,8 +194,7 @@ export function file_errors(loaded) {
     if (is_type_name(head) && path.length > 1 && by_name.has(head)) {
       const outer = by_name.get(head);
       if (outer.kind === 'record') return walk(declaration, where, path.slice(1), outer, field.line);
-      return error(declaration, field.line, "'" + head + "' is not a record, so '" + head + '.' + step
-        + "' names nothing; a path that starts with a type reaches a record around this one", where);
+      return error(declaration, field.line, "'" + head + "' is not a record, so '" + head + '.' + step + "' names nothing", where);
     }
     if (is_type_name(head)) {
       if (path.length === 1 && constants.has(head)) return;
@@ -224,8 +209,7 @@ export function file_errors(loaded) {
     if (!field_of(declaration, head)) return error(declaration, field.line, "unknown field '" + head + "'", where);
     if (head === field.name) return error(declaration, field.line, "field '" + head + "' cannot refer to itself", where);
     if (!above.includes(head)) {
-      return error(declaration, field.line, "field '" + head + "' is declared below '" + field.name
-        + "'; a field may name only fields above it", where);
+      return error(declaration, field.line, "field '" + head + "' is declared below '" + field.name + "'", where);
     }
     walk(declaration, where, path, declaration, field.line);
   }
@@ -247,9 +231,7 @@ export function file_errors(loaded) {
       }
       const fields_here = at && record_of(at.name);
       if (at && index > 0 && is_type_name(step)) {
-        return error(declaration, line, "'" + path.slice(0, index + 1).join('.') + "': a path holds only fields, and a type "
-          + 'cannot narrow a list. To keep some of the items, give ' + at.name + ' a field with cases and keep the items on '
-          + 'a line of their own, e.g. (' + so_far + '.field = True)', where);
+        return error(declaration, line, "'" + path.slice(0, index + 1).join('.') + "': a path holds only fields", where);
       }
       if (!fields_here) return error(declaration, line, "'" + so_far + "' has no fields", where);
       const next = field_of(fields_here, step);
@@ -322,8 +304,7 @@ export function file_errors(loaded) {
       }
       const domain = domain_of(input_field, declaration);
       if (!domain) {
-        return error(declaration, field.line, "mapping input '" + input + "' must be of a finite union type or a numeric type "
-          + '(text and sequence inputs are not allowed)', where);
+        return error(declaration, field.line, "mapping input '" + input + "' must be a finite union or a number", where);
       }
       domains.set(input, domain);
     }
@@ -378,8 +359,7 @@ export function file_errors(loaded) {
       const produced = cases.map((one_case) => output_value(one_case.output)).filter((value) => value !== undefined);
       const lost = outputs.filter((value) => !produced.some((each) => same(each, value)));
       if (lost.length) {
-        error(declaration, field.line, 'no case produces ' + lost.map(value_text).join(', ')
-          + '; every value of the output type must be produced by some case', where);
+        error(declaration, field.line, 'no case produces ' + lost.map(value_text).join(', '), where);
       }
     }
   }
@@ -592,14 +572,12 @@ export function file_errors(loaded) {
       const order = text_order(record, path);
       if (order !== undefined) {
         if (right.text === undefined && (right.path && text_order(record, right.path)) !== order) {
-          error(record, field.line, 'two texts compared with ' + symbol + ' must name the same order: ' + path.join('.')
-            + ' is ordered by ' + order, where);
+          error(record, field.line, 'two texts compared with ' + symbol + ' must name the same order', where);
         }
         continue;
       }
       for (const [name, kind] of [[path.join('.'), kind_of(record, path)], ...kinds(record, right)].filter(not_number)) {
-        complain(name, kind, 'compared with ' + symbol + (['TRUE or FALSE', 'a record'].includes(kind) ? ''
-          : '. Texts take = only, unless their field names an order, e.g. ' + name + ' {' + kind + '} order: Station_Order.rank'));
+        complain(name, kind, 'compared with ' + symbol);
       }
     }
   }
@@ -641,17 +619,16 @@ export function file_errors(loaded) {
   function check_field_numbers(record, field, where) {
     const number = numeric(by_name, field.items);
     if ((field.places !== undefined || field.round) && !number) {
-      error(record, field.line, "'places=' applies only to numeric values", record.name);
+      error(record, field.line, "'places:' and 'round:' apply only to numbers", where);
     }
     if (field.wrap !== undefined) {
-      if (!number) error(record, field.line, "'mod=' applies only to numeric values", record.name);
+      if (!number) error(record, field.line, "'wrap_at:' applies only to numbers", where);
       let wrap;
       try {
         wrap = fixed_value(field.wrap, constants);
       } catch {}
       if (!wrap || compare(wrap, exact('0')) <= 0) {
-        error(record, field.line, 'wrap_at: needs a constant above 0, e.g. wrap_at: Hours_Per_Day: a zero or negative wrap has '
-          + 'no guard', record.name);
+        error(record, field.line, "'wrap_at:' needs a constant above 0", where);
       }
     }
     if (field.role !== 'worked') return;
@@ -664,8 +641,7 @@ export function file_errors(loaded) {
     // a unit of 1, 0.1, 0.01 and so on; main does not look at a unit such as 0.05
     const plain_unit = round && same(exact(round.unit), new Exact(1n, 10n ** BigInt(decimals(round.unit))));
     if (!round && held !== undefined && got > held) {
-      error(record, field.line, 'the value has ' + got + ' decimal places but the field holds ' + held + '; rounding never happens'
-        + ' implicitly: add round: with the unit to round to, e.g. round: 0.01', where);
+      error(record, field.line, 'the value has ' + got + ' decimal places but the field holds ' + held + ': add round:', where);
     } else if (plain_unit && got <= held) {
       error(record, field.line, 'nothing to round: the calculation has at most ' + got + ' decimal places and the field holds '
         + held + ', so drop round:', where);
@@ -673,87 +649,55 @@ export function file_errors(loaded) {
     const recursive = record.fields.filter((each) => each.role === 'stored' && each.items[0]?.type === record.name);
     const through = (term) => term.path && !methods.includes(term.path[1]) && recursive.some((each) => each.name === term.path[0]);
     if (value.op === '*' && value.terms.filter(through).length > 1) {
-      error(record, field.line, 'a product may read at most one factor through a recursive field (this would double the size of '
-        + 'the number at every level)', where);
+      error(record, field.line, 'a product may read at most one factor through a recursive field', where);
     }
     if (value.op === '/' && value.terms.every(through)) {
       error(record, field.line, 'a quotient may not read both its dividend and its divisor through a recursive field', where);
     }
   }
 
-  // A kept list's condition is checked as a filter of its item type wherever main's reader
-  // writes it into a method that reads the list: a field whose whole value is that method; a
-  // method in a calculation or a condition, once, as a field named by its path; and a count of
-  // its own, at its line, for a kept list that nothing reads.
+  // A kept list's condition reads the fields of the items it keeps: arithmetic and order there
+  // take numbers too. Checked once, at the kept list's own line.
   function check_filters(record) {
     const lists = new Map(record.fields.filter((each) => ['kept', 'collected'].includes(each.role)).map((each) => [each.name, each]));
     const source = (view) => (view.role === 'kept' ? (view.condition.all ?? view.condition.any)[0].path[0] : view.value.path[0]);
-    const read = new Set();
-    const named = new Set();
-    function filter(name, line, where) {
-      const comparisons = [];
-      for (; lists.has(name); name = source(lists.get(name))) {
-        const view = lists.get(name);
-        if (view.role === 'kept') comparisons.push(...(view.condition.all ?? view.condition.any));
-      }
+    for (const view of lists.values()) {
+      if (view.role !== 'kept') continue;
+      let name = source(view);
+      while (lists.has(name)) name = source(lists.get(name));
       const stored = field_of(record, name);
-      if (!comparisons.length || !stored) return;
+      if (!stored) continue;
+      const where = record.name + '.' + view.name;
       const item = record_of(stored.items[0]?.type);
-      if (!item) return error(record, line, "a kept list keeps some items of a list of records, and '" + name + "' is not one", where);
-      const inside = (term) => (term.path?.length === 2 && term.path[0] === name ? { path: term.path.slice(1) }
+      if (!item) {
+        error(record, view.line, "a kept list keeps some items of a list of records, and '" + name + "' is not one", where);
+        continue;
+      }
+      const inside = (term) => (term.path?.length === 2 && term.path[0] === source(view) ? { path: term.path.slice(1) }
         : term.op ? { ...term, terms: term.terms.map(inside) } : term);
-      for (const { path, comparison: symbol, right } of comparisons) {
+      for (const { path, comparison: symbol, right } of view.condition.all ?? view.condition.any) {
         const ordering = ['<', '<=', '>', '>='].includes(symbol);
         const found = [...(ordering ? [[path.slice(1).join('.'), kind_of(item, path.slice(1))]] : []),
           ...(ordering || right.op ? kinds(item, inside(right)) : [])];
         for (const [what, kind] of found.filter(not_number)) {
-          error(record, line, what + ' is ' + kind + ', not a number, so it cannot be '
-            + (symbol === '=' ? 'used in arithmetic' : 'compared with ' + symbol), item.name + ' (a filter)');
+          error(record, view.line, what + ' is ' + kind + ', not a number, so it cannot be '
+            + (symbol === '=' ? 'used in arithmetic' : 'compared with ' + symbol), where);
         }
       }
     }
-    const reads = (name) => {
-      for (; lists.has(name); name = source(lists.get(name))) read.add(name);
-    };
-    for (const field of record.fields.filter((each) => !lists.has(each.name))) {
-      const [x, m] = field.role === 'worked' && field.value.path ? field.value.path : [];
-      if (methods.includes(m)) {
-        reads(x);
-        filter(x, field.line, record.name + '.' + field.name);
-        continue;
-      }
-      const paths = [];
-      const walk_term = (term) => term && (term.path ? paths.push(term.path) : (term.terms ?? []).forEach(walk_term));
-      walk_term(field.value);
-      for (const { path, right } of ['rule', 'claim'].includes(field.role) && field.condition
-        ? field.condition.all ?? field.condition.any : []) {
-        paths.push(path);
-        walk_term(right);
-      }
-      for (const [list, method] of paths.filter((path) => methods.includes(path[1]))) {
-        reads(list);
-        if (named.has(list + '.' + method)) continue;
-        named.add(list + '.' + method);
-        filter(list, field.line, record.name + '.' + list + '.' + method);
-      }
-    }
-    for (const view of lists.values()) {
-      if (view.role === 'kept' && !read.has(view.name)) filter(view.name, view.line, record.name + '.' + view.name + '.count');
-    }
   }
 
-  for (const declaration of mine) {
+  for (const declaration of own) {
     check_context(declaration);
     if (['refinement', 'layout'].includes(declaration.kind) && declaration.places !== undefined
       && !numeric(by_name, [{ type: declaration.name }])) {
-      error(declaration, declaration.line, "'places=' applies only to numeric values");
+      error(declaration, declaration.line, "'places:' applies only to numbers");
     }
     if (declaration.kind === 'layout' && built_in.includes(declaration.items[0]?.type) && declaration.allowed?.length === 1) {
       const capacity = digit_capacity(declaration);
       const high = declaration.allowed[0].high && fixed_value(declaration.allowed[0].high, constants);
       if (capacity && high && compare(capacity, high) < 0) {
-        error(declaration, declaration.line, 'the val range does not fit what the layout holds (at most ' + decimal_text(capacity)
-          + ')');
+        error(declaration, declaration.line, 'the range does not fit the layout (at most ' + decimal_text(capacity) + ')');
       }
     }
     for (const name of [...types_of(declaration.items), ...(declaration.types ?? [])]) {
@@ -767,38 +711,6 @@ export function file_errors(loaded) {
 
   return errors;
 }
-
-// A field written with 'digits:' gets a fixed-width form of its number type, as main's reader
-// makes it: 'Hour.2', declared just above the record, a layout of the type's base.
-function with_digits(own, file) {
-  const out = [];
-  const made = new Set();
-  for (const declaration of own) {
-    const extra = [];
-    const retyped = new Map();
-    for (const slot of declaration.shape ?? []) {
-      const field = declaration.fields.find((each) => each.name === slot.field);
-      const type = field?.items.length === 1 ? field.items[0].type : undefined;
-      if (slot.digits === undefined || !type) continue;
-      const name = type + '.' + slot.digits;
-      retyped.set(field.name, name);
-      if (made.has(name)) continue;
-      made.add(name);
-      const found = own.find((each) => each.name === type);
-      const base = !found ? type : found.items?.length === 1 && found.items[0].type ? found.items[0].type : 'Integer';
-      const digits = { number: String(slot.digits) };
-      extra.push({ name, kind: 'layout', line: declaration.line, file, digits_of: type, items: [{ type: base }],
-        ...(found?.kind === 'refinement' && found.allowed ? { allowed: found.allowed } : {}),
-        positions: [{ number: 1, line: declaration.line, items: [{ type: 'Digit' }], count: { least: digits, most: digits } }] });
-    }
-    out.push(...extra);
-    out.push(retyped.size === 0 ? declaration : { ...declaration, fields: declaration.fields.map((field) =>
-      (retyped.has(field.name) ? { ...field, items: [{ type: retyped.get(field.name) }] } : field)) });
-  }
-  return out;
-}
-
-// ---------- Errors that stop a file loading
 
 function stopping_error(loaded) {
   const { file, declarations: own, declared, language = [], uses } = loaded;
