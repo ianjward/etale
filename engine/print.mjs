@@ -1,4 +1,4 @@
-// Printing is reading run backwards (language.etale, Step 9). A literal prints as itself and
+// Printing is reading run backwards. A literal prints as itself and
 // a character as written. Spacing holds no value, so a type that reads only spaces, such as
 // Pad, Gap or End_Spaces, prints its first form: a union's first item, a list's fewest items.
 // So does a position of a record that holds no value inside it. Formatting a file is printing

@@ -50,7 +50,7 @@ function language_again(rules = seed) {
   return { count, declarations, ...rules_of(declarations) };
 }
 
-// The files that a file sees (language.etale, Step 10): the standard library, and each group
+// The files that a file sees (language.etale, Step 9): the standard library, and each group
 // from the root down to its own folder, with the files of that group and the front file of each
 // folder directly below it.
 function scope_of(file, root) {

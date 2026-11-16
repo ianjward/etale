@@ -13,7 +13,7 @@ reads, writes, checks and runs them. It needs Node 22 and nothing else. There ar
 - language/kernel.etale: the kernel, a small stack machine. Etale is to compile to its
   programs.
 - language/wasm.etale: kernel programs compiled to WebAssembly, in Etale. A program of one
-  function, main, for now; see the top of the file.
+  function, main, and every word but call, for now; see the top of the file.
 - engine/: the engine, about 2,100 lines of code, with its command line in etale.mjs. It goes
   once Etale runs on its own kernel.
 
@@ -37,6 +37,9 @@ compiles a kernel program to WebAssembly:
 node engine/etale.mjs print language/wasm.etale Compiled_Program main.kernel wasm > main.wasm
 ```
 
+The program runs on any WASI runtime, such as wasmtime ('wasmtime main.wasm'). It reads its
+input, writes its output, and ends with main's value.
+
 For example, with a date from the standard library in date.txt:
 
 ```
@@ -55,7 +58,7 @@ row, and each part is that. A record's rule also holds its worked-out fields.
 
 ## Printing
 
-Printing is reading run backwards (language.etale, Step 9). A type that reads only spaces,
+Printing is reading run backwards. A type that reads only spaces,
 such as Pad, Gap or End_Spaces, prints its first form, and so does a position of a record that
 holds no value. Everything else prints as it was read. The printed text must read back in
 exactly one way, to the same values, or printing fails.

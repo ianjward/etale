@@ -6,10 +6,14 @@
 #
 # The engine writes a sequence of Binary_Digit eight bits to a byte.
 #
-# This first compiler takes a program of one function, main, and the
-# words below. It does not take duplicate, swap, call, read or write
-# yet. WebAssembly has no duplicate or swap. A call needs the number of
-# its function, and read and write need two helper functions.
+# This compiler takes a program of one function, main, and every word
+# but call. A call needs the number of its function in WebAssembly.
+#
+# The program runs on WASI, the standard way for WebAssembly to reach
+# its input and output. Every module has three functions besides main:
+# read and write, which call WASI for one byte, and _start, which runs
+# main and ends the program with main's value. read and write keep their
+# work in the last 16 bytes of memory, from 65520.
 #
 # WebAssembly writes a number in one to five bytes, seven bits of the
 # number in each. This compiler always writes five, which WebAssembly
@@ -25,16 +29,16 @@ Part_Size {Integer} (128)                # seven bits of a number fit in one byt
 More_Follows {Integer} (128)             # the top bit of a byte: another byte follows
 Number_Size {Integer} (5)                # the bytes of a number, always five
 Locals_And_End {Integer} (4)             # three bytes for the locals, one for the end
+Helper_Code_Size {Integer} (114)  # the count of functions, and read, write and _start
 Half_Of_U32 {Integer} (2147483648)
 All_Of_U32 {Integer} (4294967296)
 
 Eight_Bits {Binary_Digit...} count: 8
-Extra_Bits {"" | "01000000" | "0000001000000000" | "0000000000000000"}
+Extra_Bits {"" | "01000000" | "0000001000000000" | "0000000000000000" | "00000011" | "00000100"}
 Extra_Size {Integer} (0..2)
 
 # The words that this compiler takes.
-Compiled_Value_Word {Push_Word | "drop" | Local_Word | Arithmetic_Word | Compare_Word | Memory_Word}
-Compiled_Word {Compiled_Value_Word | Block_Word | Break_Word | Return_Word}
+Compiled_Word {Value_Word | Block_Word | Break_Word | Return_Word | Byte_Word}
 
 Compiled_Number {}                       # " 5", in "push 5"
   amount {U32}
@@ -233,7 +237,8 @@ Compiled_Instruction {}                  # "  push 5"
   numbers {Compiled_Number...} count: 0..1
   numbers_needed {Argument_Count} (word)
     {1} (Push_Word | Local_Word | Break_Word)
-    {0} ("drop" | Arithmetic_Word | Compare_Word | Memory_Word | Block_Word | Return_Word)
+    {0} (Stack_Word | Arithmetic_Word | Compare_Word | Memory_Word | Block_Word)
+    {0} (Return_Word | Byte_Word)
   number_count {Integer} (numbers.count)
   right_numbers {Needs} (number_count = numbers_needed)
   # The byte that names the instruction in WebAssembly.
@@ -259,18 +264,23 @@ Compiled_Instruction {}                  # "  push 5"
     {"00001100"} ("break")
     {"00001101"} ("break_if")
     {"00001111"} ("return")
+    {"00010000"} ("read")
+    {"00010000"} ("write")
   # What WebAssembly writes after some opcodes: the type of a block, which
-  # gives no value, or the alignment and offset of a memory access.
+  # gives no value; the alignment and offset of a memory access; or the
+  # function that read and write call, 3 or 4.
   extra {Extra_Bits} (word)
     {"01000000"} ("block" | "loop")
     {"0000001000000000"} ("load" | "store")
     {"0000000000000000"} ("load_byte" | "store_byte")
-    {""} (Push_Word | "drop" | Local_Word | Arithmetic_Word | Compare_Word | "end")
+    {"00000011"} ("read")
+    {"00000100"} ("write")
+    {""} (Push_Word | Stack_Word | Local_Word | Arithmetic_Word | Compare_Word | "end")
     {""} (Break_Word | Return_Word)
   extra_size {Extra_Size} (word)
-    {1} ("block" | "loop")
+    {1} ("block" | "loop" | Byte_Word)
     {2} (Memory_Word)
-    {0} (Push_Word | "drop" | Local_Word | Arithmetic_Word | Compare_Word | "end")
+    {0} (Push_Word | Stack_Word | Local_Word | Arithmetic_Word | Compare_Word | "end")
     {0} (Break_Word | Return_Word)
   number_bits {Binary_Digit...} (numbers.bits)
   number_bytes {Integer} (number_count * Number_Size)
@@ -495,7 +505,7 @@ Compiled_Program {}
   functions {Compiled_Function...} count: 1
   function_sizes {Integer...} (functions.size)
   function_bytes {Integer} (function_sizes.sum)
-  section_size {Integer} (function_bytes + 1)
+  section_size {Integer} (function_bytes + Helper_Code_Size)
   code {Binary_Digit...} (functions.wasm)
   # section_size in five bytes, seven bits in each, lowest first.
   section_first_part {Integer} (section_size) wrap_at: Part_Size
@@ -682,41 +692,95 @@ Compiled_Program {}
     4. {section_fourth_bits}
     5. {section_fifth_bits}
   wasm {Binary_Digit}
-    1. {"00000000"}                      # the start of every WebAssembly file: a zero byte,
-    2. {"01100001"}                      # "a"
-    3. {"01110011"}                      # "s"
-    4. {"01101101"}                      # "m"
-    5. {"00000001"}                      # and version 1, in four bytes
-    6. {"00000000"}
-    7. {"00000000"}
-    8. {"00000000"}
-    9. {"00000001"}                      # the types: section 1,
-    10. {"00000101"}                     # five bytes long,
-    11. {"00000001"}                     # one type,
-    12. {"01100000"}                     # a function
-    13. {"00000000"}                     # that takes no values
-    14. {"00000001"}                     # and gives one
-    15. {"01111111"}                     # i32
-    16. {"00000011"}                     # the functions: section 3,
-    17. {"00000010"}                     # two bytes long,
-    18. {"00000001"}                     # one function,
-    19. {"00000000"}                     # of type 0
-    20. {"00000101"}                     # the memory: section 5,
-    21. {"00000011"}                     # three bytes long,
-    22. {"00000001"}                     # one memory,
-    23. {"00000000"}                     # with no most size
-    24. {"00000001"}                     # and at least one page
-    25. {"00000111"}                     # the exports: section 7,
-    26. {"00001000"}                     # eight bytes long,
-    27. {"00000001"}                     # one export,
-    28. {"00000100"}                     # a name of four bytes:
-    29. {"01101101"}                     # "m"
-    30. {"01100001"}                     # "a"
-    31. {"01101001"}                     # "i"
-    32. {"01101110"}                     # "n"
-    33. {"00000000"}                     # a function,
-    34. {"00000000"}                     # function 0
-    35. {"00001010"}                     # the code: section 10
-    36. {section_bits}
-    37. {"00000001"}                     # one function
-    38. {code}
+    1. {"00000000011000010111001101101101"}
+    2. {"00000001000000000000000000000000"}  # version 1
+    3. {"0000000100010100"}              # the types: section 1, 20 bytes
+    4. {"00000100"}                      # four types:
+    5. {"01100000000000000000000101111111"}  # type 0: takes nothing, gives an i32
+    6. {"01100000000000010111111100000000"}  # type 1: takes an i32, gives nothing
+    7. {"01100000000001000111111101111111011111110111111100000001"}
+    8. {"01111111"}                      # and so on
+    9. {"011000000000000000000000"}      # type 3: takes nothing, gives nothing
+    10. {"0000001001100111"}             # the imports: section 2, 103 bytes
+    11. {"00000011"}                     # three imports:
+    12. {"00010110011101110110000101110011011010010101111101110011"}
+    13. {"01101110011000010111000001110011011010000110111101110100"}  # "napshot"
+    14. {"01011111011100000111001001100101011101100110100101100101"}  # "_previe"
+    15. {"01110111001100010000011101100110011001000101111101110010"}  # "w1fd_r"
+    16. {"0110010101100001011001000000000000000010"}  # "ead"
+    17. {"00010110011101110110000101110011011010010101111101110011"}
+    18. {"01101110011000010111000001110011011010000110111101110100"}  # "napshot"
+    19. {"01011111011100000111001001100101011101100110100101100101"}  # "_previe"
+    20. {"01110111001100010000100001100110011001000101111101110111"}  # "w1fd_w"
+    21. {"011100100110100101110100011001010000000000000010"}  # "rite"
+    22. {"00010110011101110110000101110011011010010101111101110011"}
+    23. {"01101110011000010111000001110011011010000110111101110100"}  # "napshot"
+    24. {"01011111011100000111001001100101011101100110100101100101"}  # "_previe"
+    25. {"01110111001100010000100101110000011100100110111101100011"}  # "w1proc"
+    26. {"01011111011001010111100001101001011101000000000000000001"}  # "_exit"
+    27. {"0000001100000101"}             # the functions: section 3, 5 bytes
+    28. {"00000100"}                     # four functions:
+    29. {"00000000"}                     # function 3, read: type 0
+    30. {"00000001"}                     # function 4, write: type 1
+    31. {"00000011"}                     # function 5, _start: type 3
+    32. {"00000000"}                     # function 6, main: type 0
+    33. {"0000010100000011"}             # the memory: section 5, 3 bytes
+    34. {"000000010000000000000001"}     # one memory, of at least one page
+    35. {"0000011100011010"}             # the exports: section 7, 26 bytes
+    36. {"00000011"}                     # three exports:
+    37. {"00000110011011010110010101101101011011110111001001111001"}  # "memory": memory 0
+    38. {"0000001000000000"}             # and so on
+    39. {"00000110010111110111001101110100011000010111001001110100"}  # "_start": function 5
+    40. {"0000000000000101"}             # and so on
+    41. {"00000100011011010110000101101001011011100000000000000110"}  # "main": function 6
+    42. {"00001010"}                     # the code: section 10, its size, then four functions
+    43. {section_bits}
+    44. {"00000100"}                     # four functions
+    45. {"00111010"}                     # function read, 58 bytes:
+    46. {"00000000"}                     # no locals
+    47. {"01000001111100001111111100000011"}  # i32.const 65520
+    48. {"01000001111111001111111100000011"}  # i32.const 65532
+    49. {"001101100000001000000000"}     # i32.store
+    50. {"01000001111101001111111100000011"}  # i32.const 65524
+    51. {"0100000100000001"}             # i32.const 1
+    52. {"001101100000001000000000"}     # i32.store
+    53. {"0100000100000000"}             # i32.const 0
+    54. {"01000001111100001111111100000011"}  # i32.const 65520
+    55. {"0100000100000001"}             # i32.const 1
+    56. {"01000001111110001111111100000011"}  # i32.const 65528
+    57. {"0001000000000000"}             # call fd_read
+    58. {"00011010"}                     # drop
+    59. {"01000001111110001111111100000011"}  # i32.const 65528
+    60. {"001010000000001000000000"}     # i32.load
+    61. {"01000101"}                     # i32.eqz: no byte was read
+    62. {"0000010001111111"}             # if, giving an i32
+    63. {"0100000101111111"}             # i32.const -1
+    64. {"00000101"}                     # else
+    65. {"01000001111111001111111100000011"}  # i32.const 65532
+    66. {"001011010000000000000000"}     # i32.load8_u
+    67. {"00001011"}                     # end
+    68. {"00001011"}                     # end
+    69. {"00101110"}                     # function write, 46 bytes:
+    70. {"00000000"}                     # no locals
+    71. {"01000001111111001111111100000011"}  # i32.const 65532
+    72. {"0010000000000000"}             # local.get 0: the byte
+    73. {"001110100000000000000000"}     # i32.store8
+    74. {"01000001111100001111111100000011"}  # i32.const 65520
+    75. {"01000001111111001111111100000011"}  # i32.const 65532
+    76. {"001101100000001000000000"}     # i32.store
+    77. {"01000001111101001111111100000011"}  # i32.const 65524
+    78. {"0100000100000001"}             # i32.const 1
+    79. {"001101100000001000000000"}     # i32.store
+    80. {"0100000100000001"}             # i32.const 1
+    81. {"01000001111100001111111100000011"}  # i32.const 65520
+    82. {"0100000100000001"}             # i32.const 1
+    83. {"01000001111110001111111100000011"}  # i32.const 65528
+    84. {"0001000000000001"}             # call fd_write
+    85. {"00011010"}                     # drop
+    86. {"00001011"}                     # end
+    87. {"00000110"}                     # function _start, 6 bytes:
+    88. {"00000000"}                     # no locals
+    89. {"0001000000000110"}             # call main
+    90. {"0001000000000010"}             # call proc_exit
+    91. {"00001011"}                     # end
+    92. {code}                             # main

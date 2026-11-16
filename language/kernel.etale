@@ -21,7 +21,7 @@ Kernel_Name {Text}                       # "main", "read_line"
 
 # The words of the instructions, by what they do.
 Push_Word {"push"}                                 # put a number on the stack
-Stack_Word {"duplicate" | "drop" | "swap"}         # change the top of the stack
+Stack_Word {"drop"}                                # throw away the top of the stack
 Local_Word {"get" | "set"}                         # move a value to or from a local
 Arithmetic_Word {"add" | "subtract" | "multiply" | "divide" | "remainder"}
 Compare_Word {"less" | "equal"}                    # give 1 if it holds, or 0
@@ -35,9 +35,8 @@ Value_Word {Push_Word | Stack_Word | Local_Word | Arithmetic_Word | Compare_Word
 Control_Word {Block_Word | Break_Word | Call_Word | Return_Word}
 Kernel_Word {Value_Word | Control_Word | Byte_Word}
 
-# How many values an instruction takes from the stack, and how many it
-# puts back.
-Stack_Count {Integer} (0..2)
+Taken_Count {Integer} (0..2)             # how many values an instruction takes from the stack
+Given_Count {Integer} (0..1)             # how many it puts back
 
 # How many arguments of one kind an instruction has.
 Argument_Count {Integer} (0..1)
@@ -72,17 +71,15 @@ Instruction {}                           # "  push 5"
     {1} (Call_Word)
     {0} (Push_Word | Stack_Word | Local_Word | Arithmetic_Word | Compare_Word)
     {0} (Memory_Word | Block_Word | Break_Word | Return_Word | Byte_Word)
-  takes {Stack_Count} (word)
+  takes {Taken_Count} (word)
     {0} (Push_Word | "get" | Block_Word | "break" | Call_Word | "read")
-    {1} ("duplicate" | "drop" | "set" | "load_byte" | "load" | "break_if")
-    {1} (Return_Word | "write")
-    {2} ("swap" | Arithmetic_Word | Compare_Word | "store_byte" | "store")
-  gives {Stack_Count} (word)
-    {0} ("drop" | "set" | "store_byte" | "store" | Block_Word | Break_Word)
+    {1} (Stack_Word | "set" | "load_byte" | "load" | "break_if" | Return_Word | "write")
+    {2} (Arithmetic_Word | Compare_Word | "store_byte" | "store")
+  gives {Given_Count} (word)
+    {0} (Stack_Word | "set" | "store_byte" | "store" | Block_Word | Break_Word)
     {0} (Return_Word | "write")
     {1} (Push_Word | "get" | Arithmetic_Word | Compare_Word | "load_byte" | "load")
     {1} (Call_Word | "read")
-    {2} ("duplicate" | "swap")
   number_count {Integer} (number.count)
   name_count {Integer} (name.count)
   right_numbers {Needs} (number_count = numbers)
