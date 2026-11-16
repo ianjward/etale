@@ -1,5 +1,5 @@
 # Each declaration below falls outside geometric logic or would let the
-# prover claim something false; `check` explains each (docs/geometric.md).
+# prover claim something false; `check` explains each.
 
 # A wrap that may be zero or negative no longer reads: wrap_at: takes a
 # constant, worked out before any text is read.

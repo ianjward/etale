@@ -26,7 +26,7 @@ function empty_heads(rules) {
 }
 
 // The heads that can start with themselves before any character is read.
-export function starts_with_itself(rules) {
+function starts_with_itself(rules) {
   const { part_can_be_empty } = empty_heads(rules);
   const heads = [...new Set(rules.map((rule) => rule.head))];
   const can_start = new Map(heads.map((head) => [head, new Set()]));
@@ -53,7 +53,7 @@ export function starts_with_itself(rules) {
 }
 
 // The heads whose rule holds a list, or an item that may be absent, whose item can be empty.
-export function lists_of_empty_items(rules) {
+function lists_of_empty_items(rules) {
   const { item_can_be_empty } = empty_heads(rules);
   const holds_one = (rule) => rule.parts.some((part) => part.list && item_can_be_empty(part));
   return [...new Set(rules.filter(holds_one).map((rule) => rule.head))];

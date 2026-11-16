@@ -10,7 +10,7 @@
 // failed rule, claim or mapping, and every 'order:' list whose keys go down.
 
 export const INVALID = Symbol('INVALID');
-export const LATER = Symbol('LATER');
+const LATER = Symbol('LATER');
 
 // ---------- Exact numbers: a fraction of two big integers, in lowest terms
 

@@ -1,10 +1,13 @@
-// The new engine's command line, and the loading that its tests and its judge share.
+// The command line of Etale, and the loading of a file with the files that it sees.
 //
 //   node engine/etale.mjs self                 language.etale gives back the stored rules
 //   node engine/etale.mjs seed                 store the rules that language.etale gives
 //   node engine/etale.mjs check FILE           FILE's errors; the two refusals
-//   node engine/etale.mjs read TYPE FILE DATA  is the text of DATA a TYPE of FILE?
+//   node engine/etale.mjs read FILE TYPE DATA  is the text of DATA a TYPE of FILE?
 //   node engine/etale.mjs rules FILE           FILE's rules, in plain words
+//   node engine/etale.mjs fmt FILE [--write]   FILE in its canonical form
+//   node engine/etale.mjs print FILE TYPE DATA the canonical text of DATA as a TYPE of FILE
+//   node engine/etale.mjs run FILE TYPE DATA   read DATA as a TYPE of FILE and show its values
 //
 // The seed (seed.json) is the stored rules of language.etale. The engine reads every file as
 // File with the seed. No other reader is needed to start.
@@ -15,19 +18,21 @@ import { declarations_of } from './declarations.mjs';
 import { rules_of, in_words } from './rules.mjs';
 import { refusals } from './checks.mjs';
 import { file_errors } from './file_checks.mjs';
+import { printer } from './print.mjs';
+import { INVALID, Exact, Sequence, decimal_text } from './evaluate.mjs';
 
-export const home = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
-export const language = path.join(home, 'priv', 'language.etale');
+const home = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+const language = path.join(home, 'priv', 'language.etale');
 const library = path.join(home, 'priv', 'stdlib');
 const seed_file = path.join(home, 'engine', 'seed.json');
 const with_newline = (text) => (text.endsWith('\n') ? text : text + '\n');
 const shown = (file) => path.relative(home, file);
 
-export const seed = JSON.parse(fs.readFileSync(seed_file, 'utf8'));
+const seed = JSON.parse(fs.readFileSync(seed_file, 'utf8'));
 const file_reader = reader(seed);
 
 // Read one text as File with the seed: in how many ways, and its declarations.
-export function read_file(file, text = fs.readFileSync(file, 'utf8'), rules_reader = file_reader) {
+function read_file(file, text = fs.readFileSync(file, 'utf8'), rules_reader = file_reader) {
   const whole = with_newline(text);
   const { count, node } = rules_reader.read('File', whole);
   if (count !== 1) return { file, count, declarations: [] };
@@ -36,10 +41,10 @@ export function read_file(file, text = fs.readFileSync(file, 'utf8'), rules_read
 }
 
 // Rules as stored: one rule a line.
-export const stored_form = (rules) => '[\n' + rules.map((rule) => JSON.stringify(rule)).join(',\n') + '\n]\n';
+const stored_form = (rules) => '[\n' + rules.map((rule) => JSON.stringify(rule)).join(',\n') + '\n]\n';
 
 // Read language.etale with the given rules and make its rules again.
-export function language_again(rules = seed) {
+function language_again(rules = seed) {
   const { count, declarations } = read_file(language, undefined, reader(rules));
   if (count !== 1) return { count, rules: [] };
   return { count, declarations, ...rules_of(declarations) };
@@ -89,7 +94,7 @@ function names_used(declaration) {
 // from another file is looked up from that file: in it, then in the files that it sees. The
 // root is where groups start: the repository, as in main's tests.
 let language_declarations;
-export function load(file, text, root = home) {
+function load(file, text, root = home) {
   const own = read_file(file, text);
   if (own.count !== 1) return { ...own, file: shown(file), rules: [], left_out: [], problems: [] };
   const problems = [];
@@ -185,11 +190,39 @@ const commands = {
     console.log(file + ': ' + loaded.declarations.length + ' declarations, ' + problems.length + ' problems');
     return problems.length > 0 ? 1 : 0;
   },
-  read(type, file, data) {
+  read(file, type, data) {
     const loaded = load(path.resolve(file));
     const { count, failures = [] } = reader(loaded.rules).read(type, fs.readFileSync(data, 'utf8'));
     console.log(['refused', 'accepted', 'two readings'][count] + failures.map((failure) => '\n  ' + failure).join(''));
     return count === 1 ? 0 : 1;
+  },
+  fmt(file, write) {
+    const text = with_newline(fs.readFileSync(file, 'utf8'));
+    const { count, node } = file_reader.read('File', text);
+    if (count !== 1) return console.log(file + ': does not read as File in one way (' + count + ')'), 1;
+    const { printed, same } = printer(seed).print(file_reader, 'File', text, node);
+    if (!same) return console.log(file + ': its canonical form does not read back the same'), 1;
+    if (write === '--write') fs.writeFileSync(file, printed);
+    else process.stdout.write(printed);
+    return 0;
+  },
+  print(file, type, data) {
+    const loaded = load(path.resolve(file));
+    const data_reader = reader(loaded.rules);
+    const text = fs.readFileSync(data, 'utf8');
+    const { count, node } = data_reader.read(type, text);
+    if (count !== 1) return console.log(['refused', '', 'two readings'][count]), 1;
+    const { printed, same } = printer(loaded.rules).print(data_reader, type, text, node);
+    if (!same) return console.log('its canonical form does not read back the same'), 1;
+    process.stdout.write(printed);
+    return 0;
+  },
+  run(file, type, data) {
+    const loaded = load(path.resolve(file));
+    const { count, node, failures = [] } = reader(loaded.rules).read(type, fs.readFileSync(data, 'utf8'));
+    if (count !== 1) return commands.read(file, type, data);
+    console.log(type + shown_value(node, '  '));
+    return 0;
   },
   rules(file) {
     const loaded = load(path.resolve(file));
@@ -200,11 +233,26 @@ const commands = {
   },
 };
 
-if (process.argv[1] && path.resolve(process.argv[1]) === new URL(import.meta.url).pathname) {
-  const [name, ...rest] = process.argv.slice(2);
+// A value, as run shows it: a record's fields one a line, below it.
+function shown_value(value, indent) {
+  if (value === INVALID) return ' INVALID';
+  if (value instanceof Exact) return ' ' + decimal_text(value);
+  if (value === 'TRUE' || value === 'FALSE') return ' ' + value;
+  if (typeof value === 'string') return ' ' + JSON.stringify(value);
+  if (value instanceof Sequence) return value.items.map((item) => '\n' + indent + '-' + shown_value(item, indent + '  ')).join('') || ' (none)';
+  const names = [...value.rule.parts.filter((part) => part.name !== undefined).map((part) => part.name),
+    ...(value.rule.fields ?? []).map((field) => field.name)];
+  return names.map((name) => '\n' + indent + name + ':' + shown_value(value.memo?.get(name) ?? INVALID, indent + '  ')).join('');
+}
+
+export function main([name, ...rest]) {
   if (!commands[name]) {
     console.log('commands: ' + Object.keys(commands).join(', '));
-    process.exit(2);
+    return 2;
   }
-  process.exit(commands[name](...rest));
+  return commands[name](...rest);
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === new URL(import.meta.url).pathname) {
+  process.exit(main(process.argv.slice(2)));
 }

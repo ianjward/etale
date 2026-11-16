@@ -19,7 +19,7 @@
 // worked out, and a failed rule, claim or mapping refuses the text.
 import { evaluator } from './evaluate.mjs';
 
-export function reader(rules, shortcut = true) {
+export function reader(rules) {
   const numeric = new Set(rules.filter((rule) => rule.number).map((rule) => rule.head));
   // the rules whose readings are checked: a record with fields or a 'unique:' list
   const checked = new Set(rules.filter((rule) => rule.fields || rule.parts.some((part) => part.unique)));
@@ -30,13 +30,13 @@ export function reader(rules, shortcut = true) {
   }
 
   // Shortcut: a head whose every rule is one single character, or one such head, is a set of
-  // characters. With shortcut false nothing is a set, and the answers are the same.
+  // characters, read one character at a time.
   const sets = new Map();
   function characters_of(type) {
     if (sets.has(type)) return sets.get(type);
     sets.set(type, null);                             // while it is worked out, it is not a set
     const own_rules = rules_of.get(type) ?? [];
-    let set = shortcut && own_rules.length > 0 ? new Set() : null;
+    let set = own_rules.length > 0 ? new Set() : null;
     for (const rule of own_rules) {
       const [part] = rule.parts;
       const bare = rule.parts.length === 1 && !part.list && !rule.ranges && !rule.fields;
@@ -156,11 +156,8 @@ export function reader(rules, shortcut = true) {
   }
 
   return {
-    // In how many ways the whole text is this head: 0, 1, or 2 for "two or more".
-    ways: (head, text) => session(text)(head).count,
     // The number of ways, and one reading of the whole text as this head.
     read: (head, text) => session(text)(head),
-    heads: () => [...rules_of.keys()],
   };
 }
 
