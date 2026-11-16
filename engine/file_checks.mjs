@@ -13,7 +13,7 @@
 // decimal places that would need rounding, and a 'round:' with nothing to round; a product or
 // a quotient that reads two terms through a recursive field; a layout too small for its range).
 import { Exact, exact, plus, minus, times, decimal_text } from './evaluate.mjs';
-import { fixed_value, one_value, characters } from './rules.mjs';
+import { fixed_value, one_value, union_values, characters } from './rules.mjs';
 
 const reserved = ['value', 'text', 'count', 'sum', 'min', 'max'];
 const methods = ['count', 'sum', 'min', 'max'];
@@ -138,6 +138,12 @@ export function file_errors(loaded) {
       for (const comparison of comparisons) {
         const { path, right } = comparison;
         if (comparison.comparison === 'in' && (!right.path || through_view(path) || through_view(right.path))) continue;
+        const union = right.path?.length === 1 && is_type_name(right.path[0]) && singleton(right.path[0]) === undefined
+          && union_values(by_name, constants, right.path[0]);
+        if (comparison.comparison === 'in' && union) {
+          paths.push(through(path));
+          continue;
+        }
         if (relation(path, right.path)) {
           relations.push([comparison, comparisons.length]);
           continue;
@@ -387,8 +393,9 @@ export function file_errors(loaded) {
         else if (value.range) parts.push({ between: value.range.map((end) => (end === null ? null : number_of(end))) });
         else if (value.path?.length === 1 && is_type_name(value.path[0])) {
           const fixed = singleton(value.path[0]);
-          if (fixed === undefined) return "'" + value.path[0] + "' is not a single value";
-          parts.push({ at: fixed.number !== undefined ? exact(fixed.number) : fixed.text });
+          const each = fixed ? [fixed] : union_values(by_name, constants, value.path[0]);
+          if (!each) return "'" + value.path[0] + "' is not a single value or a union of literals";
+          parts.push(...each.map((one) => ({ at: one.number !== undefined ? exact(one.number) : one.text })));
         } else return 'a case compares to a literal or a range: no arithmetic, no other fields';
       }
       const domain = domains.get(name);

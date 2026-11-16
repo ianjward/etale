@@ -89,6 +89,7 @@
 #     code = "A1"           texts and TRUE/FALSE take = only
 #     delay in 2..9         in: one of a set, a closed range, a choice or a list
 #     max_delay in 10 | 30  a choice of values
+#     day in Weekend        a type that is a union of literals stands for its literals
 #
 #   joined by & or |        never both on one line
 #     a > 0 & b > 0
@@ -1030,7 +1031,9 @@ Mapping_Line {}                          # Example: 'refund {True | False} (kind
 # names them, '(kind = "fast" & late_stop_count >= 1)'. A case compares
 # its inputs to literals, constants or ranges, with no arithmetic and no
 # other fields. So every case is a box, with one interval or literal
-# set per input.
+# set per input. A type that is a union of literals stands for its
+# literals, as in '{True} (Weekend)' or '(day in Weekend & hour >= 9)'.
+# So 'Weekend {"sat" | "sun"}' gives its two literals a name.
 #
 # A range of outputs, '{1..26}', maps to a range of characters of the
 # same size, first to first: '{1..26} ("A".."Z")'.

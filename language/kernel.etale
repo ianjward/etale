@@ -19,13 +19,21 @@ Kernel_Name {Text}                       # "main", "read_line"
   1. {Lowercase}
   2. {Lower_Name_Character...}
 
-# The words of the instructions.
-Kernel_Word_A {"push" | "duplicate" | "drop" | "swap" | "get" | "set"}
-Kernel_Word_B {"add" | "subtract" | "multiply" | "divide" | "remainder" | "less" | "equal"}
-Kernel_Word_C {"load_byte" | "store_byte" | "load" | "store"}
-Kernel_Word_D {"block" | "loop" | "end" | "break_if" | "break" | "call" | "return"}
-Kernel_Word_E {"read" | "write"}
-Kernel_Word {Kernel_Word_A | Kernel_Word_B | Kernel_Word_C | Kernel_Word_D | Kernel_Word_E}
+# The words of the instructions, by what they do.
+Push_Word {"push"}                                 # put a number on the stack
+Stack_Word {"duplicate" | "drop" | "swap"}         # change the top of the stack
+Local_Word {"get" | "set"}                         # move a value to or from a local
+Arithmetic_Word {"add" | "subtract" | "multiply" | "divide" | "remainder"}
+Compare_Word {"less" | "equal"}                    # give 1 if it holds, or 0
+Memory_Word {"load_byte" | "store_byte" | "load" | "store"}
+Block_Word {"block" | "loop" | "end"}              # open or close a block
+Break_Word {"break" | "break_if"}                  # leave blocks, or go back in a loop
+Call_Word {"call"}                                 # run a function, and get its value
+Return_Word {"return"}                             # give the function's value
+Byte_Word {"read" | "write"}                       # one byte in, or one byte out
+Value_Word {Push_Word | Stack_Word | Local_Word | Arithmetic_Word | Compare_Word | Memory_Word}
+Control_Word {Block_Word | Break_Word | Call_Word | Return_Word}
+Kernel_Word {Value_Word | Control_Word | Byte_Word}
 
 # How many values an instruction takes from the stack, and how many it
 # puts back.
@@ -51,28 +59,23 @@ Instruction {}                           # "  push 5"
   number {Number_Argument} count: 0..1
   name {Name_Argument} count: 0..1
   numbers {Argument_Count} (word)
-    {1} ("push" | "get" | "set" | "break" | "break_if")
-    {0} ("duplicate" | "drop" | "swap" | "add" | "subtract" | "multiply")
-    {0} ("divide" | "remainder" | "less" | "equal" | "load_byte" | "store_byte")
-    {0} ("load" | "store" | "block" | "loop" | "end" | "call" | "return")
-    {0} ("read" | "write")
+    {1} (Push_Word | Local_Word | Break_Word)
+    {0} (Stack_Word | Arithmetic_Word | Compare_Word | Memory_Word | Block_Word)
+    {0} (Call_Word | Return_Word | Byte_Word)
   names {Argument_Count} (word)
-    {1} ("call")
-    {0} ("push" | "duplicate" | "drop" | "swap" | "get" | "set" | "add")
-    {0} ("subtract" | "multiply" | "divide" | "remainder" | "less" | "equal")
-    {0} ("load_byte" | "store_byte" | "load" | "store" | "block" | "loop")
-    {0} ("end" | "break" | "break_if" | "return" | "read" | "write")
+    {1} (Call_Word)
+    {0} (Push_Word | Stack_Word | Local_Word | Arithmetic_Word | Compare_Word)
+    {0} (Memory_Word | Block_Word | Break_Word | Return_Word | Byte_Word)
   takes {Stack_Count} (word)
-    {0} ("push" | "get" | "block" | "loop" | "end" | "break" | "call" | "read")
+    {0} (Push_Word | "get" | Block_Word | "break" | Call_Word | "read")
     {1} ("duplicate" | "drop" | "set" | "load_byte" | "load" | "break_if")
-    {1} ("return" | "write")
-    {2} ("swap" | "add" | "subtract" | "multiply" | "divide" | "remainder")
-    {2} ("less" | "equal" | "store_byte" | "store")
+    {1} (Return_Word | "write")
+    {2} ("swap" | Arithmetic_Word | Compare_Word | "store_byte" | "store")
   gives {Stack_Count} (word)
-    {0} ("drop" | "set" | "store_byte" | "store" | "block" | "loop" | "end")
-    {0} ("break" | "break_if" | "return" | "write")
-    {1} ("push" | "get" | "add" | "subtract" | "multiply" | "divide")
-    {1} ("remainder" | "less" | "equal" | "load_byte" | "load" | "call" | "read")
+    {0} ("drop" | "set" | "store_byte" | "store" | Block_Word | Break_Word)
+    {0} (Return_Word | "write")
+    {1} (Push_Word | "get" | Arithmetic_Word | Compare_Word | "load_byte" | "load")
+    {1} (Call_Word | "read")
     {2} ("duplicate" | "swap")
   number_count {Integer} (number.count)
   name_count {Integer} (name.count)

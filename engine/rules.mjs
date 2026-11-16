@@ -130,16 +130,17 @@ export function rules_of(declarations, scope = declarations, heads_made_before =
 
   const one_of = (name) => one_value(by_name, constants, name);
 
-  // A term with its constants and types of one value written out, and its ranges fixed.
+  // A term with its constants and types of one value written out, a finite union as the
+  // choice of its values, and its ranges fixed.
   function resolve(term) {
     if (term.path?.length === 1 && /^[A-Z]/.test(term.path[0])) {
-      const fixed = one_of(term.path[0]);
+      const fixed = one_of(term.path[0]) ?? union_values(by_name, constants, term.path[0]);
       if (!fixed) throw new Error(term.path[0] + ' has no one value');
-      return fixed;
+      return Array.isArray(fixed) ? { choice: fixed } : fixed;
     }
     if (term.number !== undefined || term.text !== undefined || term.path) return term;
     if (term.op) return { op: term.op, terms: term.terms.map(resolve) };
-    if (term.choice) return { choice: term.choice.map(resolve) };
+    if (term.choice) return { choice: term.choice.map(resolve).flatMap((each) => each.choice ?? [each]) };
     if (term.range) {
       return { range: term.range.map((end) => {
         if (end === null) return null;
@@ -325,6 +326,24 @@ export function one_value(by_name, constants, name, seen = new Set()) {
   const [item] = declaration.items;
   if (item.literal !== undefined) return item.number ? { number: item.literal } : { text: item.literal };
   return item.type && one_value(by_name, constants, item.type, seen.add(name));
+}
+
+// The values of a type that is a finite union of literals, such as Kernel_Word, or undefined.
+export function union_values(by_name, constants, name, seen = new Set()) {
+  const declaration = by_name.get(name);
+  if (!declaration || seen.has(name) || !['union', 'refinement'].includes(declaration.kind)) return undefined;
+  if (declaration.list || declaration.count || declaration.allowed) return undefined;
+  const values = [];
+  for (const item of declaration.items) {
+    const fixed = item.type ? one_value(by_name, constants, item.type) : undefined;
+    const inner = item.type && !fixed ? union_values(by_name, constants, item.type, new Set([...seen, name])) : undefined;
+    if (item.literal !== undefined) values.push(item.number ? { number: item.literal } : { text: item.literal });
+    else if (item.characters) values.push(...characters(item.characters).map((text) => ({ text })));
+    else if (fixed) values.push(fixed);
+    else if (inner) values.push(...inner);
+    else return undefined;
+  }
+  return values;
 }
 
 // The characters of a range such as "A".."Z", in code-point order.
