@@ -187,6 +187,7 @@ export function evaluator(text, numeric) {
       return INVALID;
     }
     if (line.cases) return mapping(node, line, outside);
+    if (line.sequence) return sequence(node, line, outside);
     if (line.keep !== undefined || line.collect) return list_from(node, line, outside);
     let value;
     if (line.round) {
@@ -205,6 +206,28 @@ export function evaluator(text, numeric) {
     }
     if (line.wrap !== undefined && value instanceof Exact && exact(line.wrap).top !== 0n) value = wrap(value, exact(line.wrap));
     return value;
+  }
+
+  // A numbered sequence: its positions in order, each written as a text. A number takes its
+  // 'digits:', and a list is its items in order.
+  function sequence(node, line, outside) {
+    let written = '';
+    for (const position of line.sequence) {
+      if (position.literal !== undefined) { written += position.literal; continue; }
+      const value = get(node, position.field, outside);
+      if (stop(value)) return value;
+      const items = value instanceof Sequence ? value.items : [value];
+      for (const item of items) {
+        if (stop(item)) return item;
+        if (item instanceof Exact) {
+          const digits = decimal_text(item);
+          if (position.digits !== undefined && digits.replace('-', '').length > position.digits) return INVALID;
+          written += position.digits === undefined ? digits : digits.padStart(position.digits, '0');
+        } else if (typeof item === 'string') written += item;
+        else return INVALID;
+      }
+    }
+    return written;
   }
 
   // A kept list, the items of a list that meet a condition, or a collected list, one field of

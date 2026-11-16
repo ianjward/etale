@@ -1,0 +1,716 @@
+# WebAssembly from the kernel. Each compiled type reads a kernel text, as
+# kernel.etale writes it, and works out its WebAssembly as a numbered
+# sequence of bits named wasm. To compile a program:
+#
+#   node engine/etale.mjs print language/wasm.etale Compiled_Program FILE wasm
+#
+# The engine writes a sequence of Binary_Digit eight bits to a byte.
+#
+# This first compiler takes a program of one function, main, and the
+# words below. It does not take duplicate, swap, call, read or write
+# yet. WebAssembly has no duplicate or swap. A call needs the number of
+# its function, and read and write need two helper functions.
+#
+# WebAssembly writes a number in one to five bytes, seven bits of the
+# number in each. This compiler always writes five, which WebAssembly
+# allows. So the size of each instruction is known from its word.
+#
+# A number in WebAssembly is an i32: a whole number of 32 bits, from
+# -2147483648 to 2147483647.
+
+Two {Integer} (2)
+Part_Size {Integer} (128)                # seven bits of a number fit in one byte
+More_Follows {Integer} (128)             # the top bit of a byte: another byte follows
+Number_Size {Integer} (5)                # the bytes of a number, always five
+Locals_And_End {Integer} (4)             # three bytes for the locals, one for the end
+
+Eight_Bits {Binary_Digit...} count: 8
+Extra_Bits {"" | "01000000" | "0000001000000000" | "0000000000000000"}
+Extra_Size {Integer} (0..2)
+
+# The words that this compiler takes.
+Compiled_Value_Word {Push_Word | "drop" | Local_Word | Arithmetic_Word | Compare_Word | Memory_Word}
+Compiled_Word {Compiled_Value_Word | Block_Word | Break_Word | Return_Word}
+
+Compiled_Number {}                       # " 5", in "push 5"
+  amount {Integer} (-2147483648..2147483647)
+  # The number in five bytes, seven bits in each, lowest first.
+  first_part {Integer} (amount) wrap_at: Part_Size
+  less_first_part {Integer} (amount - first_part)
+  after_first_part {Integer} (less_first_part / Part_Size)
+  second_part {Integer} (after_first_part) wrap_at: Part_Size
+  less_second_part {Integer} (after_first_part - second_part)
+  after_second_part {Integer} (less_second_part / Part_Size)
+  third_part {Integer} (after_second_part) wrap_at: Part_Size
+  less_third_part {Integer} (after_second_part - third_part)
+  after_third_part {Integer} (less_third_part / Part_Size)
+  fourth_part {Integer} (after_third_part) wrap_at: Part_Size
+  less_fourth_part {Integer} (after_third_part - fourth_part)
+  after_fourth_part {Integer} (less_fourth_part / Part_Size)
+  fifth_part {Integer} (after_fourth_part) wrap_at: Part_Size
+  first_byte {Integer} (first_part + More_Follows)
+  second_byte {Integer} (second_part + More_Follows)
+  third_byte {Integer} (third_part + More_Follows)
+  fourth_byte {Integer} (fourth_part + More_Follows)
+  # The eight bits of the first byte.
+  first_bit_1 {Bit} (first_byte) wrap_at: Two
+  first_without_1 {Integer} (first_byte - first_bit_1)
+  first_over_2 {Integer} (first_without_1 / Two)
+  first_bit_2 {Bit} (first_over_2) wrap_at: Two
+  first_without_2 {Integer} (first_over_2 - first_bit_2)
+  first_over_4 {Integer} (first_without_2 / Two)
+  first_bit_4 {Bit} (first_over_4) wrap_at: Two
+  first_without_4 {Integer} (first_over_4 - first_bit_4)
+  first_over_8 {Integer} (first_without_4 / Two)
+  first_bit_8 {Bit} (first_over_8) wrap_at: Two
+  first_without_8 {Integer} (first_over_8 - first_bit_8)
+  first_over_16 {Integer} (first_without_8 / Two)
+  first_bit_16 {Bit} (first_over_16) wrap_at: Two
+  first_without_16 {Integer} (first_over_16 - first_bit_16)
+  first_over_32 {Integer} (first_without_16 / Two)
+  first_bit_32 {Bit} (first_over_32) wrap_at: Two
+  first_without_32 {Integer} (first_over_32 - first_bit_32)
+  first_over_64 {Integer} (first_without_32 / Two)
+  first_bit_64 {Bit} (first_over_64) wrap_at: Two
+  first_without_64 {Integer} (first_over_64 - first_bit_64)
+  first_over_128 {Integer} (first_without_64 / Two)
+  first_bit_128 {Bit} (first_over_128)
+  first_bits {Binary_Digit}
+    1. {first_bit_128} digits: 1
+    2. {first_bit_64} digits: 1
+    3. {first_bit_32} digits: 1
+    4. {first_bit_16} digits: 1
+    5. {first_bit_8} digits: 1
+    6. {first_bit_4} digits: 1
+    7. {first_bit_2} digits: 1
+    8. {first_bit_1} digits: 1
+  # The eight bits of the second byte.
+  second_bit_1 {Bit} (second_byte) wrap_at: Two
+  second_without_1 {Integer} (second_byte - second_bit_1)
+  second_over_2 {Integer} (second_without_1 / Two)
+  second_bit_2 {Bit} (second_over_2) wrap_at: Two
+  second_without_2 {Integer} (second_over_2 - second_bit_2)
+  second_over_4 {Integer} (second_without_2 / Two)
+  second_bit_4 {Bit} (second_over_4) wrap_at: Two
+  second_without_4 {Integer} (second_over_4 - second_bit_4)
+  second_over_8 {Integer} (second_without_4 / Two)
+  second_bit_8 {Bit} (second_over_8) wrap_at: Two
+  second_without_8 {Integer} (second_over_8 - second_bit_8)
+  second_over_16 {Integer} (second_without_8 / Two)
+  second_bit_16 {Bit} (second_over_16) wrap_at: Two
+  second_without_16 {Integer} (second_over_16 - second_bit_16)
+  second_over_32 {Integer} (second_without_16 / Two)
+  second_bit_32 {Bit} (second_over_32) wrap_at: Two
+  second_without_32 {Integer} (second_over_32 - second_bit_32)
+  second_over_64 {Integer} (second_without_32 / Two)
+  second_bit_64 {Bit} (second_over_64) wrap_at: Two
+  second_without_64 {Integer} (second_over_64 - second_bit_64)
+  second_over_128 {Integer} (second_without_64 / Two)
+  second_bit_128 {Bit} (second_over_128)
+  second_bits {Binary_Digit}
+    1. {second_bit_128} digits: 1
+    2. {second_bit_64} digits: 1
+    3. {second_bit_32} digits: 1
+    4. {second_bit_16} digits: 1
+    5. {second_bit_8} digits: 1
+    6. {second_bit_4} digits: 1
+    7. {second_bit_2} digits: 1
+    8. {second_bit_1} digits: 1
+  # The eight bits of the third byte.
+  third_bit_1 {Bit} (third_byte) wrap_at: Two
+  third_without_1 {Integer} (third_byte - third_bit_1)
+  third_over_2 {Integer} (third_without_1 / Two)
+  third_bit_2 {Bit} (third_over_2) wrap_at: Two
+  third_without_2 {Integer} (third_over_2 - third_bit_2)
+  third_over_4 {Integer} (third_without_2 / Two)
+  third_bit_4 {Bit} (third_over_4) wrap_at: Two
+  third_without_4 {Integer} (third_over_4 - third_bit_4)
+  third_over_8 {Integer} (third_without_4 / Two)
+  third_bit_8 {Bit} (third_over_8) wrap_at: Two
+  third_without_8 {Integer} (third_over_8 - third_bit_8)
+  third_over_16 {Integer} (third_without_8 / Two)
+  third_bit_16 {Bit} (third_over_16) wrap_at: Two
+  third_without_16 {Integer} (third_over_16 - third_bit_16)
+  third_over_32 {Integer} (third_without_16 / Two)
+  third_bit_32 {Bit} (third_over_32) wrap_at: Two
+  third_without_32 {Integer} (third_over_32 - third_bit_32)
+  third_over_64 {Integer} (third_without_32 / Two)
+  third_bit_64 {Bit} (third_over_64) wrap_at: Two
+  third_without_64 {Integer} (third_over_64 - third_bit_64)
+  third_over_128 {Integer} (third_without_64 / Two)
+  third_bit_128 {Bit} (third_over_128)
+  third_bits {Binary_Digit}
+    1. {third_bit_128} digits: 1
+    2. {third_bit_64} digits: 1
+    3. {third_bit_32} digits: 1
+    4. {third_bit_16} digits: 1
+    5. {third_bit_8} digits: 1
+    6. {third_bit_4} digits: 1
+    7. {third_bit_2} digits: 1
+    8. {third_bit_1} digits: 1
+  # The eight bits of the fourth byte.
+  fourth_bit_1 {Bit} (fourth_byte) wrap_at: Two
+  fourth_without_1 {Integer} (fourth_byte - fourth_bit_1)
+  fourth_over_2 {Integer} (fourth_without_1 / Two)
+  fourth_bit_2 {Bit} (fourth_over_2) wrap_at: Two
+  fourth_without_2 {Integer} (fourth_over_2 - fourth_bit_2)
+  fourth_over_4 {Integer} (fourth_without_2 / Two)
+  fourth_bit_4 {Bit} (fourth_over_4) wrap_at: Two
+  fourth_without_4 {Integer} (fourth_over_4 - fourth_bit_4)
+  fourth_over_8 {Integer} (fourth_without_4 / Two)
+  fourth_bit_8 {Bit} (fourth_over_8) wrap_at: Two
+  fourth_without_8 {Integer} (fourth_over_8 - fourth_bit_8)
+  fourth_over_16 {Integer} (fourth_without_8 / Two)
+  fourth_bit_16 {Bit} (fourth_over_16) wrap_at: Two
+  fourth_without_16 {Integer} (fourth_over_16 - fourth_bit_16)
+  fourth_over_32 {Integer} (fourth_without_16 / Two)
+  fourth_bit_32 {Bit} (fourth_over_32) wrap_at: Two
+  fourth_without_32 {Integer} (fourth_over_32 - fourth_bit_32)
+  fourth_over_64 {Integer} (fourth_without_32 / Two)
+  fourth_bit_64 {Bit} (fourth_over_64) wrap_at: Two
+  fourth_without_64 {Integer} (fourth_over_64 - fourth_bit_64)
+  fourth_over_128 {Integer} (fourth_without_64 / Two)
+  fourth_bit_128 {Bit} (fourth_over_128)
+  fourth_bits {Binary_Digit}
+    1. {fourth_bit_128} digits: 1
+    2. {fourth_bit_64} digits: 1
+    3. {fourth_bit_32} digits: 1
+    4. {fourth_bit_16} digits: 1
+    5. {fourth_bit_8} digits: 1
+    6. {fourth_bit_4} digits: 1
+    7. {fourth_bit_2} digits: 1
+    8. {fourth_bit_1} digits: 1
+  # The eight bits of the fifth byte.
+  fifth_bit_1 {Bit} (fifth_part) wrap_at: Two
+  fifth_without_1 {Integer} (fifth_part - fifth_bit_1)
+  fifth_over_2 {Integer} (fifth_without_1 / Two)
+  fifth_bit_2 {Bit} (fifth_over_2) wrap_at: Two
+  fifth_without_2 {Integer} (fifth_over_2 - fifth_bit_2)
+  fifth_over_4 {Integer} (fifth_without_2 / Two)
+  fifth_bit_4 {Bit} (fifth_over_4) wrap_at: Two
+  fifth_without_4 {Integer} (fifth_over_4 - fifth_bit_4)
+  fifth_over_8 {Integer} (fifth_without_4 / Two)
+  fifth_bit_8 {Bit} (fifth_over_8) wrap_at: Two
+  fifth_without_8 {Integer} (fifth_over_8 - fifth_bit_8)
+  fifth_over_16 {Integer} (fifth_without_8 / Two)
+  fifth_bit_16 {Bit} (fifth_over_16) wrap_at: Two
+  fifth_without_16 {Integer} (fifth_over_16 - fifth_bit_16)
+  fifth_over_32 {Integer} (fifth_without_16 / Two)
+  fifth_bit_32 {Bit} (fifth_over_32) wrap_at: Two
+  fifth_without_32 {Integer} (fifth_over_32 - fifth_bit_32)
+  fifth_over_64 {Integer} (fifth_without_32 / Two)
+  fifth_bit_64 {Bit} (fifth_over_64) wrap_at: Two
+  fifth_without_64 {Integer} (fifth_over_64 - fifth_bit_64)
+  fifth_over_128 {Integer} (fifth_without_64 / Two)
+  fifth_bit_128 {Bit} (fifth_over_128)
+  fifth_bits {Binary_Digit}
+    1. {fifth_bit_128} digits: 1
+    2. {fifth_bit_64} digits: 1
+    3. {fifth_bit_32} digits: 1
+    4. {fifth_bit_16} digits: 1
+    5. {fifth_bit_8} digits: 1
+    6. {fifth_bit_4} digits: 1
+    7. {fifth_bit_2} digits: 1
+    8. {fifth_bit_1} digits: 1
+  bits {Binary_Digit}
+    1. {first_bits}
+    2. {second_bits}
+    3. {third_bits}
+    4. {fourth_bits}
+    5. {fifth_bits}
+  text {Text}
+    1. {" "}
+    2. {amount}
+
+Compiled_Instruction {}                  # "  push 5"
+  word {Compiled_Word}
+  numbers {Compiled_Number...} count: 0..1
+  numbers_needed {Argument_Count} (word)
+    {1} (Push_Word | Local_Word | Break_Word)
+    {0} ("drop" | Arithmetic_Word | Compare_Word | Memory_Word | Block_Word | Return_Word)
+  number_count {Integer} (numbers.count)
+  right_numbers {Needs} (number_count = numbers_needed)
+  # The byte that names the instruction in WebAssembly.
+  opcode {Eight_Bits} (word)
+    {"01000001"} ("push")
+    {"00100000"} ("get")
+    {"00100001"} ("set")
+    {"00011010"} ("drop")
+    {"01101010"} ("add")
+    {"01101011"} ("subtract")
+    {"01101100"} ("multiply")
+    {"01101101"} ("divide")
+    {"01101111"} ("remainder")
+    {"01001000"} ("less")
+    {"01000110"} ("equal")
+    {"00101101"} ("load_byte")
+    {"00111010"} ("store_byte")
+    {"00101000"} ("load")
+    {"00110110"} ("store")
+    {"00000010"} ("block")
+    {"00000011"} ("loop")
+    {"00001011"} ("end")
+    {"00001100"} ("break")
+    {"00001101"} ("break_if")
+    {"00001111"} ("return")
+  # What WebAssembly writes after some opcodes: the type of a block, which
+  # gives no value, or the alignment and offset of a memory access.
+  extra {Extra_Bits} (word)
+    {"01000000"} ("block" | "loop")
+    {"0000001000000000"} ("load" | "store")
+    {"0000000000000000"} ("load_byte" | "store_byte")
+    {""} (Push_Word | "drop" | Local_Word | Arithmetic_Word | Compare_Word | "end")
+    {""} (Break_Word | Return_Word)
+  extra_size {Extra_Size} (word)
+    {1} ("block" | "loop")
+    {2} (Memory_Word)
+    {0} (Push_Word | "drop" | Local_Word | Arithmetic_Word | Compare_Word | "end")
+    {0} (Break_Word | Return_Word)
+  number_bits {Binary_Digit...} (numbers.bits)
+  number_bytes {Integer} (number_count * Number_Size)
+  size {Integer} (1 + extra_size + number_bytes)
+  wasm {Binary_Digit}
+    1. {opcode}
+    2. {extra}
+    3. {number_bits}
+  text {Text}
+    1. {"  "}
+    2. {word}
+    3. {numbers}
+    4. {Newline}
+
+Compiled_Function {}                     # "function main", then its instructions
+  name {Kernel_Name}
+  instructions {Compiled_Instruction...} count: 1..
+  is_main {Needs} (name = "main")
+  sizes {Integer...} (instructions.size)
+  code_size {Integer} (sizes.sum)
+  body_size {Integer} (code_size + Locals_And_End)
+  code {Binary_Digit...} (instructions.wasm)
+  # body_size in five bytes, seven bits in each, lowest first.
+  body_first_part {Integer} (body_size) wrap_at: Part_Size
+  body_less_first_part {Integer} (body_size - body_first_part)
+  body_after_first_part {Integer} (body_less_first_part / Part_Size)
+  body_second_part {Integer} (body_after_first_part) wrap_at: Part_Size
+  body_less_second_part {Integer} (body_after_first_part - body_second_part)
+  body_after_second_part {Integer} (body_less_second_part / Part_Size)
+  body_third_part {Integer} (body_after_second_part) wrap_at: Part_Size
+  body_less_third_part {Integer} (body_after_second_part - body_third_part)
+  body_after_third_part {Integer} (body_less_third_part / Part_Size)
+  body_fourth_part {Integer} (body_after_third_part) wrap_at: Part_Size
+  body_less_fourth_part {Integer} (body_after_third_part - body_fourth_part)
+  body_after_fourth_part {Integer} (body_less_fourth_part / Part_Size)
+  body_fifth_part {Integer} (body_after_fourth_part) wrap_at: Part_Size
+  body_first_byte {Integer} (body_first_part + More_Follows)
+  body_second_byte {Integer} (body_second_part + More_Follows)
+  body_third_byte {Integer} (body_third_part + More_Follows)
+  body_fourth_byte {Integer} (body_fourth_part + More_Follows)
+  # The eight bits of the first byte.
+  body_first_bit_1 {Bit} (body_first_byte) wrap_at: Two
+  body_first_without_1 {Integer} (body_first_byte - body_first_bit_1)
+  body_first_over_2 {Integer} (body_first_without_1 / Two)
+  body_first_bit_2 {Bit} (body_first_over_2) wrap_at: Two
+  body_first_without_2 {Integer} (body_first_over_2 - body_first_bit_2)
+  body_first_over_4 {Integer} (body_first_without_2 / Two)
+  body_first_bit_4 {Bit} (body_first_over_4) wrap_at: Two
+  body_first_without_4 {Integer} (body_first_over_4 - body_first_bit_4)
+  body_first_over_8 {Integer} (body_first_without_4 / Two)
+  body_first_bit_8 {Bit} (body_first_over_8) wrap_at: Two
+  body_first_without_8 {Integer} (body_first_over_8 - body_first_bit_8)
+  body_first_over_16 {Integer} (body_first_without_8 / Two)
+  body_first_bit_16 {Bit} (body_first_over_16) wrap_at: Two
+  body_first_without_16 {Integer} (body_first_over_16 - body_first_bit_16)
+  body_first_over_32 {Integer} (body_first_without_16 / Two)
+  body_first_bit_32 {Bit} (body_first_over_32) wrap_at: Two
+  body_first_without_32 {Integer} (body_first_over_32 - body_first_bit_32)
+  body_first_over_64 {Integer} (body_first_without_32 / Two)
+  body_first_bit_64 {Bit} (body_first_over_64) wrap_at: Two
+  body_first_without_64 {Integer} (body_first_over_64 - body_first_bit_64)
+  body_first_over_128 {Integer} (body_first_without_64 / Two)
+  body_first_bit_128 {Bit} (body_first_over_128)
+  body_first_bits {Binary_Digit}
+    1. {body_first_bit_128} digits: 1
+    2. {body_first_bit_64} digits: 1
+    3. {body_first_bit_32} digits: 1
+    4. {body_first_bit_16} digits: 1
+    5. {body_first_bit_8} digits: 1
+    6. {body_first_bit_4} digits: 1
+    7. {body_first_bit_2} digits: 1
+    8. {body_first_bit_1} digits: 1
+  # The eight bits of the second byte.
+  body_second_bit_1 {Bit} (body_second_byte) wrap_at: Two
+  body_second_without_1 {Integer} (body_second_byte - body_second_bit_1)
+  body_second_over_2 {Integer} (body_second_without_1 / Two)
+  body_second_bit_2 {Bit} (body_second_over_2) wrap_at: Two
+  body_second_without_2 {Integer} (body_second_over_2 - body_second_bit_2)
+  body_second_over_4 {Integer} (body_second_without_2 / Two)
+  body_second_bit_4 {Bit} (body_second_over_4) wrap_at: Two
+  body_second_without_4 {Integer} (body_second_over_4 - body_second_bit_4)
+  body_second_over_8 {Integer} (body_second_without_4 / Two)
+  body_second_bit_8 {Bit} (body_second_over_8) wrap_at: Two
+  body_second_without_8 {Integer} (body_second_over_8 - body_second_bit_8)
+  body_second_over_16 {Integer} (body_second_without_8 / Two)
+  body_second_bit_16 {Bit} (body_second_over_16) wrap_at: Two
+  body_second_without_16 {Integer} (body_second_over_16 - body_second_bit_16)
+  body_second_over_32 {Integer} (body_second_without_16 / Two)
+  body_second_bit_32 {Bit} (body_second_over_32) wrap_at: Two
+  body_second_without_32 {Integer} (body_second_over_32 - body_second_bit_32)
+  body_second_over_64 {Integer} (body_second_without_32 / Two)
+  body_second_bit_64 {Bit} (body_second_over_64) wrap_at: Two
+  body_second_without_64 {Integer} (body_second_over_64 - body_second_bit_64)
+  body_second_over_128 {Integer} (body_second_without_64 / Two)
+  body_second_bit_128 {Bit} (body_second_over_128)
+  body_second_bits {Binary_Digit}
+    1. {body_second_bit_128} digits: 1
+    2. {body_second_bit_64} digits: 1
+    3. {body_second_bit_32} digits: 1
+    4. {body_second_bit_16} digits: 1
+    5. {body_second_bit_8} digits: 1
+    6. {body_second_bit_4} digits: 1
+    7. {body_second_bit_2} digits: 1
+    8. {body_second_bit_1} digits: 1
+  # The eight bits of the third byte.
+  body_third_bit_1 {Bit} (body_third_byte) wrap_at: Two
+  body_third_without_1 {Integer} (body_third_byte - body_third_bit_1)
+  body_third_over_2 {Integer} (body_third_without_1 / Two)
+  body_third_bit_2 {Bit} (body_third_over_2) wrap_at: Two
+  body_third_without_2 {Integer} (body_third_over_2 - body_third_bit_2)
+  body_third_over_4 {Integer} (body_third_without_2 / Two)
+  body_third_bit_4 {Bit} (body_third_over_4) wrap_at: Two
+  body_third_without_4 {Integer} (body_third_over_4 - body_third_bit_4)
+  body_third_over_8 {Integer} (body_third_without_4 / Two)
+  body_third_bit_8 {Bit} (body_third_over_8) wrap_at: Two
+  body_third_without_8 {Integer} (body_third_over_8 - body_third_bit_8)
+  body_third_over_16 {Integer} (body_third_without_8 / Two)
+  body_third_bit_16 {Bit} (body_third_over_16) wrap_at: Two
+  body_third_without_16 {Integer} (body_third_over_16 - body_third_bit_16)
+  body_third_over_32 {Integer} (body_third_without_16 / Two)
+  body_third_bit_32 {Bit} (body_third_over_32) wrap_at: Two
+  body_third_without_32 {Integer} (body_third_over_32 - body_third_bit_32)
+  body_third_over_64 {Integer} (body_third_without_32 / Two)
+  body_third_bit_64 {Bit} (body_third_over_64) wrap_at: Two
+  body_third_without_64 {Integer} (body_third_over_64 - body_third_bit_64)
+  body_third_over_128 {Integer} (body_third_without_64 / Two)
+  body_third_bit_128 {Bit} (body_third_over_128)
+  body_third_bits {Binary_Digit}
+    1. {body_third_bit_128} digits: 1
+    2. {body_third_bit_64} digits: 1
+    3. {body_third_bit_32} digits: 1
+    4. {body_third_bit_16} digits: 1
+    5. {body_third_bit_8} digits: 1
+    6. {body_third_bit_4} digits: 1
+    7. {body_third_bit_2} digits: 1
+    8. {body_third_bit_1} digits: 1
+  # The eight bits of the fourth byte.
+  body_fourth_bit_1 {Bit} (body_fourth_byte) wrap_at: Two
+  body_fourth_without_1 {Integer} (body_fourth_byte - body_fourth_bit_1)
+  body_fourth_over_2 {Integer} (body_fourth_without_1 / Two)
+  body_fourth_bit_2 {Bit} (body_fourth_over_2) wrap_at: Two
+  body_fourth_without_2 {Integer} (body_fourth_over_2 - body_fourth_bit_2)
+  body_fourth_over_4 {Integer} (body_fourth_without_2 / Two)
+  body_fourth_bit_4 {Bit} (body_fourth_over_4) wrap_at: Two
+  body_fourth_without_4 {Integer} (body_fourth_over_4 - body_fourth_bit_4)
+  body_fourth_over_8 {Integer} (body_fourth_without_4 / Two)
+  body_fourth_bit_8 {Bit} (body_fourth_over_8) wrap_at: Two
+  body_fourth_without_8 {Integer} (body_fourth_over_8 - body_fourth_bit_8)
+  body_fourth_over_16 {Integer} (body_fourth_without_8 / Two)
+  body_fourth_bit_16 {Bit} (body_fourth_over_16) wrap_at: Two
+  body_fourth_without_16 {Integer} (body_fourth_over_16 - body_fourth_bit_16)
+  body_fourth_over_32 {Integer} (body_fourth_without_16 / Two)
+  body_fourth_bit_32 {Bit} (body_fourth_over_32) wrap_at: Two
+  body_fourth_without_32 {Integer} (body_fourth_over_32 - body_fourth_bit_32)
+  body_fourth_over_64 {Integer} (body_fourth_without_32 / Two)
+  body_fourth_bit_64 {Bit} (body_fourth_over_64) wrap_at: Two
+  body_fourth_without_64 {Integer} (body_fourth_over_64 - body_fourth_bit_64)
+  body_fourth_over_128 {Integer} (body_fourth_without_64 / Two)
+  body_fourth_bit_128 {Bit} (body_fourth_over_128)
+  body_fourth_bits {Binary_Digit}
+    1. {body_fourth_bit_128} digits: 1
+    2. {body_fourth_bit_64} digits: 1
+    3. {body_fourth_bit_32} digits: 1
+    4. {body_fourth_bit_16} digits: 1
+    5. {body_fourth_bit_8} digits: 1
+    6. {body_fourth_bit_4} digits: 1
+    7. {body_fourth_bit_2} digits: 1
+    8. {body_fourth_bit_1} digits: 1
+  # The eight bits of the fifth byte.
+  body_fifth_bit_1 {Bit} (body_fifth_part) wrap_at: Two
+  body_fifth_without_1 {Integer} (body_fifth_part - body_fifth_bit_1)
+  body_fifth_over_2 {Integer} (body_fifth_without_1 / Two)
+  body_fifth_bit_2 {Bit} (body_fifth_over_2) wrap_at: Two
+  body_fifth_without_2 {Integer} (body_fifth_over_2 - body_fifth_bit_2)
+  body_fifth_over_4 {Integer} (body_fifth_without_2 / Two)
+  body_fifth_bit_4 {Bit} (body_fifth_over_4) wrap_at: Two
+  body_fifth_without_4 {Integer} (body_fifth_over_4 - body_fifth_bit_4)
+  body_fifth_over_8 {Integer} (body_fifth_without_4 / Two)
+  body_fifth_bit_8 {Bit} (body_fifth_over_8) wrap_at: Two
+  body_fifth_without_8 {Integer} (body_fifth_over_8 - body_fifth_bit_8)
+  body_fifth_over_16 {Integer} (body_fifth_without_8 / Two)
+  body_fifth_bit_16 {Bit} (body_fifth_over_16) wrap_at: Two
+  body_fifth_without_16 {Integer} (body_fifth_over_16 - body_fifth_bit_16)
+  body_fifth_over_32 {Integer} (body_fifth_without_16 / Two)
+  body_fifth_bit_32 {Bit} (body_fifth_over_32) wrap_at: Two
+  body_fifth_without_32 {Integer} (body_fifth_over_32 - body_fifth_bit_32)
+  body_fifth_over_64 {Integer} (body_fifth_without_32 / Two)
+  body_fifth_bit_64 {Bit} (body_fifth_over_64) wrap_at: Two
+  body_fifth_without_64 {Integer} (body_fifth_over_64 - body_fifth_bit_64)
+  body_fifth_over_128 {Integer} (body_fifth_without_64 / Two)
+  body_fifth_bit_128 {Bit} (body_fifth_over_128)
+  body_fifth_bits {Binary_Digit}
+    1. {body_fifth_bit_128} digits: 1
+    2. {body_fifth_bit_64} digits: 1
+    3. {body_fifth_bit_32} digits: 1
+    4. {body_fifth_bit_16} digits: 1
+    5. {body_fifth_bit_8} digits: 1
+    6. {body_fifth_bit_4} digits: 1
+    7. {body_fifth_bit_2} digits: 1
+    8. {body_fifth_bit_1} digits: 1
+  body_bits {Binary_Digit}
+    1. {body_first_bits}
+    2. {body_second_bits}
+    3. {body_third_bits}
+    4. {body_fourth_bits}
+    5. {body_fifth_bits}
+  size {Integer} (Number_Size + body_size)
+  wasm {Binary_Digit}
+    1. {body_bits}
+    2. {"00000001"}                      # one group of locals
+    3. {"00000100"}                      # of four locals
+    4. {"01111111"}                      # each an i32
+    5. {code}
+    6. {"00001011"}                      # the end of the function
+  text {Text}
+    1. {"function "}
+    2. {name}
+    3. {Newline}
+    4. {instructions}
+
+Compiled_Program {}
+  functions {Compiled_Function...} count: 1
+  function_sizes {Integer...} (functions.size)
+  function_bytes {Integer} (function_sizes.sum)
+  section_size {Integer} (function_bytes + 1)
+  code {Binary_Digit...} (functions.wasm)
+  # section_size in five bytes, seven bits in each, lowest first.
+  section_first_part {Integer} (section_size) wrap_at: Part_Size
+  section_less_first_part {Integer} (section_size - section_first_part)
+  section_after_first_part {Integer} (section_less_first_part / Part_Size)
+  section_second_part {Integer} (section_after_first_part) wrap_at: Part_Size
+  section_less_second_part {Integer} (section_after_first_part - section_second_part)
+  section_after_second_part {Integer} (section_less_second_part / Part_Size)
+  section_third_part {Integer} (section_after_second_part) wrap_at: Part_Size
+  section_less_third_part {Integer} (section_after_second_part - section_third_part)
+  section_after_third_part {Integer} (section_less_third_part / Part_Size)
+  section_fourth_part {Integer} (section_after_third_part) wrap_at: Part_Size
+  section_less_fourth_part {Integer} (section_after_third_part - section_fourth_part)
+  section_after_fourth_part {Integer} (section_less_fourth_part / Part_Size)
+  section_fifth_part {Integer} (section_after_fourth_part) wrap_at: Part_Size
+  section_first_byte {Integer} (section_first_part + More_Follows)
+  section_second_byte {Integer} (section_second_part + More_Follows)
+  section_third_byte {Integer} (section_third_part + More_Follows)
+  section_fourth_byte {Integer} (section_fourth_part + More_Follows)
+  # The eight bits of the first byte.
+  section_first_bit_1 {Bit} (section_first_byte) wrap_at: Two
+  section_first_without_1 {Integer} (section_first_byte - section_first_bit_1)
+  section_first_over_2 {Integer} (section_first_without_1 / Two)
+  section_first_bit_2 {Bit} (section_first_over_2) wrap_at: Two
+  section_first_without_2 {Integer} (section_first_over_2 - section_first_bit_2)
+  section_first_over_4 {Integer} (section_first_without_2 / Two)
+  section_first_bit_4 {Bit} (section_first_over_4) wrap_at: Two
+  section_first_without_4 {Integer} (section_first_over_4 - section_first_bit_4)
+  section_first_over_8 {Integer} (section_first_without_4 / Two)
+  section_first_bit_8 {Bit} (section_first_over_8) wrap_at: Two
+  section_first_without_8 {Integer} (section_first_over_8 - section_first_bit_8)
+  section_first_over_16 {Integer} (section_first_without_8 / Two)
+  section_first_bit_16 {Bit} (section_first_over_16) wrap_at: Two
+  section_first_without_16 {Integer} (section_first_over_16 - section_first_bit_16)
+  section_first_over_32 {Integer} (section_first_without_16 / Two)
+  section_first_bit_32 {Bit} (section_first_over_32) wrap_at: Two
+  section_first_without_32 {Integer} (section_first_over_32 - section_first_bit_32)
+  section_first_over_64 {Integer} (section_first_without_32 / Two)
+  section_first_bit_64 {Bit} (section_first_over_64) wrap_at: Two
+  section_first_without_64 {Integer} (section_first_over_64 - section_first_bit_64)
+  section_first_over_128 {Integer} (section_first_without_64 / Two)
+  section_first_bit_128 {Bit} (section_first_over_128)
+  section_first_bits {Binary_Digit}
+    1. {section_first_bit_128} digits: 1
+    2. {section_first_bit_64} digits: 1
+    3. {section_first_bit_32} digits: 1
+    4. {section_first_bit_16} digits: 1
+    5. {section_first_bit_8} digits: 1
+    6. {section_first_bit_4} digits: 1
+    7. {section_first_bit_2} digits: 1
+    8. {section_first_bit_1} digits: 1
+  # The eight bits of the second byte.
+  section_second_bit_1 {Bit} (section_second_byte) wrap_at: Two
+  section_second_without_1 {Integer} (section_second_byte - section_second_bit_1)
+  section_second_over_2 {Integer} (section_second_without_1 / Two)
+  section_second_bit_2 {Bit} (section_second_over_2) wrap_at: Two
+  section_second_without_2 {Integer} (section_second_over_2 - section_second_bit_2)
+  section_second_over_4 {Integer} (section_second_without_2 / Two)
+  section_second_bit_4 {Bit} (section_second_over_4) wrap_at: Two
+  section_second_without_4 {Integer} (section_second_over_4 - section_second_bit_4)
+  section_second_over_8 {Integer} (section_second_without_4 / Two)
+  section_second_bit_8 {Bit} (section_second_over_8) wrap_at: Two
+  section_second_without_8 {Integer} (section_second_over_8 - section_second_bit_8)
+  section_second_over_16 {Integer} (section_second_without_8 / Two)
+  section_second_bit_16 {Bit} (section_second_over_16) wrap_at: Two
+  section_second_without_16 {Integer} (section_second_over_16 - section_second_bit_16)
+  section_second_over_32 {Integer} (section_second_without_16 / Two)
+  section_second_bit_32 {Bit} (section_second_over_32) wrap_at: Two
+  section_second_without_32 {Integer} (section_second_over_32 - section_second_bit_32)
+  section_second_over_64 {Integer} (section_second_without_32 / Two)
+  section_second_bit_64 {Bit} (section_second_over_64) wrap_at: Two
+  section_second_without_64 {Integer} (section_second_over_64 - section_second_bit_64)
+  section_second_over_128 {Integer} (section_second_without_64 / Two)
+  section_second_bit_128 {Bit} (section_second_over_128)
+  section_second_bits {Binary_Digit}
+    1. {section_second_bit_128} digits: 1
+    2. {section_second_bit_64} digits: 1
+    3. {section_second_bit_32} digits: 1
+    4. {section_second_bit_16} digits: 1
+    5. {section_second_bit_8} digits: 1
+    6. {section_second_bit_4} digits: 1
+    7. {section_second_bit_2} digits: 1
+    8. {section_second_bit_1} digits: 1
+  # The eight bits of the third byte.
+  section_third_bit_1 {Bit} (section_third_byte) wrap_at: Two
+  section_third_without_1 {Integer} (section_third_byte - section_third_bit_1)
+  section_third_over_2 {Integer} (section_third_without_1 / Two)
+  section_third_bit_2 {Bit} (section_third_over_2) wrap_at: Two
+  section_third_without_2 {Integer} (section_third_over_2 - section_third_bit_2)
+  section_third_over_4 {Integer} (section_third_without_2 / Two)
+  section_third_bit_4 {Bit} (section_third_over_4) wrap_at: Two
+  section_third_without_4 {Integer} (section_third_over_4 - section_third_bit_4)
+  section_third_over_8 {Integer} (section_third_without_4 / Two)
+  section_third_bit_8 {Bit} (section_third_over_8) wrap_at: Two
+  section_third_without_8 {Integer} (section_third_over_8 - section_third_bit_8)
+  section_third_over_16 {Integer} (section_third_without_8 / Two)
+  section_third_bit_16 {Bit} (section_third_over_16) wrap_at: Two
+  section_third_without_16 {Integer} (section_third_over_16 - section_third_bit_16)
+  section_third_over_32 {Integer} (section_third_without_16 / Two)
+  section_third_bit_32 {Bit} (section_third_over_32) wrap_at: Two
+  section_third_without_32 {Integer} (section_third_over_32 - section_third_bit_32)
+  section_third_over_64 {Integer} (section_third_without_32 / Two)
+  section_third_bit_64 {Bit} (section_third_over_64) wrap_at: Two
+  section_third_without_64 {Integer} (section_third_over_64 - section_third_bit_64)
+  section_third_over_128 {Integer} (section_third_without_64 / Two)
+  section_third_bit_128 {Bit} (section_third_over_128)
+  section_third_bits {Binary_Digit}
+    1. {section_third_bit_128} digits: 1
+    2. {section_third_bit_64} digits: 1
+    3. {section_third_bit_32} digits: 1
+    4. {section_third_bit_16} digits: 1
+    5. {section_third_bit_8} digits: 1
+    6. {section_third_bit_4} digits: 1
+    7. {section_third_bit_2} digits: 1
+    8. {section_third_bit_1} digits: 1
+  # The eight bits of the fourth byte.
+  section_fourth_bit_1 {Bit} (section_fourth_byte) wrap_at: Two
+  section_fourth_without_1 {Integer} (section_fourth_byte - section_fourth_bit_1)
+  section_fourth_over_2 {Integer} (section_fourth_without_1 / Two)
+  section_fourth_bit_2 {Bit} (section_fourth_over_2) wrap_at: Two
+  section_fourth_without_2 {Integer} (section_fourth_over_2 - section_fourth_bit_2)
+  section_fourth_over_4 {Integer} (section_fourth_without_2 / Two)
+  section_fourth_bit_4 {Bit} (section_fourth_over_4) wrap_at: Two
+  section_fourth_without_4 {Integer} (section_fourth_over_4 - section_fourth_bit_4)
+  section_fourth_over_8 {Integer} (section_fourth_without_4 / Two)
+  section_fourth_bit_8 {Bit} (section_fourth_over_8) wrap_at: Two
+  section_fourth_without_8 {Integer} (section_fourth_over_8 - section_fourth_bit_8)
+  section_fourth_over_16 {Integer} (section_fourth_without_8 / Two)
+  section_fourth_bit_16 {Bit} (section_fourth_over_16) wrap_at: Two
+  section_fourth_without_16 {Integer} (section_fourth_over_16 - section_fourth_bit_16)
+  section_fourth_over_32 {Integer} (section_fourth_without_16 / Two)
+  section_fourth_bit_32 {Bit} (section_fourth_over_32) wrap_at: Two
+  section_fourth_without_32 {Integer} (section_fourth_over_32 - section_fourth_bit_32)
+  section_fourth_over_64 {Integer} (section_fourth_without_32 / Two)
+  section_fourth_bit_64 {Bit} (section_fourth_over_64) wrap_at: Two
+  section_fourth_without_64 {Integer} (section_fourth_over_64 - section_fourth_bit_64)
+  section_fourth_over_128 {Integer} (section_fourth_without_64 / Two)
+  section_fourth_bit_128 {Bit} (section_fourth_over_128)
+  section_fourth_bits {Binary_Digit}
+    1. {section_fourth_bit_128} digits: 1
+    2. {section_fourth_bit_64} digits: 1
+    3. {section_fourth_bit_32} digits: 1
+    4. {section_fourth_bit_16} digits: 1
+    5. {section_fourth_bit_8} digits: 1
+    6. {section_fourth_bit_4} digits: 1
+    7. {section_fourth_bit_2} digits: 1
+    8. {section_fourth_bit_1} digits: 1
+  # The eight bits of the fifth byte.
+  section_fifth_bit_1 {Bit} (section_fifth_part) wrap_at: Two
+  section_fifth_without_1 {Integer} (section_fifth_part - section_fifth_bit_1)
+  section_fifth_over_2 {Integer} (section_fifth_without_1 / Two)
+  section_fifth_bit_2 {Bit} (section_fifth_over_2) wrap_at: Two
+  section_fifth_without_2 {Integer} (section_fifth_over_2 - section_fifth_bit_2)
+  section_fifth_over_4 {Integer} (section_fifth_without_2 / Two)
+  section_fifth_bit_4 {Bit} (section_fifth_over_4) wrap_at: Two
+  section_fifth_without_4 {Integer} (section_fifth_over_4 - section_fifth_bit_4)
+  section_fifth_over_8 {Integer} (section_fifth_without_4 / Two)
+  section_fifth_bit_8 {Bit} (section_fifth_over_8) wrap_at: Two
+  section_fifth_without_8 {Integer} (section_fifth_over_8 - section_fifth_bit_8)
+  section_fifth_over_16 {Integer} (section_fifth_without_8 / Two)
+  section_fifth_bit_16 {Bit} (section_fifth_over_16) wrap_at: Two
+  section_fifth_without_16 {Integer} (section_fifth_over_16 - section_fifth_bit_16)
+  section_fifth_over_32 {Integer} (section_fifth_without_16 / Two)
+  section_fifth_bit_32 {Bit} (section_fifth_over_32) wrap_at: Two
+  section_fifth_without_32 {Integer} (section_fifth_over_32 - section_fifth_bit_32)
+  section_fifth_over_64 {Integer} (section_fifth_without_32 / Two)
+  section_fifth_bit_64 {Bit} (section_fifth_over_64) wrap_at: Two
+  section_fifth_without_64 {Integer} (section_fifth_over_64 - section_fifth_bit_64)
+  section_fifth_over_128 {Integer} (section_fifth_without_64 / Two)
+  section_fifth_bit_128 {Bit} (section_fifth_over_128)
+  section_fifth_bits {Binary_Digit}
+    1. {section_fifth_bit_128} digits: 1
+    2. {section_fifth_bit_64} digits: 1
+    3. {section_fifth_bit_32} digits: 1
+    4. {section_fifth_bit_16} digits: 1
+    5. {section_fifth_bit_8} digits: 1
+    6. {section_fifth_bit_4} digits: 1
+    7. {section_fifth_bit_2} digits: 1
+    8. {section_fifth_bit_1} digits: 1
+  section_bits {Binary_Digit}
+    1. {section_first_bits}
+    2. {section_second_bits}
+    3. {section_third_bits}
+    4. {section_fourth_bits}
+    5. {section_fifth_bits}
+  wasm {Binary_Digit}
+    1. {"00000000"}                      # the start of every WebAssembly file: a zero byte,
+    2. {"01100001"}                      # "a"
+    3. {"01110011"}                      # "s"
+    4. {"01101101"}                      # "m"
+    5. {"00000001"}                      # and version 1, in four bytes
+    6. {"00000000"}
+    7. {"00000000"}
+    8. {"00000000"}
+    9. {"00000001"}                      # the types: section 1,
+    10. {"00000101"}                     # five bytes long,
+    11. {"00000001"}                     # one type,
+    12. {"01100000"}                     # a function
+    13. {"00000000"}                     # that takes no values
+    14. {"00000001"}                     # and gives one
+    15. {"01111111"}                     # i32
+    16. {"00000011"}                     # the functions: section 3,
+    17. {"00000010"}                     # two bytes long,
+    18. {"00000001"}                     # one function,
+    19. {"00000000"}                     # of type 0
+    20. {"00000101"}                     # the memory: section 5,
+    21. {"00000011"}                     # three bytes long,
+    22. {"00000001"}                     # one memory,
+    23. {"00000000"}                     # with no most size
+    24. {"00000001"}                     # and at least one page
+    25. {"00000111"}                     # the exports: section 7,
+    26. {"00001000"}                     # eight bytes long,
+    27. {"00000001"}                     # one export,
+    28. {"00000100"}                     # a name of four bytes:
+    29. {"01101101"}                     # "m"
+    30. {"01100001"}                     # "a"
+    31. {"01101001"}                     # "i"
+    32. {"01101110"}                     # "n"
+    33. {"00000000"}                     # a function,
+    34. {"00000000"}                     # function 0
+    35. {"00001010"}                     # the code: section 10
+    36. {section_bits}
+    37. {"00000001"}                     # one function
+    38. {code}

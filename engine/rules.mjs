@@ -188,6 +188,14 @@ export function rules_of(declarations, scope = declarations, heads_made_before =
           const [source] = sources;
           if (sources.size !== 1 || !lists.has(source)) throw new Error('not a kept list');
           fields.push({ name, keep: source, condition: condition_of(field.condition, source) });
+        } else if (field.role === 'sequence') {
+          const positions = field.positions.map((slot) => {
+            if (slot.field) return { field: slot.field, ...(slot.digits !== undefined ? { digits: slot.digits } : {}) };
+            const [item] = slot.items;
+            if (slot.items.length !== 1 || item.literal === undefined || slot.list) throw new Error('a sequence position');
+            return { literal: item.literal };
+          });
+          fields.push({ name, sequence: positions });
         } else if (field.role === 'collected') {
           if (!field.value.path || !in_list(field.value.path)) throw new Error('not a collected list');
           fields.push({ name, collect: field.value.path });
@@ -370,6 +378,8 @@ export function in_words(rule) {
     : each.claims ? ' claims ' + condition(each.claims)
     : each.keep ? ' keeps the items of ' + each.keep + ' where ' + condition(each.condition)
     : each.collect ? ' collects ' + each.collect[1] + ' from each item of ' + each.collect[0]
+    : each.sequence ? ' is, in a row: ' + each.sequence.map((slot) => (slot.literal !== undefined ? JSON.stringify(slot.literal)
+      : slot.field + (slot.digits !== undefined ? ' in ' + slot.digits + ' digits' : ''))).join(', then ')
     : each.cases ? ' is ' + each.cases.map((one_case) => term(one_case.output) + ' when ' + condition(one_case.when)).join(', or ')
     : ' is ' + term(each.value) + (each.round ? ', rounded to ' + each.round.unit + ' (' + each.round.direction + ')' : '')
       + (each.wrap ? ', wrapped at ' + each.wrap : ''));

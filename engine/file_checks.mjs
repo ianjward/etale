@@ -133,6 +133,10 @@ export function file_errors(loaded) {
       && (each.list || each.count));
     const relation = (left, right) => left.length === 2 && right?.length === 2 && list_field(left[0]) && list_field(right[0]);
     if (field.role === 'worked') of_term(field.value);
+    if (field.role === 'sequence') {
+      // a position may name a kept or collected list: its items are written in order
+      for (const slot of field.positions) if (slot.field && !views.has(slot.field)) paths.push([slot.field]);
+    }
     if (['rule', 'claim'].includes(field.role) && field.condition) {
       const comparisons = field.condition.all ?? field.condition.any;
       for (const comparison of comparisons) {

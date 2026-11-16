@@ -1100,17 +1100,24 @@ Union_Position_Line {}
     4. {base}
     5. {finish}
 
-# The head of a text shape is exactly 'text {Text}'. A position holds a
-# field of the record, with an optional 'digits:', or a type or a
-# literal, with an optional '...' and count.
+# A numbered sequence is a field and its numbered positions below it,
+# four spaces in. A position holds a field of the record, with an
+# optional 'digits:', or a type or a literal, with an optional '...' and
+# count. 'text {Text}' is the record's own text: its positions hold its
+# stored fields, and it is how the record is read and printed. Any other
+# numbered sequence, such as 'bits {Binary_Digit}', is a worked-out
+# value: its positions, in order, each written as a text of its type. Its
+# positions may hold worked-out fields.
 Shape_Head {}
+  name {Field_Name}
+  base {Type_Name}
   finish {Line_End}
   text {Text}
     1. {Indent_2}
-    2. {"text"}
+    2. {name}
     3. {Gap}
     4. {"{"}
-    5. {"Text"}
+    5. {base}
     6. {"}"}
     7. {finish}
 

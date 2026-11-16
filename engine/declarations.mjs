@@ -245,7 +245,10 @@ export function declarations_of(text, file) {
       const content = inner(value(body_item, 'line'));
       if (content.head === 'Field_Content') declaration.fields.push(field_line(inner(content)));
       else if (content.head === 'Shape') {
-        declaration.shape = items_of(value(content, 'positions')).map((shape_position) => {
+        const head = value(content, 'head');
+        const name = slice(value(head, 'name'));
+        const base = slice(value(head, 'base'));
+        const positions = items_of(value(content, 'positions')).map((shape_position) => {
           const position = inner(shape_position);
           const number = Number(slice(value(position, 'number')));
           const { count, digits } = properties(optional(position, 'properties'));
@@ -254,6 +257,9 @@ export function declarations_of(text, file) {
           }
           return { number, line: line_of(position), ...base_box(value(position, 'base')), ...(count ? { count } : {}) };
         });
+        // 'text {Text}' is the record's own text; any other numbered sequence is a worked-out value
+        if (name === 'text' && base === 'Text') declaration.shape = positions;
+        else declaration.fields.push({ name, line: line_of(head), role: 'sequence', items: [{ type: base }], positions });
       }
     }
     return declaration;

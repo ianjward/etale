@@ -6,7 +6,7 @@
 //   node engine/etale.mjs read FILE TYPE DATA  is the text of DATA a TYPE of FILE?
 //   node engine/etale.mjs rules FILE           FILE's rules, in plain words
 //   node engine/etale.mjs fmt FILE [--write]   FILE in its canonical form
-//   node engine/etale.mjs print FILE TYPE DATA the canonical text of DATA as a TYPE of FILE
+//   node engine/etale.mjs print FILE TYPE DATA [FIELD]  DATA in its canonical text, or one field of it
 //   node engine/etale.mjs run FILE TYPE DATA   read DATA as a TYPE of FILE and show its values
 //
 // The seed (seed.json) is the stored rules of language.etale. The engine reads every file as
@@ -206,12 +206,13 @@ const commands = {
     else process.stdout.write(printed);
     return 0;
   },
-  print(file, type, data) {
+  print(file, type, data, field) {
     const loaded = load(path.resolve(file));
     const data_reader = reader(loaded.rules);
     const text = fs.readFileSync(data, 'utf8');
-    const { count, node } = data_reader.read(type, text);
-    if (count !== 1) return console.log(['refused', '', 'two readings'][count]), 1;
+    const { count, node, failures = [] } = data_reader.read(type, text);
+    if (count !== 1) return console.log(['refused', '', 'two readings'][count] + failures.map((each) => '\n  ' + each).join('')), 1;
+    if (field !== undefined) return print_field(loaded, type, node, field);
     const { printed, same } = printer(loaded.rules).print(data_reader, type, text, node);
     if (!same) return console.log('its canonical form does not read back the same'), 1;
     process.stdout.write(printed);
@@ -232,6 +233,20 @@ const commands = {
     return 0;
   },
 };
+
+// One worked-out field of a reading, written as a text. A sequence of Binary_Digit is bits, and
+// is written eight bits to a byte.
+function print_field(loaded, type, node, name) {
+  const value = node.memo?.get(name);
+  if (typeof value !== 'string') return console.log(type + '.' + name + ' is not a text: ' + shown_value(value ?? INVALID, '  ').trim()), 1;
+  const declared = loaded.declared.get(type)?.fields?.find((each) => each.name === name);
+  if (declared?.items?.[0]?.type !== 'Binary_Digit') return process.stdout.write(value), 0;
+  if (value.length % 8 !== 0) return console.log(type + '.' + name + ' has ' + value.length + ' bits, not whole bytes'), 1;
+  const bytes = Buffer.alloc(value.length / 8);
+  for (let at = 0; at < bytes.length; at++) bytes[at] = parseInt(value.slice(at * 8, at * 8 + 8), 2);
+  process.stdout.write(bytes);
+  return 0;
+}
 
 // A value, as run shows it: a record's fields one a line, below it.
 function shown_value(value, indent) {
