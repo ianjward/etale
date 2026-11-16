@@ -1,0 +1,105 @@
+# The kernel: a small stack machine. Etale compiles to its programs, and
+# each program prints as WebAssembly, one instruction for one.
+#
+# A program is a list of functions. A function is a list of
+# instructions. Each instruction takes values from the top of a stack
+# and puts its results back on top. A function also has numbered local
+# values: 'set 0' takes a value into local 0, and 'get 0' puts it back.
+# A function takes no values and gives one value. The value of 'main' is
+# the exit code of the program. The machine has one block of memory, and
+# it reads its input and writes its output one byte at a time. 'read'
+# gives -1 at the end of the input.
+#
+# WebAssembly has no free jumps. So control flow uses nested blocks:
+# 'block' and 'loop' open a block, and 'end' closes it. 'break 0' leaves
+# the innermost block. In a loop, 'break' goes back to the start of the
+# loop.
+
+Kernel_Name {Text}                       # "main", "read_line"
+  1. {Lowercase}
+  2. {Lower_Name_Character...}
+
+# The words of the instructions.
+Kernel_Word_A {"push" | "duplicate" | "drop" | "swap" | "get" | "set"}
+Kernel_Word_B {"add" | "subtract" | "multiply" | "divide" | "remainder" | "less" | "equal"}
+Kernel_Word_C {"load_byte" | "store_byte" | "load" | "store"}
+Kernel_Word_D {"block" | "loop" | "end" | "break_if" | "break" | "call" | "return"}
+Kernel_Word_E {"read" | "write"}
+Kernel_Word {Kernel_Word_A | Kernel_Word_B | Kernel_Word_C | Kernel_Word_D | Kernel_Word_E}
+
+# How many values an instruction takes from the stack, and how many it
+# puts back.
+Stack_Count {Integer} (0..2)
+
+# How many arguments of one kind an instruction has.
+Argument_Count {Integer} (0..1)
+
+Number_Argument {}                       # " 5", in "push 5"
+  amount {Integer}
+  text {Text}
+    1. {" "}
+    2. {amount}
+
+Name_Argument {}                         # " main", in "call main"
+  target {Kernel_Name}
+  text {Text}
+    1. {" "}
+    2. {target}
+
+Instruction {}                           # "  push 5"
+  word {Kernel_Word}
+  number {Number_Argument} count: 0..1
+  name {Name_Argument} count: 0..1
+  numbers {Argument_Count} (word)
+    {1} ("push" | "get" | "set" | "break" | "break_if")
+    {0} ("duplicate" | "drop" | "swap" | "add" | "subtract" | "multiply")
+    {0} ("divide" | "remainder" | "less" | "equal" | "load_byte" | "store_byte")
+    {0} ("load" | "store" | "block" | "loop" | "end" | "call" | "return")
+    {0} ("read" | "write")
+  names {Argument_Count} (word)
+    {1} ("call")
+    {0} ("push" | "duplicate" | "drop" | "swap" | "get" | "set" | "add")
+    {0} ("subtract" | "multiply" | "divide" | "remainder" | "less" | "equal")
+    {0} ("load_byte" | "store_byte" | "load" | "store" | "block" | "loop")
+    {0} ("end" | "break" | "break_if" | "return" | "read" | "write")
+  takes {Stack_Count} (word)
+    {0} ("push" | "get" | "block" | "loop" | "end" | "break" | "call" | "read")
+    {1} ("duplicate" | "drop" | "set" | "load_byte" | "load" | "break_if")
+    {1} ("return" | "write")
+    {2} ("swap" | "add" | "subtract" | "multiply" | "divide" | "remainder")
+    {2} ("less" | "equal" | "store_byte" | "store")
+  gives {Stack_Count} (word)
+    {0} ("drop" | "set" | "store_byte" | "store" | "block" | "loop" | "end")
+    {0} ("break" | "break_if" | "return" | "write")
+    {1} ("push" | "get" | "add" | "subtract" | "multiply" | "divide")
+    {1} ("remainder" | "less" | "equal" | "load_byte" | "load" | "call" | "read")
+    {2} ("duplicate" | "swap")
+  number_count {Integer} (number.count)
+  name_count {Integer} (name.count)
+  right_numbers {Needs} (number_count = numbers)
+  right_names {Needs} (name_count = names)
+  text {Text}
+    1. {"  "}
+    2. {word}
+    3. {number}
+    4. {name}
+    5. {Newline}
+
+Function {}                              # "function main", then its instructions
+  name {Kernel_Name}
+  instructions {Instruction...} count: 1..
+  text {Text}
+    1. {"function "}
+    2. {name}
+    3. {Newline}
+    4. {instructions}
+
+Program {}
+  functions {Function...} count: 1.., unique: name
+  all_instructions {Instruction...} (functions.instructions)
+  calls {Instruction...} (all_instructions.word = "call")
+  called {Name_Argument...} (calls.name)
+  mains {Function...} (functions.name = "main")
+  main_count {Integer} (mains.count)
+  one_main {Needs} (main_count = 1)
+  calls_are_known {Needs} (called.target in functions.name)

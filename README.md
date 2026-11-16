@@ -10,6 +10,8 @@ reads, writes, checks and runs them. It needs Node 22 and nothing else. There ar
 
 - language/: every Etale file. language.etale is the language; every other file is the
   standard library, which every file sees.
+- language/kernel.etale: the kernel, a small stack machine. Etale is to compile to its
+  programs, and each program is to print as WebAssembly.
 - engine/: the engine, about 2,100 lines of code, with its command line in etale.mjs. It goes
   once Etale runs on its own kernel.
 
