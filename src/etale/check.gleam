@@ -1237,11 +1237,12 @@ fn places(c: Ctx, d: Decl, v: Value, seen: List(String)) -> Option(Int) {
                         True -> None
                         False -> places(c, d, def, [name, ..seen])
                       }
+                    // a whole number, also through a named type such as
+                    // Degrees {Integer} (-60..60)
                     _, _, _ ->
-                      case model.base(fl) {
-                        TypeItem("Integer") | TypeItem("Integer_Literal") ->
-                          Some(0)
-                        _ -> None
+                      case integer_type(c, model.base(fl)) {
+                        True -> Some(0)
+                        False -> None
                       }
                   }
                 }

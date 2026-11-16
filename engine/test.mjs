@@ -200,6 +200,10 @@ test('orders.etale, a price of no known type is not multiplied',
   has(price_unknown, '16: error: price is Nowhere_Type, not a number, so it cannot be multiplied [Line.line_total]'));
 test("money.etale, Money of no known type takes no 'places:'", has(edited('examples/shop/money.etale', 2, '{Decimal}',
   '{Nowhere_Type}'), "2: error: 'places:' applies only to numbers [Money]"));
+const weather = 'examples/weather/weather.etale';
+test('the weather log, every pattern in one file, inhabits Log', errors_of(weather).length === 0
+  && reader(load(path.join(home, weather)).rules).read('Log', fs.readFileSync(path.join(home, 'examples/weather/log.txt'),
+    'utf8')).count === 1);
 const clean = files.map((file) => path.relative(home, file))
   .filter((file) => !/mistakes|cycle|peek/.test(file) && !file.endsWith('language.etale'));
 const unclean = clean.filter((file) => errors_of(file).length > 0);

@@ -584,7 +584,8 @@ export function file_errors(loaded) {
 
   // The decimal places of a calculation as main counts them: a literal's own, the larger for
   // + and -, the sum for *; a field's 'places:', or its type's, or those of its calculation; 0
-  // for a count or an Integer field. Undefined when they are not known.
+  // for a count or a whole-number field, also through a named type such as Degrees {Integer}
+  // (-60..60). Undefined when they are not known.
   const field_places = (field) => field.places ?? (field.round ? decimals(field.round.unit)
     : field.items.length === 1 ? type_places(field.items[0].type, []) : undefined);
   function type_places(name, seen) {
@@ -611,7 +612,7 @@ export function file_errors(loaded) {
     if (!field) return undefined;
     if (field_places(field) !== undefined) return field_places(field);
     if (field.role === 'worked') return seen.includes(name) ? undefined : places_of(record, field.value, [name, ...seen]);
-    return ['Integer', 'Integer_Literal'].includes(field.items[0]?.type) ? 0 : undefined;
+    return field.items.length === 1 && integer_type(field.items[0]) ? 0 : undefined;
   }
 
   // A field's numbers: 'places:' and 'wrap_at:' only on numbers, a calculation that gives a
