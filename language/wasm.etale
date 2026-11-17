@@ -43,54 +43,44 @@ Seven_Bit_Group {}
   zeros_to_add {Integer} (Group_Width - binary.count)
   result {Leading_Zeros} (binary, zeros_to_add)
 
-# A number as WebAssembly writes it here: five bytes of seven bits each,
-# lowest first. The top bit of a byte is 1 when another byte follows.
-Wasm_Number {}
-  first {Binary_String} count: 7
-  second {Binary_String} count: 7
-  third {Binary_String} count: 7
-  fourth {Binary_String} count: 7
-  fifth {Binary_String} count: 7
-  text {Binary_Digit}
-    1. {"1"}
-    2. {first}
-    3. {"1"}
-    4. {second}
-    5. {"1"}
-    6. {third}
-    7. {"1"}
-    8. {fourth}
-    9. {"0"}
-    10. {fifth}
+Group_Values {Integer} (128)             # the numbers seven bits can hold
+Number_Values {Integer} (Group_Values * Group_Values * Group_Values * Group_Values * Group_Values)
 
-# A number in five parts of seven bits, lowest first, and the Wasm_Number
-# they make. A wrap keeps each part from 0 to 127, below 0 too.
-Number_Parts {}
-  number {Integer}
-  first_part {Integer} (number) wrap_at: Place_7
-  less_first {Integer} (number - first_part)
-  after_first {Integer} (less_first / Place_7)
-  second_part {Integer} (after_first) wrap_at: Place_7
-  less_second {Integer} (after_first - second_part)
-  after_second {Integer} (less_second / Place_7)
-  third_part {Integer} (after_second) wrap_at: Place_7
-  less_third {Integer} (after_second - third_part)
-  after_third {Integer} (less_third / Place_7)
-  fourth_part {Integer} (after_third) wrap_at: Place_7
-  less_fourth {Integer} (after_third - fourth_part)
-  after_fourth {Integer} (less_fourth / Place_7)
-  fifth_part {Integer} (after_fourth) wrap_at: Place_7
-  first {Seven_Bit_Group} (first_part)
-  second {Seven_Bit_Group} (second_part)
-  third {Seven_Bit_Group} (third_part)
-  fourth {Seven_Bit_Group} (fourth_part)
-  fifth {Seven_Bit_Group} (fifth_part)
-  written {Wasm_Number}
-    1. {first}
-    2. {second}
-    3. {third}
-    4. {fourth}
-    5. {fifth}
+# One byte of a number as WebAssembly writes it: "1" when another byte
+# follows, "0" on the last, then seven bits of the number.
+Wasm_Byte {}
+  more_follows* {Binary_Digit}
+  bits* {Binary_String} count: 7
+
+# A number as WebAssembly writes it here: five bytes, lowest first.
+Wasm_Number {}
+  bytes* {Wasm_Byte...} count: 5
+
+# Writing a number in bytes by dividing by 128 again and again: each
+# remainder is the seven bits of the next byte, until no bytes are left.
+# Example: 300 in two bytes gives "1" "0101100", then "0" "0000010".
+Integer_To_Wasm_Bytes {}
+  number* {Integer} (0..)
+  bytes_left* {Integer} (1..)
+  bytes_so_far* {Wasm_Byte...}
+  division {Division} (number, Group_Values)
+  bits {Seven_Bit_Group} (division.remainder)
+  more_follows {Binary_Digit} (bytes_left)
+    {"0"} (1)
+    {"1"} (2..)
+  byte {Wasm_Byte} (more_follows, bits)
+  bytes {Wasm_Byte...} (bytes_so_far..., byte)
+  bytes_after {Integer} (bytes_left - 1)
+  result {Wasm_Byte...} (bytes)
+    while (bytes_left >= 2)
+    next (division.quotient, bytes_after, bytes)
+
+# A number of 0 or more as WebAssembly writes it here.
+# Example: 5 gives "1" "0000101", then "1" "0000000" three times, then "0" "0000000".
+Integer_To_Wasm_Number {}
+  number* {Integer} (0..)
+  bytes {Integer_To_Wasm_Bytes} (number, Number_Size, Empty_String)
+  result {Wasm_Number} (bytes)
 
 # What WebAssembly writes for a word: its opcode, then for some opcodes
 # the type of a block, the alignment and offset of a memory access, or
@@ -231,8 +221,8 @@ Compiled_Number {}                       # " 5", in "push 5"
   amount {U32}
   moved_up {Integer} (amount + Half_Of_U32) wrap_at: All_Of_U32
   signed {Integer} (moved_up - Half_Of_U32)
-  parts {Number_Parts}
-    1. {signed}
+  number_written {Integer} (signed) wrap_at: Number_Values     # the same bits, but never below 0
+  written {Integer_To_Wasm_Number} (number_written)
   text {Text}
     1. {" "}
     2. {amount}
@@ -275,8 +265,7 @@ Compiled_Instruction {}                  # "  push 5"
     {1} (Break_Word | Return_Word)
     {2} ("block" | "loop" | Byte_Word)
     {3} (Memory_Word)
-  number_parts {Number_Parts...} (numbers.parts)
-  written {Wasm_Number...} (number_parts.written)
+  written {Wasm_Number...} (numbers.written)
   number_bytes {Integer} (number_count * Number_Size)
   size {Integer} (head_size + number_bytes)
   wasm {Wasm_Instruction}
@@ -296,11 +285,10 @@ Compiled_Function {}                     # "function main", then its instruction
   code_size {Integer} (sizes.sum)
   body_size {Integer} (code_size + Locals_And_End)
   size {Integer} (Number_Size + body_size)
-  length_parts {Number_Parts}
-    1. {body_size}
+  length {Integer_To_Wasm_Number} (body_size)
   code {Wasm_Instruction...} (instructions.wasm)
   wasm {Wasm_Function}
-    1. {length_parts.written}
+    1. {length}
     2. {code}
   text {Text}
     1. {"function "}
@@ -313,9 +301,8 @@ Compiled_Program {}
   function_sizes {Integer...} (functions.size)
   function_bytes {Integer} (function_sizes.sum)
   section_size {Integer} (function_bytes + Helper_Code_Size)
-  section_parts {Number_Parts}
-    1. {section_size}
+  section_length {Integer_To_Wasm_Number} (section_size)
   compiled {Wasm_Function...} (functions.wasm)
   wasm {Wasm_Program}
-    1. {section_parts.written}
+    1. {section_length}
     2. {compiled}

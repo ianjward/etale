@@ -230,7 +230,10 @@ function calls_of(declarations) {
     }
     for (const field of declaration.fields ?? []) {
       const made = by_name.get(field.items?.[0]?.type);
-      if (field.role === 'made' && field.call && field.list && made?.kind !== 'record') {
+      // a list made from items: every value is an item of the list's type, or a list of them
+      const items_given = field.positions?.every((slot) => slot.value?.path?.length === 1
+        && type_of(declaration, slot.value.path) === field.items[0].type);
+      if (field.role === 'made' && field.call && field.list && (made?.kind !== 'record' || items_given)) {
         field.role = 'listed';
         field.values = field.positions.map((slot) => slot.value);
         continue;

@@ -229,7 +229,7 @@ export function file_errors(loaded) {
     });
     if (!starred.some((target, at) => shrinks(record, field, target, next[at]))) {
       bad(field.repeat.next_line, 'next must make a starred field smaller each time, a whole number with a lowest value: '
-        + 'a field wrapped at it, it less a constant, or it divided by a constant of 2 or more, rounded lower, while it is '
+        + 'a field wrapped at it, it less a constant, or it divided by a constant of 2 or more (rounded lower, or less what a wrap at that constant leaves), while it is '
         + 'at least 1');
     }
   }
@@ -276,6 +276,16 @@ export function file_errors(loaded) {
     if (op === '/' && is_target(terms[0]) && at_least(terms[1], '2') && line.round?.direction === 'lower') {
       return positive([target.name]) || positive(value.path);
     }
+    // it less what is left of it, divided by a constant of 2 or more: a division with nothing left
+    const less_left = (term) => {
+      const part = term?.path?.length === 1 && field_of(holder, term.path[0]);
+      if (part?.role !== 'worked' || part.value?.op !== '-' || !is_target(part.value.terms[0])) return false;
+      return part.value.terms.slice(1).every((each) => {
+        const left = each.path?.length === 1 && field_of(holder, each.path[0]);
+        return (left?.wrap !== undefined && left.role === 'worked') || at_least(each, '0');
+      });
+    };
+    if (op === '/' && less_left(terms[0]) && at_least(terms[1], '2')) return positive([target.name]) || positive(value.path);
     return false;
   }
 

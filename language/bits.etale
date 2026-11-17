@@ -25,8 +25,9 @@ Zero_Digit {"0"}
 Division {}
   number* {Integer} (0..)
   divisor* {Integer} (1..)
-  quotient {Integer} (number / divisor) round: 1 lower
   remainder {Integer} (number) wrap_at: divisor
+  multiple {Integer} (number - remainder)          # the part the divisor fits into
+  quotient {Integer} (multiple / divisor)
 
 # A bit as a binary digit: 1 is "1".
 Bit_Digit {}
