@@ -33,78 +33,24 @@ All_Of_U32 {Integer} (4294967296)
 # The words that this compiler takes.
 Compiled_Word {Value_Word | Block_Word | Break_Word | Return_Word | Byte_Word}
 
-# Seven bits of a number, highest first: "0000101" is 5.
-Seven_Bits {}
-  bit_64 {Bit}
-  bit_32 {Bit}
-  bit_16 {Bit}
-  bit_8 {Bit}
-  bit_4 {Bit}
-  bit_2 {Bit}
-  bit_1 {Bit}
-  text {Binary_Digit}
-    1. {bit_64} digits: 1
-    2. {bit_32} digits: 1
-    3. {bit_16} digits: 1
-    4. {bit_8} digits: 1
-    5. {bit_4} digits: 1
-    6. {bit_2} digits: 1
-    7. {bit_1} digits: 1
+Group_Width {Integer} (7)                # WebAssembly writes a number seven bits to a byte
 
-# The seven bits of a number from 0 to 127. Each bit is 1 when what is
-# left of the number reaches its place.
-Seven_Bit_Split {}
-  number {Integer}
-  bit_64 {Bit} (number)
-    {1} (>= Place_6)
-    {0} (< Place_6)
-  value_64 {Integer} (bit_64 * Place_6)
-  after_64 {Integer} (number - value_64)
-  bit_32 {Bit} (after_64)
-    {1} (>= Place_5)
-    {0} (< Place_5)
-  value_32 {Integer} (bit_32 * Place_5)
-  after_32 {Integer} (after_64 - value_32)
-  bit_16 {Bit} (after_32)
-    {1} (>= Place_4)
-    {0} (< Place_4)
-  value_16 {Integer} (bit_16 * Place_4)
-  after_16 {Integer} (after_32 - value_16)
-  bit_8 {Bit} (after_16)
-    {1} (>= Place_3)
-    {0} (< Place_3)
-  value_8 {Integer} (bit_8 * Place_3)
-  after_8 {Integer} (after_16 - value_8)
-  bit_4 {Bit} (after_8)
-    {1} (>= Place_2)
-    {0} (< Place_2)
-  value_4 {Integer} (bit_4 * Place_2)
-  after_4 {Integer} (after_8 - value_4)
-  bit_2 {Bit} (after_4)
-    {1} (>= Place_1)
-    {0} (< Place_1)
-  value_2 {Integer} (bit_2 * Place_1)
-  after_2 {Integer} (after_4 - value_2)
-  bit_1 {Bit} (after_2)
-    {1} (>= 1)
-    {0} (<= 0)
-  bits {Seven_Bits}
-    1. {bit_64}
-    2. {bit_32}
-    3. {bit_16}
-    4. {bit_8}
-    5. {bit_4}
-    6. {bit_2}
-    7. {bit_1}
+# A number from 0 to 127 as seven binary digits.
+# Example: 5 gives "0000101".
+Seven_Bit_Group {}
+  number* {Integer} (0..127)
+  binary {Integer_To_Binary} (number, Empty_String)
+  zeros_to_add {Integer} (Group_Width - binary.count)
+  result {Leading_Zeros} (binary, zeros_to_add)
 
 # A number as WebAssembly writes it here: five bytes of seven bits each,
 # lowest first. The top bit of a byte is 1 when another byte follows.
 Wasm_Number {}
-  first {Seven_Bits}
-  second {Seven_Bits}
-  third {Seven_Bits}
-  fourth {Seven_Bits}
-  fifth {Seven_Bits}
+  first {Binary_String} count: 7
+  second {Binary_String} count: 7
+  third {Binary_String} count: 7
+  fourth {Binary_String} count: 7
+  fifth {Binary_String} count: 7
   text {Binary_Digit}
     1. {"1"}
     2. {first}
@@ -134,22 +80,17 @@ Number_Parts {}
   less_fourth {Integer} (after_third - fourth_part)
   after_fourth {Integer} (less_fourth / Place_7)
   fifth_part {Integer} (after_fourth) wrap_at: Place_7
-  first {Seven_Bit_Split}
-    1. {first_part}
-  second {Seven_Bit_Split}
-    1. {second_part}
-  third {Seven_Bit_Split}
-    1. {third_part}
-  fourth {Seven_Bit_Split}
-    1. {fourth_part}
-  fifth {Seven_Bit_Split}
-    1. {fifth_part}
+  first {Seven_Bit_Group} (first_part)
+  second {Seven_Bit_Group} (second_part)
+  third {Seven_Bit_Group} (third_part)
+  fourth {Seven_Bit_Group} (fourth_part)
+  fifth {Seven_Bit_Group} (fifth_part)
   written {Wasm_Number}
-    1. {first.bits}
-    2. {second.bits}
-    3. {third.bits}
-    4. {fourth.bits}
-    5. {fifth.bits}
+    1. {first}
+    2. {second}
+    3. {third}
+    4. {fourth}
+    5. {fifth}
 
 # What WebAssembly writes for a word: its opcode, then for some opcodes
 # the type of a block, the alignment and offset of a memory access, or
