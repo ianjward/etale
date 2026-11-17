@@ -359,7 +359,7 @@
 {"head":"And_Gate.left","parts":[{"types":["False"]}]},
 {"head":"And_Gate.right","parts":[{"types":["True"]}]},
 {"head":"And_Gate.right","parts":[{"types":["False"]}]},
-{"head":"And_Gate","record":true,"parts":[{"name":"left","types":["And_Gate.left"]},{"name":"right","types":["And_Gate.right"]}],"fields":[{"name":"out","inputs":["left","right"],"cases":[{"output":{"text":"TRUE"},"when":{"all":[{"path":["left"],"comparison":"=","right":{"text":"TRUE"}},{"path":["right"],"comparison":"=","right":{"text":"TRUE"}}]}},{"output":{"text":"FALSE"},"when":{"all":[{"path":["left"],"comparison":"=","right":{"text":"TRUE"}},{"path":["right"],"comparison":"=","right":{"text":"FALSE"}}]}},{"output":{"text":"FALSE"},"when":{"all":[{"path":["left"],"comparison":"=","right":{"text":"FALSE"}}]}}]}]},
+{"head":"And_Gate","record":true,"parts":[{"name":"left","types":["And_Gate.left"]},{"name":"right","types":["And_Gate.right"]}],"fields":[{"name":"result","inputs":["left","right"],"cases":[{"output":{"text":"TRUE"},"when":{"all":[{"path":["left"],"comparison":"=","right":{"text":"TRUE"}},{"path":["right"],"comparison":"=","right":{"text":"TRUE"}}]}},{"output":{"text":"FALSE"},"when":{"all":[{"path":["left"],"comparison":"=","right":{"text":"TRUE"}},{"path":["right"],"comparison":"=","right":{"text":"FALSE"}}]}},{"output":{"text":"FALSE"},"when":{"all":[{"path":["left"],"comparison":"=","right":{"text":"FALSE"}}]}}]}]},
 {"head":"Entry_Name","record":true,"parts":[{"literal":"=== "},{"name":"path","types":["Line_Text"]},{"types":["Newline"]}]},
 {"head":"Entry","record":true,"parts":[{"name":"name","types":["Entry_Name"]},{"name":"file","types":["File"]}]},
 {"head":"Project","parts":[{"types":["Entry"],"list":true,"least":0,"most":null}]}

@@ -812,9 +812,9 @@ File {Blocks & Short_Lines}
 # ---------- Step 8: Reference Gate ----------
 
 And_Gate {}                              # AND over TRUE and FALSE, with a short circuit
-  left {True | False}
-  right {True | False}
-  out {True | False} (left, right)
+  left* {True | False}
+  right* {True | False}
+  result {True | False} (left, right)
     {True} (left = True & right = True)
     {False} (left = True & right = False)
     {False} (left = False)               # No remaining case mentions right
