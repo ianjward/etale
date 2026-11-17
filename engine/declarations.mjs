@@ -108,6 +108,8 @@ export function declarations_of(text, file) {
   // Values in calculations and conditions: numbers, texts, paths, + - * /, ranges, choices
   // and ranges of characters.
   function term(node) {
+    if (node.head === 'Call_Item') node = inner(node);
+    if (node.head === 'All_Items') return { ...term(inner(node)), all: true };   // each item of a list
     while (['Value', 'Choice_Value', 'Term', 'Calculation', 'Named_End', 'Range_Literal'].includes(node.head)) node = inner(node);
     const ends = (low, high) => ({ range: [low && term(low), high && term(high)] });
     switch (node.head) {
@@ -176,6 +178,7 @@ export function declarations_of(text, file) {
     if (extra.allowed) declaration.allowed = extra.allowed;
     if (extra.calculation) declaration.constant = expression(extra.calculation);
     if (extra.conditions) left_out.push('a condition');
+    if (extra.call) declaration.call = extra.call;       // a constant record, or a constant list of them
     if (places !== undefined) declaration.places = places;
     if (left_out.length) declaration.left_out = left_out;
     return declaration;

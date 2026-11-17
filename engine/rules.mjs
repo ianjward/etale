@@ -30,7 +30,10 @@
 //   { name, inputs, cases: [{ output, when }] }                  a mapping
 //   { name, needs: condition }  and  { name, claims: condition } a rule and a claim
 // A field with 'while' has repeat: { condition, next: [terms], fields: [starred names], floors },
-// and a field wrapped at a field has wrap_by: its name.
+// and a field wrapped at a field has wrap_by: its path. A made list has each: true, one record
+// for each item of the value marked all: true; a list from items is { name, list_of: [terms] }.
+// A constant record is the term { constant: { name, make, fields, values } }, a constant list
+// { list: [terms] }.
 // A comparison between a field of the items of two lists of the record has relation: true.
 // A stored list's part may have unique and order, each the path of a key of its items, and a
 // stored text's part may have ranks: the rank of each character, from the mapping that its
@@ -137,6 +140,9 @@ export function rules_of(declarations, scope = declarations, heads_made_before =
   // A term with its constants and types of one value written out, a finite union as the
   // choice of its values, and its ranges fixed.
   function resolve(term) {
+    if (term.path?.length === 1 && by_name.get(term.path[0])?.call) {
+      return { ...constant_record(term.path[0]), ...(term.all ? { all: true } : {}) };
+    }
     if (term.path?.length === 1 && /^[A-Z]/.test(term.path[0])) {
       const fixed = one_of(term.path[0]) ?? union_values(by_name, constants, term.path[0]);
       if (!fixed) throw new Error(term.path[0] + ' has no one value');
@@ -164,6 +170,26 @@ export function rules_of(declarations, scope = declarations, heads_made_before =
     const found = by_name.get(type);
     if (!found || seen.has(type) || found.kind !== 'refinement') return null;
     return floor_of(found, seen.add(type));
+  }
+
+  // A constant record, 'Every_4 {Leap_Rule} (Years_Per_Leap, True)': its type made with its
+  // values, one for each starred field. A constant list holds constant records, in order.
+  const constant_records = new Map();
+  function constant_record(name) {
+    if (constant_records.has(name)) return constant_records.get(name);
+    const declaration = by_name.get(name);
+    let found;
+    if (declaration.list) found = { list: declaration.call.map(resolve) };
+    else {
+      const type = declaration.items[0].type;
+      const made = by_name.get(type);
+      if (made?.kind !== 'record') throw new Error(name + ' is not a record');
+      const starred = made.fields.filter((each) => each.required).map((each) => each.name);
+      if (starred.length !== declaration.call.length) throw new Error(name + ': the wrong number of values');
+      found = { constant: { name, make: type, fields: starred, values: declaration.call.map(resolve) } };
+    }
+    constant_records.set(name, found);
+    return found;
   }
 
   // A record's fields other than its stored ones.
@@ -209,7 +235,11 @@ export function rules_of(declarations, scope = declarations, heads_made_before =
           if (made?.kind !== 'record') throw new Error('not a record');
           const stored = made.fields.filter((each) => each.role === 'stored' && (!field.call || each.required)).map((each) => each.name);
           if (stored.length !== field.positions.length || field.positions.some((slot) => !slot.path && !slot.value)) throw new Error('a made position');
-          fields.push({ name, make: type, fields: stored, values: field.positions.map((slot) => resolve(slot.value ?? { path: slot.path })) });
+          // a list of made records: one for each item of the list marked '...'
+          fields.push({ name, make: type, fields: stored, values: field.positions.map((slot) => resolve(slot.value ?? { path: slot.path })),
+            ...(field.list ? { each: true } : {}) });
+        } else if (field.role === 'listed') {
+          fields.push({ name, list_of: field.values.map(resolve) });
         } else if (field.role === 'collected') {
           if (!field.value.path || !in_list(field.value.path)) throw new Error('not a collected list');
           fields.push({ name, collect: field.value.path });

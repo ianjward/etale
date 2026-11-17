@@ -177,15 +177,43 @@ function engine_names() {
   return found;
 }
 
-// A field whose type is a record, and whose parentheses hold one path, is a call with one value: 'arguments {Word_Arguments} (word)'. Calls with two or more values
-// are read as calls already.
+// A field whose type is a record, and whose parentheses hold one path, is a call with one
+// value: 'arguments {Word_Arguments} (word)'. Calls with two or more values are read as calls
+// already. A path to a record of the field's own type holds that record: it is not a call. A
+// list of values that are not records, made from items, is a list: 'digits {Bit...} (bit, rest...)'.
 function calls_of(declarations) {
   const by_name = new Map(declarations.map((each) => [each.name, each]));
+  // the type a made record gives: its result's type, when it has a result
+  const given = (type, seen = new Set()) => {
+    const found = by_name.get(type);
+    const result = found?.kind === 'record' && found.fields.find((field) => field.name === 'result');
+    if (!result || seen.has(type)) return type;
+    return given(result.items?.[0]?.type, seen.add(type));
+  };
+  const type_of = (declaration, [head, step]) => {
+    const field = declaration.fields.find((each) => each.name === head);
+    const type = field?.items?.[0]?.type;
+    if (step === undefined || ['first', 'last'].includes(step)) return type;
+    const inner = by_name.get(given(type));
+    return inner?.kind === 'record' ? inner.fields.find((each) => each.name === step)?.items?.[0]?.type : undefined;
+  };
   for (const declaration of declarations) {
+    // a constant of a record type with one value is a constant record made with that value
+    const base = declaration.kind === 'refinement' && by_name.get(declaration.items?.[0]?.type);
+    if (base?.kind === 'record' && declaration.constant !== undefined && !declaration.call) {
+      const { number, name } = declaration.constant;
+      declaration.call = [number !== undefined ? { number } : name !== undefined ? { path: [name] } : { number: '?' }];
+      delete declaration.constant;
+    }
     for (const field of declaration.fields ?? []) {
       const made = by_name.get(field.items?.[0]?.type);
+      if (field.role === 'made' && field.call && field.list && made?.kind !== 'record') {
+        field.role = 'listed';
+        field.values = field.positions.map((slot) => slot.value);
+        continue;
+      }
       if (field.role !== 'worked' || made?.kind !== 'record' || !field.value?.path || field.round || field.wrap) continue;
-      if (['first', 'last'].includes(field.value.path.at(-1))) continue;     // one item of a list, not a call
+      if (type_of(declaration, field.value.path) === field.items[0].type) continue;
       field.role = 'made';
       field.call = true;
       field.positions = [{ line: field.line, path: field.value.path, value: field.value }];

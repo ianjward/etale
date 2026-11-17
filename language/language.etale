@@ -326,15 +326,21 @@ Quantity {Range_Literal | Natural}
 
 Calculation {Arithmetic | Quotient | Term}
 
+All_Items {Text}                         # 'rules...': each item of a list
+  1. {Path}
+  2. {"..."}
+
+Call_Item {All_Items | Term}
+
 Call_Tail {}
-  next {Term}
+  next {Call_Item}
   text {Text}
     1. {","}
     2. {Gap}
     3. {next}
 
 Call_Values {}                           # Example: '(number, place_value)'
-  first {Term}
+  first {Call_Item}
   rest {Call_Tail...} count: 1..
 
 Paren_Content {Allowed_Choice | Range_Literal | Calculation | Conditions | Call_Values}

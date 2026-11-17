@@ -15,8 +15,9 @@
 // a number in a calculation that is not a constant, 0 or 1; a field that only copies another),
 // text shapes (in Text or Binary_Digit, holding each stored field once and nothing worked out),
 // made records (one position for each stored field, of its type, and never their own type),
-// and 'while' and 'next' (one a type, starred fields, one value of its type for each, and one
-// starred field proved to get smaller).
+// 'while' and 'next' (one a type, starred fields, one value of its type for each, and one
+// starred field proved to get smaller), constant records and lists, 'result' (worked out, in a
+// made type, and all that is seen of it outside), and lists from items ('...' on a list only).
 import { Exact, exact, plus, minus, times, decimal_text } from './evaluate.mjs';
 import { fixed_value, one_value, union_values, characters } from './rules.mjs';
 
@@ -100,6 +101,8 @@ export function file_errors(loaded) {
       if (field.role === 'mapping') check_mapping(declaration, field, above);
       if (field.role === 'made') check_made(declaration, field, above);
       if (field.repeat) check_repeat(declaration, field);
+      if (field.name === 'result') check_result(declaration, field);
+      if (field.role === 'listed') check_listed(declaration, field);
       check_numbers(declaration, field, where);
       check_field_numbers(declaration, field, where);
       above.push(field.name);
@@ -116,6 +119,70 @@ export function file_errors(loaded) {
     }
     check_shape(declaration);
     check_filters(declaration);
+  }
+
+  // ---------- Constant records, results and lists from items
+
+  // A constant record gives its type's starred fields, in order, as numbers, constants and
+  // values of one type such as True. A constant list holds constant records of its item type.
+  function check_constant(declaration) {
+    const type = declaration.items[0]?.type;
+    const bad = (message) => error(declaration, declaration.line, message);
+    if (declaration.list) {
+      for (const term of declaration.call) {
+        const item = term.path?.length === 1 && by_name.get(term.path[0]);
+        if (!item?.call || item.list || item.items[0]?.type !== type) {
+          bad('a constant list of ' + type + ' holds constant records of ' + type + ': ' + (term.path?.join('.') ?? term.number));
+        }
+        if (item && place(item.name) >= place(declaration.name)) bad(term.path[0] + ' is not declared above this line');
+      }
+      return;
+    }
+    const made = record_of(type);
+    if (!made) return bad(declaration.name + ' gives values to ' + type + ', which is not a record');
+    const starred = made.fields.filter((each) => each.required);
+    if (starred.length === 0) return bad(type + ' has no starred fields, so it is read from text, never made');
+    if (starred.length !== declaration.call.length) {
+      return bad(type + ' takes ' + starred.map((each) => each.name).join(', ') + ', so ' + declaration.name + ' gives '
+        + starred.length + ' values, not ' + declaration.call.length);
+    }
+    declaration.call.forEach((term, at) => {
+      const target = starred[at];
+      if (term.all || target.list || target.count) return bad(type + '.' + target.name + ' is a list; a constant gives one value each');
+      if (term.number !== undefined && numeric(by_name, target.items)) return;
+      const name = term.path?.length === 1 && term.path[0];
+      if (name && constants.has(name) && numeric(by_name, target.items)) return;
+      const one = name && singleton(name);
+      const fits = one && target.items.some((item) => item.type === name || (one.text !== undefined && item.literal === one.text));
+      if (!fits) bad(type + '.' + target.name + ' is ' + items_text(target.items) + ', so it is not given ' + (name || term.number));
+    });
+  }
+
+  // 'result' is what a made record of the type gives: worked out, never stored, and only in a
+  // type that is made, with starred fields.
+  function check_result(record, field) {
+    const where = record.name + '.result';
+    if (field.role === 'stored') return error(record, field.line, "'result' is worked out from the fields above it, never stored", where);
+    if (!record.fields.some((each) => each.required)) {
+      error(record, field.line, "only a type with starred fields gives a result; a type read from text gives itself", where);
+    }
+  }
+
+  // A list from items: each item is one value of the list's item type, and an item marked
+  // '...' is a list of that type, whose items it adds.
+  function check_listed(record, field) {
+    const where = record.name + '.' + field.name;
+    for (const term of field.values) {
+      const source = term.path ? path_items(record, term.path) : term.number !== undefined ? [{ type: 'Integer' }] : undefined;
+      const name = term.path?.join('.') ?? term.number;
+      const head = term.path && field_of(record, term.path[0]);
+      const is_list = term.path?.length === 1 && head && (head.list || head.count);
+      if (term.all && !is_list) error(record, field.line, name + "... adds the items of a list, but " + name + ' is not a list', where);
+      else if (!term.all && is_list) error(record, field.line, name + " is a list: mark it " + name + '... to add its items', where);
+      else if (source && !same_items(source, field.items)) {
+        error(record, field.line, name + ' is ' + items_text(source) + ', but ' + field.name + ' holds ' + items_text(field.items), where);
+      }
+    }
   }
 
   // ---------- Repetition: while and next
@@ -278,14 +345,42 @@ export function file_errors(loaded) {
     }
     const lists = new Map(record.fields.slice(0, record.fields.indexOf(field))
       .filter((each) => each.list || each.count || ['kept', 'collected'].includes(each.role)).map((each) => [each.name, each]));
+    // a list above, a list one step down, or a constant list
+    const list_source = (path) => {
+      if (path.length === 1 && lists.has(path[0])) return lists.get(path[0]);
+      const constant = path.length === 1 && by_name.get(path[0]);
+      if (constant?.call && constant.list) return constant;
+      if (path.length !== 2 || !lists.has(path[0]) && !field_of(record, path[0])) return undefined;
+      const inner = field_of(given_record(field_of(record, path[0])?.items?.[0]?.type), path[1]);
+      return inner && (inner.list || inner.count) ? inner : undefined;
+    };
+    const each = field.positions.filter((slot) => slot.value?.all);
+    if (field.list && each.length !== 1) {
+      return error(record, field.line, "'" + field.name + "' is a list of made records, so one value is a list marked '...', "
+        + 'whose items are taken one at a time', where);
+    }
     field.positions.forEach((slot, at) => {
       const target = stored[at];
+      if (slot.value?.all) {
+        if (!field.list) {
+          return error(record, slot.line, "'" + slot.path.join('.') + "...' makes one " + type + ' for each item, so '
+            + field.name + ' is a list: {' + type + '...}', where);
+        }
+        if (target.list || target.count) return error(record, slot.line, type + '.' + target.name + ' is a list: give it without ...', where);
+        const source = list_source(slot.path);
+        if (!source) return error(record, slot.line, slot.path.join('.') + '... names no list', where);
+        if (!same_items(source.items, target.items)) {
+          error(record, slot.line, slot.path.join('.') + ' holds ' + items_text(source.items) + ', but ' + type + '.' + target.name
+            + ' is ' + items_text(target.items), where);
+        }
+        return;
+      }
       if (!slot.path) {
         if (slot.value?.number !== undefined && numeric(by_name, target.items)) return;
         return error(record, slot.line, 'a position of a made record names a field, as in {' + target.name + '}', where);
       }
       if (target.list || target.count) {
-        const source = slot.path.length === 1 && lists.get(slot.path[0]);
+        const source = list_source(slot.path);
         if (!source) return error(record, slot.line, type + '.' + target.name + ' is a list, so its position names a list above', where);
         if (!same_items(source.items, target.items)) {
           error(record, slot.line, slot.path[0] + ' holds ' + items_text(source.items) + ', but ' + type + '.' + target.name
@@ -320,11 +415,15 @@ export function file_errors(loaded) {
   }
   // The items of the field a path ends at, or undefined when the path names something else.
   function path_items(record, path) {
-    if (is_type_name(path[0])) return constants.has(path[0]) && path.length === 1 ? [{ type: 'Integer' }] : undefined;
+    if (is_type_name(path[0])) {
+      const constant = by_name.get(path[0]);
+      if (constant?.call && path.length === 1) return constant.items;        // a constant record or list
+      return constants.has(path[0]) && path.length === 1 ? [{ type: 'Integer' }] : undefined;
+    }
     let field = record.fields.find((each) => each.name === path[0]);
     for (const step of path.slice(1)) {
       if (methods.includes(step)) return item_methods.includes(step) ? field?.items : [{ type: 'Integer' }];
-      field = field_of(record_of(field?.items?.[0]?.type), step);
+      field = field_of(given_record(field?.items?.[0]?.type), step);
     }
     return field?.items;
   }
@@ -356,13 +455,18 @@ export function file_errors(loaded) {
       && (each.list || each.count));
     const relation = (left, right) => left.length === 2 && right?.length === 2 && list_field(left[0]) && list_field(right[0]);
     if (field.role === 'worked' && !(field.repeat && field.value.path?.length === 1)) of_term(field.value);
+    if (field.role === 'listed') {
+      const is_list = (name) => record.fields.some((each) => each.name === name && (each.list || each.count));
+      for (const term of field.values) if (!(term.path?.length === 1 && is_list(term.path[0]))) of_term(term);
+    }
     if (field.repeat) {
       // the condition of 'while', and the values of 'next' but a whole list
       for (const { path, right } of field.repeat.condition.all ?? field.repeat.condition.any) {
         paths.push(through(path));
         of_term(right);
       }
-      for (const term of field.repeat.next) if (!(term.path?.length === 1 && list_field(term.path[0]))) of_term(term);
+      const any_list = (name) => record.fields.some((each) => each.name === name && (each.list || each.count));
+      for (const term of field.repeat.next) if (!(term.path?.length === 1 && any_list(term.path[0]))) of_term(term);
     }
     if (field.role === 'made') {
       // a position for a list takes a whole list, and is checked with the make
@@ -435,6 +539,15 @@ export function file_errors(loaded) {
   };
   const field_of = (record, name) => record?.fields?.find((field) => field.name === name
     && !['kept', 'collected'].includes(field.role));
+  // What a made record of this type gives: the record of its result's type, when it has a
+  // result; outside the type only the result is seen.
+  const given_record = (name, seen = new Set()) => {
+    const found = record_of(name);
+    const result = found && field_of(found, 'result');
+    if (!result || seen.has(name)) return found;
+    // a result that is not a record has no fields to read
+    return given_record(result.items?.[0]?.type, seen.add(name)) ?? { name, fields: [], gives: items_text(result.items) };
+  };
 
   function check_path(declaration, field, path, above) {
     const where = declaration.name + '.' + field.name;
@@ -445,7 +558,7 @@ export function file_errors(loaded) {
       return error(declaration, field.line, "'" + head + "' is not a record, so '" + head + '.' + step + "' names nothing", where);
     }
     if (is_type_name(head)) {
-      if (path.length === 1 && constants.has(head)) return;
+      if (path.length === 1 && (constants.has(head) || by_name.get(head)?.call)) return;
       if (place(head) < 0) error(declaration, field.line, "unknown type '" + head + "' in a path", where);
       else if (place(head) >= place(declaration.name)) {
         error(declaration, field.line, "type '" + head + "' is not declared above this line", where);
@@ -477,6 +590,10 @@ export function file_errors(loaded) {
         }
         return;
       }
+      if (at?.gives !== undefined) {
+        return error(declaration, line, at.name + ' gives only its result, ' + at.gives + ", so '" + path.slice(0, index + 1).join('.')
+          + "' names nothing", where);
+      }
       const fields_here = at && record_of(at.name);
       if (at && index > 0 && is_type_name(step)) {
         return error(declaration, line, "'" + path.slice(0, index + 1).join('.') + "': a path holds only fields", where);
@@ -490,7 +607,7 @@ export function file_errors(loaded) {
       }
       last_field = next;
       const type = next.items?.length === 1 ? next.items[0].type : undefined;
-      at = type && (by_name.get(type)?.kind === 'refinement' && by_name.get(type).list ? record_of(type) : by_name.get(type));
+      at = type && (by_name.get(type)?.kind === 'refinement' && by_name.get(type).list ? record_of(type) : given_record(type) ?? by_name.get(type));
     }
     if (state === 'list') error(declaration, line, path.join('.') + ' is a list: read it with a method, .count or .sum', where);
   }
@@ -717,7 +834,7 @@ export function file_errors(loaded) {
     if (input.value?.path?.at(-1) === 'count') bounds = narrow(bounds, { low: exact('0'), high: null });
     if (input.wrap?.name !== undefined && !is_type_name(input.wrap.name)) {
       // below the field it wraps at: at most one less than that field's highest value
-      const modulus = field_of(record, input.wrap.name);
+      const modulus = !input.wrap.name.includes('.') && field_of(record, input.wrap.name);
       const high = modulus && modulus !== input ? field_bounds(modulus, record).high : null;
       const top = high && integer_type(input.items[0]) && integral(high) ? minus(high, exact('1')) : high;
       bounds = narrow(bounds, { low: exact('0'), high: top });
@@ -799,7 +916,7 @@ export function file_errors(loaded) {
     const field = field_of(record, head);
     if (!field) return rest.length && by_name.get(head)?.kind === 'record' ? kind_of(by_name.get(head), rest) : undefined;
     if (rest.length) {
-      const inner = field.items.length === 1 && record_of(field.items[0].type);
+      const inner = field.items.length === 1 && given_record(field.items[0].type);
       return inner && field_of(inner, rest[0]) ? kind_of(inner, rest) : undefined;
     }
     if (['rule', 'claim'].includes(field.role)) return 'TRUE or FALSE';
@@ -889,7 +1006,9 @@ export function file_errors(loaded) {
       const by = field.wrap.name !== undefined && !is_type_name(field.wrap.name) ? field.wrap.name : undefined;
       if (by !== undefined) {
         // a field above: it is checked to be above 0 when the value is worked out
-        const modulus = record.fields.slice(0, record.fields.indexOf(field)).find((each) => each.name === by);
+        const [head, step] = by.split('.');
+        const above_it = record.fields.slice(0, record.fields.indexOf(field)).find((each) => each.name === head);
+        const modulus = above_it && (step === undefined ? above_it : { items: path_items(record, [head, step]) ?? [] });
         if (!modulus || !numeric(by_name, modulus.items) || modulus.list || modulus.count) {
           error(record, field.line, "'wrap_at: " + by + "' needs a number field declared above", where);
         }
@@ -905,7 +1024,8 @@ export function file_errors(loaded) {
     }
     if (field.role !== 'worked') return;
     const one_item = value.path?.length === 2 && item_methods.includes(value.path[1]);
-    if (!number && !['True', 'False'].includes(field.items[0]?.type) && !one_item && !field.repeat) {
+    const holds = value.path && same_items(path_items(record, value.path), field.items);     // a record held, not made
+    if (!number && !['True', 'False'].includes(field.items[0]?.type) && !one_item && !holds && !field.repeat) {
       error(record, field.line, 'a computed field produces a number, TRUE or FALSE, never text or a record; a record is made '
         + 'by a call, with a value for each of its starred fields', where);
     }
@@ -913,7 +1033,7 @@ export function file_errors(loaded) {
     // a record around this one, a wrap and a rounding are not copies
     const [head, ...steps] = value.path ?? [];
     if (head !== undefined && !is_type_name(head) && !methods.includes(steps.at(-1)) && field.wrap === undefined && !round
-      && !field.repeat) {
+      && !field.repeat && field.name !== 'result') {
       error(record, field.line, "'" + field.name + "' only copies " + value.path.join('.') + ': use '
         + value.path.join('.') + ' where it is needed', where);
     }
@@ -996,6 +1116,7 @@ export function file_errors(loaded) {
       for (const name of types_of(slot.items)) type_ok(declaration, name, slot.line, false);
     }
     if (declaration.kind === 'record') check_record(declaration);
+    if (declaration.call) check_constant(declaration);
   }
 
   return errors;

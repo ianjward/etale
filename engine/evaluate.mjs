@@ -87,11 +87,12 @@ function round(number, unit, direction) {
 // ---------- Words, for people: a term and a condition as they are written
 
 export const term_words = (term) =>
-  term.number ?? (term.text !== undefined ? JSON.stringify(term.text)
+  term.number ?? (term.constant ? term.constant.name : term.list ? '(' + term.list.map(term_words).join(', ') + ')'
+    : term.text !== undefined ? JSON.stringify(term.text)
     : term.path ? term.path.join('.')
     : term.op ? term.terms.map(term_words).join(' ' + term.op + ' ')
     : term.range ? (term.range[0] ?? '') + '..' + (term.range[1] ?? '')
-    : term.choice.map(term_words).join(' | '));
+    : term.choice.map(term_words).join(' | ')) + (term.all ? '...' : '');
 export const condition_words = (condition) => (condition.all ?? condition.any)
   .map((comparison) => comparison.path.join('.') + ' ' + comparison.comparison + ' ' + term_words(comparison.right))
   .join(condition.all ? ' & ' : ' | ');
@@ -225,6 +226,7 @@ export function evaluator(text, numeric, rules_by_head = new Map()) {
     }
     if (line.cases) return mapping(node, line, outside);
     if (line.make) return make(node, line, outside);
+    if (line.list_of) return list_of(node, line, outside);
     if (line.keep !== undefined || line.collect) return list_from(node, line, outside);
     let value;
     if (line.round) {
@@ -245,7 +247,7 @@ export function evaluator(text, numeric, rules_by_head = new Map()) {
     }
     if (line.wrap !== undefined && value instanceof Exact && exact(line.wrap).top !== 0n) value = wrap(value, exact(line.wrap));
     if (line.wrap_by !== undefined && value instanceof Exact) {
-      const modulus = get(node, line.wrap_by, outside);
+      const modulus = list_value({ path: line.wrap_by.split('.') }, node, outside);
       if (stop(modulus)) return modulus;
       if (!(modulus instanceof Exact) || order(modulus, ZERO) <= 0) {
         fail(node, node.head + '.' + line.name + ': wrap_at: ' + line.wrap_by + ' is not above 0');
@@ -262,15 +264,67 @@ export function evaluator(text, numeric, rules_by_head = new Map()) {
   function make(node, line, outside) {
     const rule = (rules_by_head.get(line.make) ?? []).find((each) => each.record);
     if (!rule) return INVALID;
-    const memo = new Map();
+    const values = new Map();
+    let each_name;
     for (const [at, name] of line.fields.entries()) {
       const term = line.values[at];
-      const part = rule.parts.find((each) => each.name === name);
-      const value = part?.list && term.path?.length === 1 ? get(node, term.path[0], outside) : calculate(term, node, outside);
-      if (stop(value)) return value;
-      memo.set(name, part?.list && !(value instanceof Sequence) ? new Sequence([value], part.most) : value);
+      const part = rule.parts.find((one) => one.name === name);
+      if (line.each && term.all) {
+        each_name = name;                                // one record for each item of this list
+        values.set(name, list_value(term, node, outside));
+      } else {
+        const value = part?.list ? list_value(term, node, outside) : calculate(term, node, outside);
+        values.set(name, part?.list && !(value instanceof Sequence) && !stop(value) ? new Sequence([value], part.most) : value);
+      }
+      if (stop(values.get(name))) return values.get(name);
     }
-    return { head: line.make, rule, values: [], made: true, memo };
+    const one = (memo) => given({ head: line.make, rule, values: [], made: true, memo }, node, outside);
+    if (each_name === undefined) return one(values);
+    const items = values.get(each_name);
+    if (!(items instanceof Sequence)) return INVALID;
+    const made = [];
+    for (const item of items.items) {
+      const record = one(new Map([...values, [each_name, item]]));
+      if (stop(record)) return record;
+      made.push(record);
+    }
+    return new Sequence(made, null);
+  }
+  // A made record, or its result when its type has one.
+  function given(record, node, outside) {
+    return lines_of(record.rule).has('result') ? get(record, 'result', outside && [node, ...outside]) : record;
+  }
+
+  // A whole list: a field, a field of a record one step down, or a constant list.
+  function list_value(term, node, outside) {
+    if (term.list || term.constant) return calculate(term, node, outside);
+    if (!term.path) return calculate(term, node, outside);
+    const [head, step] = term.path;
+    const value = get(node, head, outside);
+    if (step === undefined || stop(value)) return value;
+    return is_record(value) ? get(value, step, outside && [node, ...outside]) : INVALID;
+  }
+
+  // A constant record, made once.
+  const constants_made = new Map();
+  function constant_value(constant, node, outside) {
+    if (constants_made.has(constant.name)) return constants_made.get(constant.name);
+    const value = make(node, { make: constant.make, fields: constant.fields, values: constant.values }, outside);
+    if (!stop(value)) constants_made.set(constant.name, value);
+    return value;
+  }
+
+  // A list made from items: an item marked '...' adds the items of its list.
+  function list_of(node, line, outside) {
+    const items = [];
+    for (const term of line.list_of) {
+      const value = term.all ? list_value(term, node, outside) : calculate(term, node, outside);
+      if (stop(value)) return value;
+      if (term.all && !(value instanceof Sequence)) return INVALID;
+      if (term.all) items.push(...value.items);
+      else items.push(value);
+    }
+    return new Sequence(items, null);
   }
 
   // A kept list, the items of a list that meet a condition, or a collected list, one field of
@@ -354,6 +408,17 @@ export function evaluator(text, numeric, rules_by_head = new Map()) {
 
   function calculate(expression, node, outside) {
     if (expression.number !== undefined) return exact(expression.number);
+    if (expression.constant) return constant_value(expression.constant, node, outside);
+    if (expression.list) {
+      const items = [];
+      for (const term of expression.list) {
+        const value = calculate(term, node, outside);
+        if (stop(value)) return value;
+        if (term.all && value instanceof Sequence) items.push(...value.items);
+        else items.push(value);
+      }
+      return new Sequence(items, null);
+    }
     if (expression.text !== undefined) return expression.text;
     if (expression.path) return path_value(expression.path, node, outside);
     if (expression.range) return { range: expression.range.map((end) => (end === null ? null : exact(end))) };
