@@ -29,6 +29,8 @@
 //   { name, make: type, fields: [stored names], values: [terms] } a made record
 //   { name, inputs, cases: [{ output, when }] }                  a mapping
 //   { name, needs: condition }  and  { name, claims: condition } a rule and a claim
+// A field with 'while' has repeat: { condition, next: [terms], fields: [starred names], floors },
+// and a field wrapped at a field has wrap_by: its name.
 // A comparison between a field of the items of two lists of the record has relation: true.
 // A stored list's part may have unique and order, each the path of a key of its items, and a
 // stored text's part may have ranks: the rank of each character, from the mapping that its
@@ -154,6 +156,16 @@ export function rules_of(declarations, scope = declarations, heads_made_before =
     throw new Error('not carried');
   }
 
+  // The lowest value a field allows, as text, or null.
+  function floor_of(field, seen = new Set()) {
+    const low = field.allowed?.length === 1 ? field.allowed[0].low : null;
+    if (low !== null && low !== undefined) return decimal_text(value_of(low));
+    const type = field.items?.[0]?.type;
+    const found = by_name.get(type);
+    if (!found || seen.has(type) || found.kind !== 'refinement') return null;
+    return floor_of(found, seen.add(type));
+  }
+
   // A record's fields other than its stored ones.
   function fields_of(declaration) {
     const lists = new Set(declaration.fields.filter((field) => field.list || ['kept', 'collected'].includes(field.role))
@@ -226,8 +238,21 @@ export function rules_of(declarations, scope = declarations, heads_made_before =
             round = { unit: places === 0 ? '1' : '0.' + '1'.padStart(places, '0'), direction: 'even' };
           }
           if (round) worked.round = round;
-          if (field.wrap) worked.wrap = decimal_text(value_of(field.wrap));
+          if (field.wrap?.name !== undefined && /^[a-z]/.test(field.wrap.name)) worked.wrap_by = field.wrap.name;
+          else if (field.wrap) worked.wrap = decimal_text(value_of(field.wrap));
           fields.push(worked);
+        }
+        if (field.repeat) {
+          // while the condition holds, the record is made again from the next values; each
+          // starred field keeps to its floor, the lowest value it allows
+          const starred = declaration.fields.filter((each) => each.required);
+          if (starred.length !== field.repeat.next.length) throw new Error('next');
+          fields.at(-1).repeat = {
+            condition: condition_of(field.repeat.condition),
+            next: field.repeat.next.map(resolve),
+            fields: starred.map((each) => each.name),
+            floors: starred.map((each) => floor_of(each)),
+          };
         }
       } catch {
         left_out.push(declaration.name + '.' + name + ' (' + (field.role === 'rule' ? 'a rule' : field.role) + ')');
@@ -387,7 +412,9 @@ export function in_words(rule) {
     : each.make ? ' is a ' + each.make + ' made with ' + each.fields.map((name, at) => name + ' ' + term(each.values[at])).join(', ')
     : each.cases ? ' is ' + each.cases.map((one_case) => term(one_case.output) + ' when ' + condition(one_case.when)).join(', or ')
     : ' is ' + term(each.value) + (each.round ? ', rounded to ' + each.round.unit + ' (' + each.round.direction + ')' : '')
-      + (each.wrap ? ', wrapped at ' + each.wrap : ''));
+      + (each.wrap ? ', wrapped at ' + each.wrap : '') + (each.wrap_by ? ', wrapped at ' + each.wrap_by : ''))
+    + (each.repeat ? ', where ' + condition(each.repeat.condition) + ' no longer holds; while it holds, the record is made '
+      + 'again with ' + each.repeat.fields.map((name, at) => name + ' ' + term(each.repeat.next[at])).join(', ') : '');
   return 'a text is a ' + rule.head + ' when it is: '
     + (rule.parts.map(one).join(', then ') || 'nothing')
     + (rule.ranges ? ', and its number is ' + rule.ranges.map(range).join(' or ') : '')

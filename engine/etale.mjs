@@ -185,6 +185,7 @@ function calls_of(declarations) {
     for (const field of declaration.fields ?? []) {
       const made = by_name.get(field.items?.[0]?.type);
       if (field.role !== 'worked' || made?.kind !== 'record' || !field.value?.path || field.round || field.wrap) continue;
+      if (['first', 'last'].includes(field.value.path.at(-1))) continue;     // one item of a list, not a call
       field.role = 'made';
       field.call = true;
       field.positions = [{ line: field.line, path: field.value.path, value: field.value }];

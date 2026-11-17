@@ -111,6 +111,8 @@ const folds = {
   sum: (items) => (items.every((item) => item instanceof Exact) ? items.reduce(plus, ZERO) : INVALID),
   min: (items) => least_or_most(items, -1),
   max: (items) => least_or_most(items, 1),
+  first: (items) => items[0] ?? INVALID,
+  last: (items) => items.at(-1) ?? INVALID,
 };
 function least_or_most(items, side) {
   if (items.length === 0 || !items.every((item) => item instanceof Exact)) return INVALID;
@@ -178,6 +180,41 @@ export function evaluator(text, numeric, rules_by_head = new Map()) {
   }
 
   function work(node, line, outside) {
+    return line.repeat ? repeat(node, line, outside) : work_once(node, line, outside);
+  }
+
+  // A field with 'while' and 'next': while the condition holds, the record is made again, its
+  // starred fields given by 'next'; the field's value is worked out in the record where the
+  // condition no longer holds. A starred field may not go below its floor.
+  function repeat(node, line, outside) {
+    let at = node;
+    for (;;) {
+      const result = test(line.repeat.condition, at, outside);
+      if (result !== 'yes' && result !== 'no') return result;
+      if (result === 'no') break;
+      const memo = new Map();
+      for (const [index, name] of line.repeat.fields.entries()) {
+        const term = line.repeat.next[index];
+        const value = term.path?.length === 1 ? get(at, term.path[0], outside) : calculate(term, at, outside);
+        if (stop(value)) return value;
+        const floor = line.repeat.floors[index];
+        if (floor !== null && value instanceof Exact && order(value, exact(floor)) < 0) {
+          fail(node, node.head + '.' + line.name + ': next gives ' + name + ' ' + decimal_text(value) + ', below ' + floor);
+          return INVALID;
+        }
+        memo.set(name, value);
+      }
+      at = { head: at.head, rule: at.rule, values: [], made: true, memo };
+    }
+    return at === node ? work_once(node, line, outside) : get_once(at, line, outside);
+  }
+  function get_once(node, line, outside) {
+    const value = work_once(node, line, outside);
+    if (value !== LATER) node.memo.set(line.name, value);
+    return value;
+  }
+
+  function work_once(node, line, outside) {
     if (line.needs || line.claims) {
       const result = test(line.needs ?? line.claims, node, outside);
       if (result === 'yes' || (line.claims && result === INVALID)) return 'TRUE';
@@ -200,11 +237,22 @@ export function evaluator(text, numeric, rules_by_head = new Map()) {
         return INVALID;
       }
       value = round(over(dividend, divisor), exact(line.round.unit), line.round.direction);
+    } else if (line.repeat && line.value.path?.length === 1) {
+      value = get(node, line.value.path[0], outside);           // a whole list, or one value
     } else {
       value = calculate(line.value, node, outside);
       if (value?.range) return INVALID;
     }
     if (line.wrap !== undefined && value instanceof Exact && exact(line.wrap).top !== 0n) value = wrap(value, exact(line.wrap));
+    if (line.wrap_by !== undefined && value instanceof Exact) {
+      const modulus = get(node, line.wrap_by, outside);
+      if (stop(modulus)) return modulus;
+      if (!(modulus instanceof Exact) || order(modulus, ZERO) <= 0) {
+        fail(node, node.head + '.' + line.name + ': wrap_at: ' + line.wrap_by + ' is not above 0');
+        return INVALID;
+      }
+      value = wrap(value, modulus);
+    }
     return value;
   }
 

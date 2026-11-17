@@ -210,6 +210,7 @@ export function declarations_of(text, file) {
   function field_line(node) {
     const line = line_of(node);
     if (node.head === 'Mapped_Field') return mapping(node, line);
+    if (node.head === 'Repeated_Field') return repeated(node);
     const name = slice(value(node, 'name'));
     const required = optional(node, 'required') ? { required: true } : {};
     if (node.head === 'Union_Field_Line') return { name, line, role: 'stored', ...required, ...union_box(value(node, 'base')) };
@@ -242,6 +243,23 @@ export function declarations_of(text, file) {
     if (extra.allowed) field.allowed = extra.allowed;
     if (count) field.count = count;
     if (left_out.length) field.left_out = left_out;
+    return field;
+  }
+
+  // A field with 'while' and 'next' under it. Its value is its parentheses where 'while' no
+  // longer holds; while it holds, 'next' gives the starred fields of the record again.
+  function repeated(node) {
+    const field = field_line(value(node, 'head'));
+    const while_line = value(node, 'while');
+    const next_line = value(node, 'next');
+    const values = inner(value(next_line, 'values'));
+    if (field.role === 'collected') field.role = 'worked';      // the whole list, where it stops
+    field.repeat = {
+      condition: condition(value(while_line, 'condition')),
+      next: values.head === 'Call_Values' ? list(values, 'first', 'rest').map(term) : [term(values)],
+      while_line: line_of(while_line),
+      next_line: line_of(next_line),
+    };
     return field;
   }
 

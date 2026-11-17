@@ -739,7 +739,39 @@ Mapped_Field {}
   head {Mapping_Line}
   cases {Case_Line...} count: 1..
 
-Field_Content {Field_Line | Union_Field_Line | Mapped_Field}
+While_Line {}                            #     while (division.quotient >= 1)
+  condition {Conditions}
+  finish {Line_End}
+  text {Text}
+    1. {Indent_4}
+    2. {"while"}
+    3. {Gap}
+    4. {"("}
+    5. {condition}
+    6. {")"}
+    7. {finish}
+
+Next_Values {Call_Values | Term}
+
+Next_Line {}                             #     next (division.quotient, digits)
+  values {Next_Values}
+  finish {Line_End}
+  text {Text}
+    1. {Indent_4}
+    2. {"next"}
+    3. {Gap}
+    4. {"("}
+    5. {values}
+    6. {")"}
+    7. {finish}
+
+# The field's value is its parentheses where 'while' no longer holds.
+Repeated_Field {}
+  head {Field_Line}
+  while {While_Line}
+  next {Next_Line}
+
+Field_Content {Field_Line | Union_Field_Line | Mapped_Field | Repeated_Field}
 Body_Content {Field_Content | Shape | Body_Comment_Line}
 
 Body_Item {}                             # Blank lines only before more body
