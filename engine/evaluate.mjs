@@ -137,7 +137,7 @@ const holds_as = { '=': (side) => side === 0, in: (side) => side === 0, '<': (si
   '<=': (side) => side <= 0, '>': (side) => side > 0, '>=': (side) => side >= 0 };
 
 // The values of one text. Numeric holds the heads whose texts are numbers.
-export function evaluator(text, numeric) {
+export function evaluator(text, numeric, rules_by_head = new Map()) {
   const fail = (node, message) => (node.failures ??= []).push(message);
 
   // The value of a part's node: the record it is, or its text, read as a number when its type
@@ -187,7 +187,7 @@ export function evaluator(text, numeric) {
       return INVALID;
     }
     if (line.cases) return mapping(node, line, outside);
-    if (line.sequence) return sequence(node, line, outside);
+    if (line.make) return make(node, line, outside);
     if (line.keep !== undefined || line.collect) return list_from(node, line, outside);
     let value;
     if (line.round) {
@@ -208,26 +208,21 @@ export function evaluator(text, numeric) {
     return value;
   }
 
-  // A numbered sequence: its positions in order, each written as a text. A number takes its
-  // 'digits:', and a list is its items in order.
-  function sequence(node, line, outside) {
-    let written = '';
-    for (const position of line.sequence) {
-      if (position.literal !== undefined) { written += position.literal; continue; }
-      const value = get(node, position.field, outside);
+  // A made record: each stored field of its type takes the value of one position, in the
+  // order the type declares them. A list takes the whole list that its position names. Nothing
+  // is read or searched for. A made type never makes the record that makes it, so this ends.
+  function make(node, line, outside) {
+    const rule = (rules_by_head.get(line.make) ?? []).find((each) => each.record);
+    if (!rule) return INVALID;
+    const memo = new Map();
+    for (const [at, name] of line.fields.entries()) {
+      const term = line.values[at];
+      const part = rule.parts.find((each) => each.name === name);
+      const value = part?.list && term.path?.length === 1 ? get(node, term.path[0], outside) : calculate(term, node, outside);
       if (stop(value)) return value;
-      const items = value instanceof Sequence ? value.items : [value];
-      for (const item of items) {
-        if (stop(item)) return item;
-        if (item instanceof Exact) {
-          const digits = decimal_text(item);
-          if (position.digits !== undefined && digits.replace('-', '').length > position.digits) return INVALID;
-          written += position.digits === undefined ? digits : digits.padStart(position.digits, '0');
-        } else if (typeof item === 'string') written += item;
-        else return INVALID;
-      }
+      memo.set(name, part?.list && !(value instanceof Sequence) ? new Sequence([value], part.most) : value);
     }
-    return written;
+    return { head: line.make, rule, values: [], made: true, memo };
   }
 
   // A kept list, the items of a list that meet a condition, or a collected list, one field of
@@ -374,6 +369,7 @@ export function evaluator(text, numeric) {
     value instanceof Exact ? fraction_text(value)
     : typeof value === 'string' ? value
     : value instanceof Sequence ? '[' + value.items.map(key_text).join(', ') + ']'
+    : is_record(value) && value.made ? value.head + '(' + [...value.memo.values()].map(key_text).join(', ') + ')'
     : is_record(value) ? text.slice(value.start, value.end)
     : value.description;
   // The ranks that the field a path reaches orders its texts by, if it has an 'order:'.
@@ -469,6 +465,7 @@ export function evaluator(text, numeric) {
           if (down) failures.push(down);
         }
         for (const part of value.rule.parts) if (part.name !== undefined) visit(value.memo.get(part.name), [value, ...outside]);
+        for (const field of value.rule.fields ?? []) if (field.make) visit(value.memo.get(field.name), [value, ...outside]);
       };
       visit(item_value(node, false), []);
       return failures;

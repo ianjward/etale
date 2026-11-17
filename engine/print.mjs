@@ -70,7 +70,42 @@ export function printer(rules) {
     }).join('');
   }
 
+  // The text of a value that was made, not read: a record by the parts of its rule, which
+  // follow its text shape. A number prints its digits, padded to its 'digits:'; a list prints
+  // its items in order. Shapes gives each record type its shape positions, for 'digits:'.
+  function value_text(value, shapes) {
+    if (value?.rule?.record) {
+      const slots = shapes.get(value.head) ?? [];
+      return value.rule.parts.map((part, index) => {
+        if (part.literal !== undefined) return part.literal;
+        if (part.name === undefined) return first_of_part(part);
+        const digits = slots[index]?.digits;
+        return item_text(value.memo.get(part.name), shapes, digits);
+      }).join('');
+    }
+    throw new Error('not a record');
+  }
+  function item_text(value, shapes, digits) {
+    if (value?.items) return value.items.map((item) => item_text(item, shapes, digits)).join('');
+    if (value?.rule?.record) return value_text(value, shapes);
+    if (typeof value === 'string') return value;
+    if (value?.top !== undefined) {
+      if (value.bottom !== 1n) throw new Error('a made number with places');
+      const written = (value.top < 0n ? -value.top : value.top).toString();
+      return (value.top < 0n ? '-' : '') + (digits === undefined ? written : written.padStart(digits, '0'));
+    }
+    throw new Error('a value with no text');
+  }
+
   return {
+    // The text of a made record, by its shape. Null when a value in it has no text.
+    made(value, shapes) {
+      try {
+        return value_text(value, shapes);
+      } catch {
+        return null;
+      }
+    },
     // The canonical text of a reading of text, and whether it reads back to the same values.
     print(reader, head, text, node) {
       const printed = print(text, node);

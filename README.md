@@ -14,7 +14,7 @@ reads, writes, checks and runs them. It needs Node 22 and nothing else. There ar
   programs.
 - language/wasm.etale: kernel programs compiled to WebAssembly, in Etale. A program of one
   function, main, and every word but call, for now; see the top of the file.
-- engine/: the engine, about 2,100 lines of code, with its command line in etale.mjs. It goes
+- engine/: the engine, about 2,350 lines of code, with its command line in etale.mjs. It goes
   once Etale runs on its own kernel.
 
 ## Commands
@@ -26,12 +26,13 @@ node engine/etale.mjs check FILE            FILE's mistakes
 node engine/etale.mjs fmt FILE [--write]    FILE in its canonical form
 node engine/etale.mjs read FILE TYPE DATA   is the text of DATA a TYPE of FILE?
 node engine/etale.mjs run FILE TYPE DATA    read DATA as a TYPE of FILE and show every value
-node engine/etale.mjs print FILE TYPE DATA [FIELD]  DATA in its canonical text, or one field of it
+node engine/etale.mjs print FILE TYPE DATA [FIELD]  DATA in its canonical text, or one record field of it
 node engine/etale.mjs rules FILE            FILE's rules, in plain words
 ```
 
-A field that is a numbered sequence of Binary_Digit is written eight bits to a byte. So this
-compiles a kernel program to WebAssembly:
+A record field prints by its own type's shape, and must read back as that type. A record whose
+shape is 'text {Binary_Digit}' is bits, written eight to a byte. So this compiles a kernel
+program to WebAssembly:
 
 ```
 node engine/etale.mjs print language/wasm.etale Compiled_Program main.kernel wasm > main.wasm

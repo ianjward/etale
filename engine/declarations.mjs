@@ -257,9 +257,16 @@ export function declarations_of(text, file) {
           }
           return { number, line: line_of(position), ...base_box(value(position, 'base')), ...(count ? { count } : {}) };
         });
-        // 'text {Text}' is the record's own text; any other numbered sequence is a worked-out value
-        if (name === 'text' && base === 'Text') declaration.shape = positions;
-        else declaration.fields.push({ name, line: line_of(head), role: 'sequence', items: [{ type: base }], positions });
+        // 'text' lays out the record in its medium, Text or Binary_Digit. Any other numbered list
+        // makes a record of its base, one position for each stored field of that record.
+        if (name === 'text') {
+          declaration.shape = positions;
+          declaration.medium = base;
+          declaration.shape_line = line_of(head);
+        } else {
+          declaration.fields.push({ name, line: line_of(head), role: 'made', items: [{ type: base }],
+            positions: positions.map((slot) => (slot.field ? { ...slot, path: slot.field.split('.') } : slot)) });
+        }
       }
     }
     return declaration;

@@ -53,7 +53,7 @@ export function reader(rules) {
   function session(text) {
     const found = new Map();
     const nowhere = new Map();
-    const evaluation = evaluator(text, numeric);
+    const evaluation = evaluator(text, numeric, rules_of);
     const broken = [];                                // what refused the readings of the whole text
     const merge = (ends, end, count, node) => {
       const old = ends.get(end);

@@ -1,7 +1,5 @@
 # Bits and bytes.
 
-Binary_Digit {"0" | "1"}
-
 # A bit as a number, 0 or 1.
 Bit {Integer} (0..1)
 

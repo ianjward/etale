@@ -14,7 +14,8 @@
 //
 // A field is { name, line, role, items, list, count, allowed, places, ... }. Its role is stored,
 // worked (value: a term, with round and wrap), kept (condition), collected (value: a path), rule
-// or claim (condition), or mapping (inputs and cases). A term is { number }, { text },
+// or claim (condition), mapping (inputs and cases), or made (a record made from values:
+// positions, one path for each stored field of the record). A term is { number }, { text },
 // { path: [names] }, { op, terms }, { range: [low, high] }, { choice: [terms] } or
 // { characters: [first, last] }. A condition is { all: [comparison...] } or { any: [...] }, and
 // a comparison is { path, comparison, right: term }. Each declaration may list, in left_out,
@@ -25,6 +26,7 @@
 //   { name, value: term, round: { unit, direction }, wrap }      a worked-out value
 //   { name, keep: list, condition }                              a kept list
 //   { name, collect: [list, field] }                             a collected list
+//   { name, make: type, fields: [stored names], values: [terms] } a made record
 //   { name, inputs, cases: [{ output, when }] }                  a mapping
 //   { name, needs: condition }  and  { name, claims: condition } a rule and a claim
 // A comparison between a field of the items of two lists of the record has relation: true.
@@ -188,14 +190,14 @@ export function rules_of(declarations, scope = declarations, heads_made_before =
           const [source] = sources;
           if (sources.size !== 1 || !lists.has(source)) throw new Error('not a kept list');
           fields.push({ name, keep: source, condition: condition_of(field.condition, source) });
-        } else if (field.role === 'sequence') {
-          const positions = field.positions.map((slot) => {
-            if (slot.field) return { field: slot.field, ...(slot.digits !== undefined ? { digits: slot.digits } : {}) };
-            const [item] = slot.items;
-            if (slot.items.length !== 1 || item.literal === undefined || slot.list) throw new Error('a sequence position');
-            return { literal: item.literal };
-          });
-          fields.push({ name, sequence: positions });
+        } else if (field.role === 'made') {
+          // a made record: its positions give its stored fields, in the order they are declared
+          const type = field.items[0].type;
+          const made = by_name.get(type);
+          if (made?.kind !== 'record') throw new Error('not a record');
+          const stored = made.fields.filter((each) => each.role === 'stored').map((each) => each.name);
+          if (stored.length !== field.positions.length || field.positions.some((slot) => !slot.path)) throw new Error('a made position');
+          fields.push({ name, make: type, fields: stored, values: field.positions.map((slot) => resolve({ path: slot.path })) });
         } else if (field.role === 'collected') {
           if (!field.value.path || !in_list(field.value.path)) throw new Error('not a collected list');
           fields.push({ name, collect: field.value.path });
@@ -285,7 +287,11 @@ export function rules_of(declarations, scope = declarations, heads_made_before =
       const parts = slots.map((slot) => {
         if (slot.field === undefined) return part_of(holding(slot), head + '.' + slot.number);
         const field = stored.find((each) => each.name === slot.field);
-        if (!field) throw new Error(head + ': its text shape names ' + slot.field + ', not a stored field');
+        if (!field) {
+          // refused by the file checks: a text shape holds only stored fields
+          left_out.push(head + ' (its text shape names ' + slot.field + ', not a stored field)');
+          return { literal: '' };
+        }
         const part = field_part(head, field, slot.digits);
         if (field.items.every((item) => item.number || (item.type && numeric(item.type)))) part.number = true;
         for (const what of ['unique', 'order']) {
@@ -378,8 +384,7 @@ export function in_words(rule) {
     : each.claims ? ' claims ' + condition(each.claims)
     : each.keep ? ' keeps the items of ' + each.keep + ' where ' + condition(each.condition)
     : each.collect ? ' collects ' + each.collect[1] + ' from each item of ' + each.collect[0]
-    : each.sequence ? ' is, in a row: ' + each.sequence.map((slot) => (slot.literal !== undefined ? JSON.stringify(slot.literal)
-      : slot.field + (slot.digits !== undefined ? ' in ' + slot.digits + ' digits' : ''))).join(', then ')
+    : each.make ? ' is a ' + each.make + ' made with ' + each.fields.map((name, at) => name + ' ' + term(each.values[at])).join(', ')
     : each.cases ? ' is ' + each.cases.map((one_case) => term(one_case.output) + ' when ' + condition(one_case.when)).join(', or ')
     : ' is ' + term(each.value) + (each.round ? ', rounded to ' + each.round.unit + ' (' + each.round.direction + ')' : '')
       + (each.wrap ? ', wrapped at ' + each.wrap : ''));

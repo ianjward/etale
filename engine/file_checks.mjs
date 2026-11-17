@@ -11,7 +11,10 @@
 // output produced), and numbers (arithmetic and order on what is not a number, also in a kept
 // list's condition; 'places:' and 'wrap_at:' only on numbers; a calculation gives a number;
 // decimal places that would need rounding, and a 'round:' with nothing to round; a product or
-// a quotient that reads two terms through a recursive field; a layout too small for its range).
+// a quotient that reads two terms through a recursive field; a layout too small for its range;
+// a number in a calculation that is not a constant, 0 or 1; a field that only copies another),
+// text shapes (in Text or Binary_Digit, holding each stored field once and nothing worked out),
+// and made records (one position for each stored field, of its type, and never their own type).
 import { Exact, exact, plus, minus, times, decimal_text } from './evaluate.mjs';
 import { fixed_value, one_value, union_values, characters } from './rules.mjs';
 
@@ -92,6 +95,7 @@ export function file_errors(loaded) {
       for (const path of field_paths(field, declaration, relations)) check_path(declaration, field, path, above);
       for (const [comparison, clauses] of relations) check_relation(declaration, field, comparison, clauses);
       if (field.role === 'mapping') check_mapping(declaration, field, above);
+      if (field.role === 'made') check_made(declaration, field, above);
       check_numbers(declaration, field, where);
       check_field_numbers(declaration, field, where);
       above.push(field.name);
@@ -106,8 +110,111 @@ export function file_errors(loaded) {
         error(declaration, slot.line ?? field.line, field.name + ' does not fit in ' + slot.digits + ' digits', declaration.name);
       }
     }
+    check_shape(declaration);
     check_filters(declaration);
   }
+
+  // ---------- Text shapes and made records
+
+  // A text shape lays out the record in its medium, Text or Binary_Digit, and holds only its
+  // stored fields, each once, and literals. So every shape reads back to the same values.
+  function check_shape(record) {
+    if (!record.shape) return;
+    const line = record.shape_line ?? record.line;
+    if (!['Text', 'Binary_Digit'].includes(record.medium)) {
+      error(record, line, "a text shape is 'text {Text}' or 'text {Binary_Digit}', not 'text {" + record.medium + "}'");
+    }
+    const stored = record.fields.filter((each) => each.role === 'stored').map((each) => each.name);
+    const named = [];
+    for (const slot of record.shape) {
+      if (slot.field !== undefined) {
+        if (!stored.includes(slot.field)) {
+          error(record, slot.line, "a text shape position holds a stored field, and '" + slot.field + "' is not one");
+        } else if (named.includes(slot.field)) error(record, slot.line, "'" + slot.field + "' is in the text shape twice");
+        named.push(slot.field);
+        const inner = record_of(field_of(record, slot.field)?.items?.[0]?.type);
+        if (inner?.shape && inner.medium !== record.medium) {
+          error(record, slot.line, slot.field + ' is written in ' + inner.medium + ', and this shape in ' + record.medium);
+        }
+      } else if (record.medium === 'Binary_Digit') {
+        for (const item of slot.items ?? []) {
+          if (item.literal !== undefined && !/^[01]*$/.test(item.literal)) {
+            error(record, slot.line, 'a literal of bits holds only 0 and 1: ' + JSON.stringify(item.literal));
+          }
+        }
+      }
+    }
+    for (const name of stored) if (!named.includes(name)) error(record, line, "the stored field '" + name + "' is not in the text shape");
+  }
+
+  // A made record: a record type declared above, with one position for each of its stored
+  // fields, in the order it declares them. A position is a path, of the same type as its
+  // field: a whole list for a list. A made type may never make the record that makes it,
+  // directly or through the types it makes, so a made value is fixed in size by its
+  // declarations, and making ends.
+  function check_made(record, field, above) {
+    const where = record.name + '.' + field.name;
+    const type = field.items[0]?.type;
+    type_ok(record, type, field.line, false);
+    const made = record_of(type);
+    if (!made) return error(record, field.line, "'" + field.name + "' makes a " + type + ', which is not a record', where);
+    const stored = made.fields.filter((each) => each.role === 'stored');
+    if (stored.length !== field.positions.length) {
+      return error(record, field.line, (/^[AEIOU]/.test(type) ? 'an ' : 'a ') + type + ' has ' + stored.length + ' stored fields, so it is made with '
+        + stored.length + ' positions, not ' + field.positions.length, where);
+    }
+    const lists = new Map(record.fields.slice(0, record.fields.indexOf(field))
+      .filter((each) => each.list || each.count || ['kept', 'collected'].includes(each.role)).map((each) => [each.name, each]));
+    field.positions.forEach((slot, at) => {
+      const target = stored[at];
+      if (!slot.path) return error(record, slot.line, 'a position of a made record names a field, as in {' + target.name + '}', where);
+      if (target.list || target.count) {
+        const source = slot.path.length === 1 && lists.get(slot.path[0]);
+        if (!source) return error(record, slot.line, type + '.' + target.name + ' is a list, so its position names a list above', where);
+        if (!same_items(source.items, target.items)) {
+          error(record, slot.line, slot.path[0] + ' holds ' + items_text(source.items) + ', but ' + type + '.' + target.name
+            + ' holds ' + items_text(target.items), where);
+        }
+        return;
+      }
+      if (lists.has(slot.path[0]) && slot.path.length === 1) {
+        return error(record, slot.line, slot.path[0] + ' is a list, but ' + type + '.' + target.name + ' is one value', where);
+      }
+      const source = path_items(record, slot.path);
+      if (source && !same_items(source, target.items)) {
+        error(record, slot.line, slot.path.join('.') + ' is ' + items_text(source) + ', but ' + type + '.' + target.name
+          + ' is ' + items_text(target.items), where);
+      }
+    });
+    if (made.name === record.name) return;
+    const cycle = makes_back(made, record.name, [record.name, made.name]);
+    if (cycle) error(record, field.line, 'a made record may not make its own type: ' + cycle.join(' makes ') , where);
+  }
+  function makes_back(record, home, chain) {
+    for (const each of record.fields ?? []) {
+      if (each.role !== 'made') continue;
+      const next = record_of(each.items[0]?.type);
+      if (!next) continue;
+      if (next.name === home) return [...chain, home];
+      if (chain.includes(next.name)) continue;
+      const found = makes_back(next, home, [...chain, next.name]);
+      if (found) return found;
+    }
+    return undefined;
+  }
+  // The items of the field a path ends at, or undefined when the path names something else.
+  function path_items(record, path) {
+    if (is_type_name(path[0])) return constants.has(path[0]) && path.length === 1 ? [{ type: 'Integer' }] : undefined;
+    let field = record.fields.find((each) => each.name === path[0]);
+    for (const step of path.slice(1)) {
+      if (methods.includes(step)) return [{ type: 'Integer' }];
+      field = field_of(record_of(field?.items?.[0]?.type), step);
+    }
+    return field?.items;
+  }
+  const items_text = (items) => (items ?? []).map(item_text).join(' | ');
+  const same_items = (one, two) => items_text(one) === items_text(two)
+    || (numeric(by_name, one ?? []) && numeric(by_name, two ?? []));
 
   // The paths that are checked one by one in a field: its calculation, and the comparisons of
   // its condition that are not relations between lists or 'in'. A kept or a collected list is
@@ -133,9 +240,16 @@ export function file_errors(loaded) {
       && (each.list || each.count));
     const relation = (left, right) => left.length === 2 && right?.length === 2 && list_field(left[0]) && list_field(right[0]);
     if (field.role === 'worked') of_term(field.value);
-    if (field.role === 'sequence') {
-      // a position may name a kept or collected list: its items are written in order
-      for (const slot of field.positions) if (slot.field && !views.has(slot.field)) paths.push([slot.field]);
+    if (field.role === 'made') {
+      // a position for a list takes a whole list, and is checked with the make
+      const made = record_of(field.items[0]?.type);
+      const stored = made ? made.fields.filter((each) => each.role === 'stored') : [];
+      const list_name = (name) => record.fields.some((each) => each.name === name
+        && (each.list || each.count || ['kept', 'collected'].includes(each.role)));
+      field.positions.forEach((slot, at) => {
+        const whole_list = slot.path?.length === 1 && list_name(slot.path[0]);
+        if (slot.path && !whole_list && !(stored[at]?.list || stored[at]?.count)) paths.push(through(slot.path));
+      });
     }
     if (['rule', 'claim'].includes(field.role) && field.condition) {
       const comparisons = field.condition.all ?? field.condition.any;
@@ -645,9 +759,25 @@ export function file_errors(loaded) {
     }
     if (field.role !== 'worked') return;
     if (!number && !['True', 'False'].includes(field.items[0]?.type)) {
-      error(record, field.line, 'a computed field produces a number, TRUE or FALSE, never text, a record or a sequence', where);
+      error(record, field.line, 'a computed field produces a number, TRUE or FALSE, never text or a record; a record is made '
+        + 'with numbered positions, one for each of its stored fields', where);
     }
     const { value, round } = field;
+    // a path on its own that only copies a field is an error; a method, a constant, a field of
+    // a record around this one, a wrap and a rounding are not copies
+    const [head, ...steps] = value.path ?? [];
+    if (head !== undefined && !is_type_name(head) && !methods.includes(steps.at(-1)) && field.wrap === undefined && !round) {
+      error(record, field.line, "'" + field.name + "' only copies " + value.path.join('.') + ': use '
+        + value.path.join('.') + ' where it is needed', where);
+    }
+    // a number in a calculation is named by a constant, except 0 and 1
+    const raw = (term) => (term.number !== undefined && !['0', '1'].includes(String(term.number)) ? [term.number]
+      : (term.terms ?? []).flatMap(raw));
+    if (value.op) {
+      for (const number of raw(value)) {
+        error(record, field.line, 'a number in a calculation is named by a constant, except 0 and 1: ' + number, where);
+      }
+    }
     const held = field_places(field);
     const got = value.op === '/' ? undefined : places_of(record, value);
     // a unit of 1, 0.1, 0.01 and so on; main does not look at a unit such as 0.05

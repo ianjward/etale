@@ -6,7 +6,7 @@
 //   node engine/etale.mjs read FILE TYPE DATA  is the text of DATA a TYPE of FILE?
 //   node engine/etale.mjs rules FILE           FILE's rules, in plain words
 //   node engine/etale.mjs fmt FILE [--write]   FILE in its canonical form
-//   node engine/etale.mjs print FILE TYPE DATA [FIELD]  DATA in its canonical text, or one field of it
+//   node engine/etale.mjs print FILE TYPE DATA [FIELD]  DATA in its canonical text, or one record field of it
 //   node engine/etale.mjs run FILE TYPE DATA   read DATA as a TYPE of FILE and show its values
 //
 // The seed (seed.json) is the stored rules of language.etale. The engine reads every file as
@@ -156,6 +156,26 @@ function load(file, text, root = home) {
   return { ...own, file: shown(file), rules, left_out: made.left_out, declared, language: language_declarations, uses, problems: [...problems, ...refusals(rules, declared)] };
 }
 
+// The names that the engine's code gives in quotes and that a file of the library other than
+// language.etale declares. The engine may know only the language's own types; a rule about any
+// other type is written in Etale.
+function engine_names() {
+  const declared = new Map();
+  for (const entry of fs.readdirSync(library)) {
+    const file = path.join(library, entry);
+    if (!entry.endsWith('.etale') || file === language) continue;
+    for (const declaration of read_file(file).declarations) declared.set(declaration.name, shown(file));
+  }
+  const found = [];
+  const engine = path.join(home, 'engine');
+  for (const entry of fs.readdirSync(engine).filter((each) => each.endsWith('.mjs'))) {
+    for (const [, name] of fs.readFileSync(path.join(engine, entry), 'utf8').matchAll(/['"]([A-Z][A-Za-z0-9_]*)['"]/g)) {
+      if (declared.has(name) && !found.some(([seen]) => seen === name)) found.push([name, declared.get(name)]);
+    }
+  }
+  return found;
+}
+
 const commands = {
   self() {
     const again = language_again();
@@ -164,7 +184,9 @@ const commands = {
       ? 'language.etale reads as File in one way, and its reading gives '
         + (same ? 'the stored rules back (' + seed.length + ' rules)' : 'other rules: run "seed"')
       : 'language.etale does not read as File in one way (' + again.count + ')');
-    return same ? 0 : 1;
+    const named = engine_names();
+    for (const [name, file] of named) console.log('the engine names ' + name + ', which ' + file + ' declares: state it in language.etale');
+    return same && named.length === 0 ? 0 : 1;
   },
   seed() {
     const again = language_again();
@@ -234,18 +256,36 @@ const commands = {
   },
 };
 
-// One worked-out field of a reading, written as a text. A sequence of Binary_Digit is bits, and
-// is written eight bits to a byte.
+// One record field of a reading, printed by its own type's shape: a stored record, or one
+// made from values. Its text must read back as that type to the same values. A record whose
+// shape is 'text {Binary_Digit}' is bits, written eight to a byte.
 function print_field(loaded, type, node, name) {
   const value = node.memo?.get(name);
-  if (typeof value !== 'string') return console.log(type + '.' + name + ' is not a text: ' + shown_value(value ?? INVALID, '  ').trim()), 1;
-  const declared = loaded.declared.get(type)?.fields?.find((each) => each.name === name);
-  if (declared?.items?.[0]?.type !== 'Binary_Digit') return process.stdout.write(value), 0;
-  if (value.length % 8 !== 0) return console.log(type + '.' + name + ' has ' + value.length + ' bits, not whole bytes'), 1;
-  const bytes = Buffer.alloc(value.length / 8);
-  for (let at = 0; at < bytes.length; at++) bytes[at] = parseInt(value.slice(at * 8, at * 8 + 8), 2);
+  if (!value?.rule?.record) return console.log(type + '.' + name + ' is not a record: ' + shown_value(value ?? INVALID, '  ').trim()), 1;
+  const shapes = new Map([...loaded.declared].filter(([, each]) => each.shape).map(([head, each]) => [head, each.shape]));
+  const printed = printer(loaded.rules).made(value, shapes);
+  if (printed === null) return console.log(type + '.' + name + ' has a value with no text'), 1;
+  const again = reader(loaded.rules).read(value.head, printed);
+  if (again.count !== 1 || stored_key(again.node) !== stored_key(value)) {
+    return console.log(type + '.' + name + ': its text does not read back as ' + value.head + ' to the same values'), 1;
+  }
+  if (loaded.declared.get(value.head)?.medium !== 'Binary_Digit') return process.stdout.write(printed), 0;
+  if (printed.length % 8 !== 0) return console.log(type + '.' + name + ' has ' + printed.length + ' bits, not whole bytes'), 1;
+  const bytes = Buffer.alloc(printed.length / 8);
+  for (let at = 0; at < bytes.length; at++) bytes[at] = parseInt(printed.slice(at * 8, at * 8 + 8), 2);
   process.stdout.write(bytes);
   return 0;
+}
+
+// The stored values of a record, all the way down, as one text: two records with the same
+// stored values have the same key.
+function stored_key(value) {
+  if (value instanceof Exact) return decimal_text(value);
+  if (typeof value === 'string') return JSON.stringify(value);
+  if (value instanceof Sequence) return '[' + value.items.map(stored_key).join(',') + ']';
+  if (!value?.rule?.record) return String(value?.description ?? value);
+  const names = value.rule.parts.filter((part) => part.name !== undefined).map((part) => part.name);
+  return value.head + '(' + names.map((each) => each + ' ' + stored_key(value.memo?.get(each))).join(', ') + ')';
 }
 
 // A value, as run shows it: a record's fields one a line, below it.
