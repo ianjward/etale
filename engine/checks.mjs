@@ -1,9 +1,11 @@
-// The two refusals, as questions about rules (decided on 14 November 2026). Each is one check
-// for every kind of declaration, because every kind of declaration is rules of one shape.
+// The refusals. The first two are questions about rules (decided on 14 November 2026). Each is
+// one check for every kind of declaration, because every kind of declaration is rules of one shape.
 //
 // 1. No type can reach itself before it reads a character.
 // 2. No item of a list, and no item that may be absent (count: 0..1), can be the empty text.
 //    Such a list has more than one reading: for the empty text, any number of empty items.
+// 3. No type is only the same texts as another (decided on 17 November 2026): '{""}' is
+//    Empty_String, and a second name for it is refused. Use the first.
 
 // Which heads can be the empty text: add heads until nothing new follows.
 function empty_heads(rules) {
@@ -59,7 +61,16 @@ function lists_of_empty_items(rules) {
   return [...new Set(rules.filter(holds_one).map((rule) => rule.head))];
 }
 
-// The two refusals as messages, one for each declaration that they name. A head of its own
+// The types that are only texts in quotes, such as '{"0" | "1"}', by their texts in order.
+function texts_of(declaration) {
+  if (!['union', 'refinement'].includes(declaration.kind) || declaration.list) return undefined;
+  if (declaration.count || declaration.allowed || declaration.constant || declaration.call) return undefined;
+  const items = declaration.items ?? [];
+  if (items.length === 0 || !items.every((item) => item.literal !== undefined && !item.number)) return undefined;
+  return JSON.stringify(items.map((item) => item.literal).sort());
+}
+
+// The refusals as messages, one for each declaration that they name. A head of its own
 // that rules.mjs made for a line ('Owner.field') names its owner.
 export function refusals(rules, declared) {
   const messages = [];
@@ -75,5 +86,16 @@ export function refusals(rules, declared) {
   };
   report(starts_with_itself(rules), 'can reach itself before it reads a character');
   report(lists_of_empty_items(rules), 'holds a list, or an optional item, whose item can be the empty text');
+  const first_with = new Map();
+  for (const declaration of declared.values()) {
+    const texts = texts_of(declaration);
+    if (texts === undefined) continue;
+    const first = first_with.get(texts);
+    if (!first) first_with.set(texts, declaration);
+    else {
+      messages.push(declaration.file + ':' + declaration.line + ': ' + declaration.name + ' is the same texts as '
+        + first.name + ' (' + first.file + ':' + first.line + '); use ' + first.name);
+    }
+  }
   return messages;
 }

@@ -128,7 +128,7 @@ Field_Path {Text}                        # Example: 'first.bits'
 
 # ---------- Step 4: Layout ----------
 
-Indent_0 {""}
+Empty_String {""}
 
 Indent_2 {Text}
   1. {Space...} count: 2
@@ -137,7 +137,7 @@ Indent_4 {Text}
   1. {Space...} count: 4
 
 Wide_Space {Space...} count: 2..
-Pad {" " | "" | Wide_Space}
+Pad {" " | Empty_String | Wide_Space}
 Gap {" " | Wide_Space}
 End_Spaces {Space...}
 
@@ -525,7 +525,7 @@ Refinement_Line {}                       # A base of one item, then parentheses 
   properties {Properties} count: 0..1
   finish {Line_End}
   text {Text}
-    1. {Indent_0}
+    1. {Empty_String}
     2. {name}
     3. {Gap}
     4. {base}
@@ -538,7 +538,7 @@ Union_Line {}                            # Union base, nothing after it
   base {Union_Box}
   finish {Line_End}
   text {Text}
-    1. {Indent_0}
+    1. {Empty_String}
     2. {name}
     3. {Gap}
     4. {base}
@@ -550,7 +550,7 @@ Intersection_Line {}                     # Example: 'Station_Name {Word & Short}
   base {Intersection_Box}
   finish {Line_End}
   text {Text}
-    1. {Indent_0}
+    1. {Empty_String}
     2. {name}
     3. {Gap}
     4. {base}
@@ -560,7 +560,7 @@ Record_Header {}
   name {Type_Name}
   finish {Line_End}
   text {Text}
-    1. {Indent_0}
+    1. {Empty_String}
     2. {name}
     3. {Gap}
     4. {Empty_Box}
