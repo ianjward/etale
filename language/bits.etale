@@ -2,8 +2,8 @@
 
 Bit {Integer} (0..1)                     # a bit as a number. wasm.etale uses it.
 
-# A binary number: its digits, highest first, as in "101".
-Binary_Number {Binary_Digit...} count: 1..
+# Binary digits, highest first, as in "101". Empty_String is the one with no digits.
+Binary_String {Binary_Digit...} count: 0..
 
 # A byte: eight binary digits, highest first. "01000001" is 65.
 Byte {Binary_Digit...} count: 8

@@ -272,6 +272,8 @@ export function evaluator(text, numeric, rules_by_head = new Map()) {
       if (line.each && term.all) {
         each_name = name;                                // one record for each item of this list
         values.set(name, list_value(term, node, outside));
+      } else if (part?.list && term.text !== undefined) {
+        values.set(name, new Sequence([...term.text], part.most));   // a text read as a list, one item a character
       } else {
         const value = part?.list ? list_value(term, node, outside) : calculate(term, node, outside);
         values.set(name, part?.list && !(value instanceof Sequence) && !stop(value) ? new Sequence([value], part.most) : value);

@@ -237,7 +237,7 @@ export function rules_of(declarations, scope = declarations, heads_made_before =
           if (stored.length !== field.positions.length || field.positions.some((slot) => !slot.path && !slot.value)) throw new Error('a made position');
           // a list of made records: one for each item of the list marked '...'
           fields.push({ name, make: type, fields: stored, values: field.positions.map((slot) => resolve(slot.value ?? { path: slot.path })),
-            ...(field.list ? { each: true } : {}) });
+            ...((field.each ?? field.list) ? { each: true } : {}) });
         } else if (field.role === 'listed') {
           fields.push({ name, list_of: field.values.map(resolve) });
         } else if (field.role === 'collected') {

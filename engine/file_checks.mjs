@@ -354,15 +354,16 @@ export function file_errors(loaded) {
       const inner = field_of(given_record(field_of(record, path[0])?.items?.[0]?.type), path[1]);
       return inner && (inner.list || inner.count) ? inner : undefined;
     };
+    const for_each = field.each ?? field.list;
     const each = field.positions.filter((slot) => slot.value?.all);
-    if (field.list && each.length !== 1) {
+    if (for_each && each.length !== 1) {
       return error(record, field.line, "'" + field.name + "' is a list of made records, so one value is a list marked '...', "
         + 'whose items are taken one at a time', where);
     }
     field.positions.forEach((slot, at) => {
       const target = stored[at];
       if (slot.value?.all) {
-        if (!field.list) {
+        if (!for_each) {
           return error(record, slot.line, "'" + slot.path.join('.') + "...' makes one " + type + ' for each item, so '
             + field.name + ' is a list: {' + type + '...}', where);
         }
@@ -380,6 +381,14 @@ export function file_errors(loaded) {
         return error(record, slot.line, 'a position of a made record names a field, as in {' + target.name + '}', where);
       }
       if (target.list || target.count) {
+        const text = slot.path.length === 1 ? text_constant(slot.path[0]) : undefined;
+        if (text !== undefined) {
+          if (!text_reads_as_list(text, target)) {
+            error(record, slot.line, slot.path[0] + ' is ' + JSON.stringify(text) + ', which does not read as '
+              + type + '.' + target.name + ', ' + items_text(target.items), where);
+          }
+          return;
+        }
         const source = list_source(slot.path);
         if (!source) return error(record, slot.line, type + '.' + target.name + ' is a list, so its position names a list above', where);
         if (!same_items(source.items, target.items)) {
@@ -401,6 +410,21 @@ export function file_errors(loaded) {
     const cycle = makes_back(made, record.name, [record.name, made.name]);
     if (cycle) error(record, field.line, 'a made record may not make its own type: ' + cycle.join(' makes ') , where);
   }
+  // A type that is one text in quotes, such as 'Empty_String {""}': as a value, that text.
+  function text_constant(name) {
+    const found = by_name.get(name);
+    if (!['union', 'refinement'].includes(found?.kind) || found.list || found.count || found.allowed) return undefined;
+    const items = found.items ?? [];
+    return items.length === 1 && items[0].literal !== undefined && !items[0].number ? items[0].literal : undefined;
+  }
+  // A text given for a list: one item for each character, each one of the item's texts.
+  function text_reads_as_list(text, target) {
+    const least = Number(target.count?.least?.number ?? 0);
+    if ([...text].length < least) return false;
+    const texts = finite_values(target.items);
+    return [...text].every((character) => texts?.some((each) => each === character || each?.text === character));
+  }
+
   function makes_back(record, home, chain) {
     for (const each of record.fields ?? []) {
       if (each.role !== 'made') continue;

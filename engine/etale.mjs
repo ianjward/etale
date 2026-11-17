@@ -149,6 +149,7 @@ function load(file, text, root = home) {
     }
   }
   const declarations = [...included.values()];
+  named_lists([...language_declarations, ...declarations]);
   calls_of([...language_declarations, ...declarations]);
   const heads = new Set(seed.map((rule) => rule.head));
   const made = rules_of(declarations, [...language_declarations, ...declarations], heads);
@@ -181,6 +182,28 @@ function engine_names() {
 // value: 'arguments {Word_Arguments} (word)'. Calls with two or more values are read as calls
 // already. A path to a record of the field's own type holds that record: it is not a call. A
 // list of values that are not records, made from items, is a list: 'digits {Bit...} (bit, rest...)'.
+// A list type by name, such as 'Binary_String {Binary_Digit...} count: 0..': a field of that
+// type is that list, and takes its count when it has none of its own.
+function named_lists(declarations) {
+  const by_name = new Map(declarations.map((each) => [each.name, each]));
+  const list_of = (type) => {
+    const found = by_name.get(type);
+    if (found?.kind !== 'refinement' || !found.list || found.allowed || found.call || found.constant) return undefined;
+    return found;
+  };
+  for (const declaration of declarations) {
+    for (const field of declaration.fields ?? []) {
+      if (field.list || field.items?.length !== 1) continue;
+      const named = list_of(field.items[0].type);
+      if (!named) continue;
+      field.named_list = field.items[0].type;
+      field.items = named.items;
+      field.list = true;
+      if (!field.count && named.count) field.count = named.count;
+    }
+  }
+}
+
 function calls_of(declarations) {
   const by_name = new Map(declarations.map((each) => [each.name, each]));
   // the type a made record gives: its result's type, when it has a result
@@ -223,6 +246,7 @@ function calls_of(declarations) {
       if (field.role !== 'made' || !field.call || field.makes) continue;
       const result = by_name.get(field.items?.[0]?.type)?.fields?.find((each) => each.name === 'result');
       if (!result) continue;
+      field.each = Boolean(field.list);                // one record for each item of a list
       field.makes = field.items[0].type;
       field.items = result.items;
       if (result.list) field.list = true;
