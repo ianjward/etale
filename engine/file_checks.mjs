@@ -245,7 +245,7 @@ export function file_errors(loaded) {
     if (value.path.length === 2) {
       const made = field_of(record, value.path[0]);
       if (made?.role !== 'made' || !made.call) return false;
-      holder = record_of(made.items[0]?.type);
+      holder = record_of(made.makes ?? made.items[0]?.type);
       const inputs = holder?.fields.filter((each) => each.required) ?? [];
       given = new Map(inputs.map((each, at) => [each.name, made.positions[at]?.value]));
     }
@@ -327,7 +327,7 @@ export function file_errors(loaded) {
   // declarations, and making ends.
   function check_made(record, field, above) {
     const where = record.name + '.' + field.name;
-    const type = field.items[0]?.type;
+    const type = field.makes ?? field.items[0]?.type;
     type_ok(record, type, field.line, false);
     const made = record_of(type);
     if (!made) return error(record, field.line, "'" + field.name + "' makes a " + type + ', which is not a record', where);
@@ -404,7 +404,7 @@ export function file_errors(loaded) {
   function makes_back(record, home, chain) {
     for (const each of record.fields ?? []) {
       if (each.role !== 'made') continue;
-      const next = record_of(each.items[0]?.type);
+      const next = record_of(each.makes ?? each.items[0]?.type);
       if (!next) continue;
       if (next.name === home) return [...chain, home];
       if (chain.includes(next.name)) continue;
@@ -470,7 +470,7 @@ export function file_errors(loaded) {
     }
     if (field.role === 'made') {
       // a position for a list takes a whole list, and is checked with the make
-      const made = record_of(field.items[0]?.type);
+      const made = record_of(field.makes ?? field.items[0]?.type);
       const stored = made ? made.fields.filter((each) => each.role === 'stored') : [];
       const list_name = (name) => record.fields.some((each) => each.name === name
         && (each.list || each.count || ['kept', 'collected'].includes(each.role)));
@@ -552,6 +552,10 @@ export function file_errors(loaded) {
   function check_path(declaration, field, path, above) {
     const where = declaration.name + '.' + field.name;
     const [head, step] = path;
+    // 'divides.divides': one word twice says nothing about what the field holds
+    if (step !== undefined && head === step) {
+      error(declaration, field.line, "'" + path.join('.') + "' names one word twice: name the field or the value for what it is", where);
+    }
     if (is_type_name(head) && path.length > 1 && by_name.has(head)) {
       const outer = by_name.get(head);
       if (outer.kind === 'record') return walk(declaration, where, path.slice(1), outer, field.line);

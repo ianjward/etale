@@ -218,6 +218,15 @@ function calls_of(declarations) {
       field.call = true;
       field.positions = [{ line: field.line, path: field.value.path, value: field.value }];
     }
+    // a made field of a type with a result holds that result: its type, and whether it is a list
+    for (const field of declaration.fields ?? []) {
+      if (field.role !== 'made' || !field.call || field.makes) continue;
+      const result = by_name.get(field.items?.[0]?.type)?.fields?.find((each) => each.name === 'result');
+      if (!result) continue;
+      field.makes = field.items[0].type;
+      field.items = result.items;
+      if (result.list) field.list = true;
+    }
   }
 }
 

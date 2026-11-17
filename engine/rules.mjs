@@ -230,7 +230,7 @@ export function rules_of(declarations, scope = declarations, heads_made_before =
           fields.push({ name, keep: source, condition: condition_of(field.condition, source) });
         } else if (field.role === 'made') {
           // a made record: its positions give its stored fields, in the order they are declared
-          const type = field.items[0].type;
+          const type = field.makes ?? field.items[0].type;
           const made = by_name.get(type);
           if (made?.kind !== 'record') throw new Error('not a record');
           const stored = made.fields.filter((each) => each.role === 'stored' && (!field.call || each.required)).map((each) => each.name);
