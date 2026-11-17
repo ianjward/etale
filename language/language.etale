@@ -326,7 +326,18 @@ Quantity {Range_Literal | Natural}
 
 Calculation {Arithmetic | Quotient | Term}
 
-Paren_Content {Allowed_Choice | Range_Literal | Calculation | Conditions}
+Call_Tail {}
+  next {Term}
+  text {Text}
+    1. {","}
+    2. {Gap}
+    3. {next}
+
+Call_Values {}                           # Example: '(number, place_value)'
+  first {Term}
+  rest {Call_Tail...} count: 1..
+
+Paren_Content {Allowed_Choice | Range_Literal | Calculation | Conditions | Call_Values}
 
 Parens {}                                # Example: ' (hour_minutes + minute)'
   content {Paren_Content}
@@ -549,8 +560,11 @@ Record_Header {}
     4. {Empty_Box}
     5. {finish}
 
+Required {"*"}                           # given by whoever makes the record
+
 Field_Line {}                            # Example: 'plausible {Needs} (delay <= 60)'
   name {Field_Name}
+  required {Required} count: 0..1
   base {Base_Box}
   parens {Parens} count: 0..1
   properties {Properties} count: 0..1
@@ -558,22 +572,25 @@ Field_Line {}                            # Example: 'plausible {Needs} (delay <=
   text {Text}
     1. {Indent_2}
     2. {name}
-    3. {Gap}
-    4. {base}
-    5. {parens}
-    6. {properties}
-    7. {finish}
+    3. {required}
+    4. {Gap}
+    5. {base}
+    6. {parens}
+    7. {properties}
+    8. {finish}
 
 Union_Field_Line {}
   name {Field_Name}
+  required {Required} count: 0..1
   base {Union_Box}
   finish {Line_End}
   text {Text}
     1. {Indent_2}
     2. {name}
-    3. {Gap}
-    4. {base}
-    5. {finish}
+    3. {required}
+    4. {Gap}
+    5. {base}
+    6. {finish}
 
 Mapping_Line {}                          # Example: 'refund {True | False} (kind, late_stops)'
   name {Field_Name}

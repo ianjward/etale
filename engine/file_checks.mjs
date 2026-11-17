@@ -119,6 +119,14 @@ export function file_errors(loaded) {
   // A text shape lays out the record in its medium, Text or Binary_Digit, and holds only its
   // stored fields, each once, and literals. So every shape reads back to the same values.
   function check_shape(record) {
+    // a starred field is a stored field, and a record takes at most three
+    const starred = record.fields.filter((each) => each.required);
+    for (const field of starred) {
+      if (field.role !== 'stored') error(record, field.line, "only a stored field is given by whoever makes the record: '" + field.name + "*'");
+    }
+    if (starred.length > 3) {
+      error(record, starred[3].line, 'a record takes at most three starred fields; group the ones that belong together in a record');
+    }
     if (!record.shape) return;
     const line = record.shape_line ?? record.line;
     if (!['Text', 'Binary_Digit'].includes(record.medium)) {
@@ -158,16 +166,26 @@ export function file_errors(loaded) {
     type_ok(record, type, field.line, false);
     const made = record_of(type);
     if (!made) return error(record, field.line, "'" + field.name + "' makes a " + type + ', which is not a record', where);
-    const stored = made.fields.filter((each) => each.role === 'stored');
+    const stored = made.fields.filter((each) => each.role === 'stored' && (!field.call || each.required));
+    const a_type = (/^[AEIOU]/.test(type) ? 'an ' : 'a ') + type;
+    if (field.call && stored.length === 0) {
+      return error(record, field.line, a_type + ' has no starred fields, so it is read from text, never made', where);
+    }
     if (stored.length !== field.positions.length) {
-      return error(record, field.line, (/^[AEIOU]/.test(type) ? 'an ' : 'a ') + type + ' has ' + stored.length + ' stored fields, so it is made with '
-        + stored.length + ' positions, not ' + field.positions.length, where);
+      return error(record, field.line, field.call
+        ? a_type + ' takes ' + stored.map((each) => each.name).join(', ') + ', so it is made with ' + stored.length
+          + (stored.length === 1 ? ' value' : ' values') + ', not ' + field.positions.length
+        : a_type + ' has ' + stored.length + ' stored fields, so it is made with ' + stored.length + ' positions, not '
+          + field.positions.length, where);
     }
     const lists = new Map(record.fields.slice(0, record.fields.indexOf(field))
       .filter((each) => each.list || each.count || ['kept', 'collected'].includes(each.role)).map((each) => [each.name, each]));
     field.positions.forEach((slot, at) => {
       const target = stored[at];
-      if (!slot.path) return error(record, slot.line, 'a position of a made record names a field, as in {' + target.name + '}', where);
+      if (!slot.path) {
+        if (slot.value?.number !== undefined && numeric(by_name, target.items)) return;
+        return error(record, slot.line, 'a position of a made record names a field, as in {' + target.name + '}', where);
+      }
       if (target.list || target.count) {
         const source = slot.path.length === 1 && lists.get(slot.path[0]);
         if (!source) return error(record, slot.line, type + '.' + target.name + ' is a list, so its position names a list above', where);
@@ -760,7 +778,7 @@ export function file_errors(loaded) {
     if (field.role !== 'worked') return;
     if (!number && !['True', 'False'].includes(field.items[0]?.type)) {
       error(record, field.line, 'a computed field produces a number, TRUE or FALSE, never text or a record; a record is made '
-        + 'with numbered positions, one for each of its stored fields', where);
+        + 'by a call, with a value for each of its starred fields', where);
     }
     const { value, round } = field;
     // a path on its own that only copies a field is an error; a method, a constant, a field of

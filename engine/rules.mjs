@@ -195,9 +195,9 @@ export function rules_of(declarations, scope = declarations, heads_made_before =
           const type = field.items[0].type;
           const made = by_name.get(type);
           if (made?.kind !== 'record') throw new Error('not a record');
-          const stored = made.fields.filter((each) => each.role === 'stored').map((each) => each.name);
-          if (stored.length !== field.positions.length || field.positions.some((slot) => !slot.path)) throw new Error('a made position');
-          fields.push({ name, make: type, fields: stored, values: field.positions.map((slot) => resolve({ path: slot.path })) });
+          const stored = made.fields.filter((each) => each.role === 'stored' && (!field.call || each.required)).map((each) => each.name);
+          if (stored.length !== field.positions.length || field.positions.some((slot) => !slot.path && !slot.value)) throw new Error('a made position');
+          fields.push({ name, make: type, fields: stored, values: field.positions.map((slot) => resolve(slot.value ?? { path: slot.path })) });
         } else if (field.role === 'collected') {
           if (!field.value.path || !in_list(field.value.path)) throw new Error('not a collected list');
           fields.push({ name, collect: field.value.path });

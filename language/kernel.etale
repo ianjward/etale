@@ -1,19 +1,4 @@
-# The kernel: a small stack machine. Etale compiles to its programs, and
-# each program prints as WebAssembly, one instruction for one.
-#
-# A program is a list of functions. A function is a list of
-# instructions. Each instruction takes values from the top of a stack
-# and puts its results back on top. A function also has numbered local
-# values: 'set 0' takes a value into local 0, and 'get 0' puts it back.
-# A function takes no values and gives one value. The value of 'main' is
-# the exit code of the program. The machine has one block of memory, and
-# it reads its input and writes its output one byte at a time. 'read'
-# gives 4294967295 at the end of the input: 32 bits that are all 1.
-#
-# WebAssembly has no free jumps. So control flow uses nested blocks:
-# 'block' and 'loop' open a block, and 'end' closes it. 'break 0' leaves
-# the innermost block. In a loop, 'break' goes back to the start of the
-# loop.
+# The kernel: a small stack machine, which Etale compiles to and which prints as WebAssembly.
 
 Kernel_Name {Text}                       # "main", "read_line"
   1. {Lowercase}
@@ -26,43 +11,26 @@ Local_Word {"get" | "set"}                         # move a value to or from a l
 Arithmetic_Word {"add" | "subtract" | "multiply" | "divide" | "remainder"}
 Compare_Word {"less" | "equal"}                    # give 1 if it holds, or 0
 Memory_Word {"load_byte" | "store_byte" | "load" | "store"}
-Block_Word {"block" | "loop" | "end"}              # open or close a block
+Block_Word {"block" | "loop" | "end"}              # open a block, or close one
 Break_Word {"break" | "break_if"}                  # leave blocks, or go back in a loop
 Call_Word {"call"}                                 # run a function, and get its value
 Return_Word {"return"}                             # give the function's value
+# read gives 4294967295 at the end of the input: 32 bits that are all 1.
 Byte_Word {"read" | "write"}                       # one byte in, or one byte out
 Value_Word {Push_Word | Stack_Word | Local_Word | Arithmetic_Word | Compare_Word | Memory_Word}
 Control_Word {Block_Word | Break_Word | Call_Word | Return_Word}
 Kernel_Word {Value_Word | Control_Word | Byte_Word}
 
-Taken_Count {Integer} (0..2)             # how many values an instruction takes from the stack
-Given_Count {Integer} (0..1)             # how many it puts back
-
-# How many arguments of one kind an instruction has.
-Argument_Count {Integer} (0..1)
-
-# A number of the machine: a whole number of 32 bits, never below 0. A
-# value, a local's number and a count of blocks are all U32. Arithmetic
-# wraps at 4294967296, and divide, remainder and less treat every value
-# as a U32.
+# A whole number of 32 bits, never below 0. Arithmetic wraps at 4294967296.
 U32 {Integer} (0..4294967295)
 
-Number_Argument {}                       # " 5", in "push 5"
-  amount {U32}
-  text {Text}
-    1. {" "}
-    2. {amount}
+Argument_Count {Integer} (0..1)          # how many of one kind a word is written with
+Taken_Count {Integer} (0..2)             # how many values a word takes from the stack
+Given_Count {Integer} (0..1)             # how many it puts back
 
-Name_Argument {}                         # " main", in "call main"
-  target {Kernel_Name}
-  text {Text}
-    1. {" "}
-    2. {target}
-
-Instruction {}                           # "  push 5"
-  word {Kernel_Word}
-  number {Number_Argument} count: 0..1
-  name {Name_Argument} count: 0..1
+# How many numbers and names a word is written with: "push 5", "call main", "add".
+Word_Arguments {}
+  word* {Kernel_Word}
   numbers {Argument_Count} (word)
     {1} (Push_Word | Local_Word | Break_Word)
     {0} (Stack_Word | Arithmetic_Word | Compare_Word | Memory_Word | Block_Word)
@@ -71,6 +39,10 @@ Instruction {}                           # "  push 5"
     {1} (Call_Word)
     {0} (Push_Word | Stack_Word | Local_Word | Arithmetic_Word | Compare_Word)
     {0} (Memory_Word | Block_Word | Break_Word | Return_Word | Byte_Word)
+
+# How many values a word takes from the stack, and how many it puts back.
+Word_Stack {}
+  word* {Kernel_Word}
   takes {Taken_Count} (word)
     {0} (Push_Word | "get" | Block_Word | "break" | Call_Word | "read")
     {1} (Stack_Word | "set" | "load_byte" | "load" | "break_if" | Return_Word | "write")
@@ -80,10 +52,28 @@ Instruction {}                           # "  push 5"
     {0} (Return_Word | "write")
     {1} (Push_Word | "get" | Arithmetic_Word | Compare_Word | "load_byte" | "load")
     {1} (Call_Word | "read")
-  number_count {Integer} (number.count)
-  name_count {Integer} (name.count)
-  right_numbers {Needs} (number_count = numbers)
-  right_names {Needs} (name_count = names)
+
+Number_Argument {}                       # " 5", in "push 5"
+  number {U32}
+  text {Text}
+    1. {" "}
+    2. {number}
+
+Name_Argument {}                         # " main", in "call main"
+  function {Kernel_Name}
+  text {Text}
+    1. {" "}
+    2. {function}
+
+# One line of a function: a word, and the number or name it is written with.
+Instruction {}                           # "  push 5"
+  word {Kernel_Word}
+  number {Number_Argument} count: 0..1
+  name {Name_Argument} count: 0..1
+  arguments {Word_Arguments} (word)
+  stack {Word_Stack} (word)
+  right_number {Needs} (number.count = arguments.numbers)
+  right_name {Needs} (name.count = arguments.names)
   text {Text}
     1. {"  "}
     2. {word}
@@ -91,7 +81,8 @@ Instruction {}                           # "  push 5"
     4. {name}
     5. {Newline}
 
-Function {}                              # "function main", then its instructions
+# A function takes no values and gives one: "function main", then its instructions.
+Function {}
   name {Kernel_Name}
   instructions {Instruction...} count: 1..
   text {Text}
@@ -100,12 +91,12 @@ Function {}                              # "function main", then its instruction
     3. {Newline}
     4. {instructions}
 
+# A program: its functions, and every call to a function it has. Main's value is its exit code.
 Program {}
   functions {Function...} count: 1.., unique: name
-  all_instructions {Instruction...} (functions.instructions)
-  calls {Instruction...} (all_instructions.word = "call")
-  called {Name_Argument...} (calls.name)
+  instructions {Instruction...} (functions.instructions)
+  calls {Instruction...} (instructions.word = "call")
+  called_functions {Name_Argument...} (calls.name)
   mains {Function...} (functions.name = "main")
-  main_count {Integer} (mains.count)
-  one_main {Needs} (main_count = 1)
-  calls_are_known {Needs} (called.target in functions.name)
+  one_main {Needs} (mains.count = 1)
+  calls_are_known {Needs} (called_functions.function in functions.name)

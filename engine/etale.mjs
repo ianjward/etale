@@ -149,6 +149,7 @@ function load(file, text, root = home) {
     }
   }
   const declarations = [...included.values()];
+  calls_of([...language_declarations, ...declarations]);
   const heads = new Set(seed.map((rule) => rule.head));
   const made = rules_of(declarations, [...language_declarations, ...declarations], heads);
   const declared = new Map([...language_declarations, ...declarations].map((each) => [each.name, each]));
@@ -174,6 +175,21 @@ function engine_names() {
     }
   }
   return found;
+}
+
+// A field whose type is a record, and whose parentheses hold one path, is a call with one value: 'arguments {Word_Arguments} (word)'. Calls with two or more values
+// are read as calls already.
+function calls_of(declarations) {
+  const by_name = new Map(declarations.map((each) => [each.name, each]));
+  for (const declaration of declarations) {
+    for (const field of declaration.fields ?? []) {
+      const made = by_name.get(field.items?.[0]?.type);
+      if (field.role !== 'worked' || made?.kind !== 'record' || !field.value?.path || field.round || field.wrap) continue;
+      field.role = 'made';
+      field.call = true;
+      field.positions = [{ line: field.line, path: field.value.path, value: field.value }];
+    }
+  }
 }
 
 const commands = {

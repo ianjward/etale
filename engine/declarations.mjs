@@ -75,6 +75,7 @@ export function declarations_of(text, file) {
     if (content.head === 'Allowed_Choice') return { allowed: list(content, 'first', 'rest').map(allowed) };
     if (content.head === 'Range_Literal') return { allowed: [range(content)] };
     if (content.head === 'Calculation') return { calculation: content };
+    if (content.head === 'Call_Values') return { call: list(content, 'first', 'rest').map(term) };
     return { conditions: content };
   }
   function properties(node) {
@@ -210,12 +211,13 @@ export function declarations_of(text, file) {
     const line = line_of(node);
     if (node.head === 'Mapped_Field') return mapping(node, line);
     const name = slice(value(node, 'name'));
-    if (node.head === 'Union_Field_Line') return { name, line, role: 'stored', ...union_box(value(node, 'base')) };
+    const required = optional(node, 'required') ? { required: true } : {};
+    if (node.head === 'Union_Field_Line') return { name, line, role: 'stored', ...required, ...union_box(value(node, 'base')) };
     const box = base_box(value(node, 'base'));
     const extra = parens(optional(node, 'parens'));
     const { count, places, round, wrap, unique, order, left_out } = properties(optional(node, 'properties'));
     const base = box.items[0].type;
-    const field = { name, line, role: 'stored', ...box };
+    const field = { name, line, role: 'stored', ...required, ...box };
     if (places !== undefined) field.places = places;
     if (base === 'Needs' || base === 'Claims') {
       field.role = base === 'Needs' ? 'rule' : 'claim';
@@ -223,6 +225,11 @@ export function declarations_of(text, file) {
     } else if (extra.calculation) {
       field.role = box.list ? 'collected' : 'worked';
       field.value = term(extra.calculation);
+    } else if (extra.call) {
+      // a call: the values of the starred fields of the record it makes, in order
+      field.role = 'made';
+      field.call = true;
+      field.positions = extra.call.map((each) => ({ line, path: each.path, value: each }));
     } else if (extra.conditions) {
       field.role = 'kept';
       field.condition = condition(extra.conditions);
