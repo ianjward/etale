@@ -57,22 +57,22 @@ Word_Stack {}
     {1} (Call_Word | "read")
 
 Number_Argument {}                       # " 5", in "push 5"
-  number {U32}
+  number* {U32}
   text {Text}
     1. {" "}
     2. {number}
 
 Function_Argument {}                     # " 1", in "call 1": the number of a function
-  function {U32}
+  function* {U32}
   text {Text}
     1. {" "}
     2. {function}
 
 # One line of a function: a word, and the number or function it is written with.
 Instruction {}                           # "  push 5"
-  word {Kernel_Word}
-  number {Number_Argument} count: 0..1
-  function {Function_Argument} count: 0..1
+  word* {Kernel_Word}
+  number* {Number_Argument} count: 0..1
+  function* {Function_Argument} count: 0..1
   arguments {Word_Arguments} (word)
   stack {Word_Stack} (word)
   right_number {Needs} (number.count = arguments.numbers)
@@ -84,14 +84,12 @@ Instruction {}                           # "  push 5"
     4. {function}
     5. {Newline}
 
-# A function takes at most three values and gives one: "function 2 divide takes 2", then its
-# instructions. Its number is how a call finds it. The name is for the reader.
-# The values it takes are its first locals: "get 0" gives the first.
-Function {}
-  number {U32}
-  name {Kernel_Name}
-  inputs {Input_Count}
-  instructions {Instruction...} count: 1..
+# The first line of a function: "function 2 divide takes 2". Its number is how a call finds it.
+# The name is for the reader. A function takes at most three values and gives one.
+Function_Head {}
+  number* {U32}
+  name* {Kernel_Name}
+  inputs* {Input_Count}
   text {Text}
     1. {"function "}
     2. {number}
@@ -100,20 +98,29 @@ Function {}
     5. {" takes "}
     6. {inputs}
     7. {Newline}
-    8. {instructions}
+
+# A function: its first line, then its instructions.
+# The values it takes are its first locals: "get 0" gives the first.
+Function {}
+  head* {Function_Head}
+  instructions* {Instruction...} count: 1..
+  text {Text}
+    1. {head}
+    2. {instructions}
 
 # A program: its functions, numbered 0, 1, 2 and on, main first. Main's value is its exit code.
 Program {}
-  functions {Function...} count: 1.., order: number, unique: number
-  first_function {Function} (functions.first)
-  last_function {Function} (functions.last)
-  last_number {Integer} (functions.count - 1)
-  main_is_0 {Needs} (first_function.number = 0 & first_function.name = "main")
-  main_takes_nothing {Needs} (first_function.inputs = 0)
-  no_gaps {Needs} (last_function.number = last_number)
-  mains {Function...} (functions.name = "main")
+  functions* {Function...} count: 1..
+  heads {Function_Head...} (functions.head) order: number, unique: number
+  first_head {Function_Head} (heads.first)
+  last_head {Function_Head} (heads.last)
+  last_number {Integer} (heads.count - 1)
+  main_is_0 {Needs} (first_head.number = 0 & first_head.name = "main")
+  main_takes_nothing {Needs} (first_head.inputs = 0)
+  no_gaps {Needs} (last_head.number = last_number)
+  mains {Function_Head...} (heads.name = "main")
   one_main {Needs} (mains.count = 1)
   instructions {Instruction...} (functions.instructions)
   calls {Instruction...} (instructions.word = "call")
   called_functions {Function_Argument...} (calls.function)
-  calls_are_known {Needs} (called_functions.function in functions.number)
+  calls_are_known {Needs} (called_functions.function in heads.number)
