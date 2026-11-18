@@ -22,8 +22,9 @@ import { Exact, exact, plus, minus, times, decimal_text } from './evaluate.mjs';
 import { fixed_value, one_value, union_values, characters, members_of } from './rules.mjs';
 
 const reserved = ['value', 'text', 'count', 'sum', 'min', 'max'];
-const methods = ['count', 'sum', 'min', 'max', 'first', 'last'];
+const methods = ['count', 'sum', 'min', 'max', 'first', 'last', 'rest'];
 const item_methods = ['first', 'last'];                  // one item of a list, of the list's type
+// 'rest': the list without its first item, a list of the same type
 const built_in = ['Integer', 'Decimal'];
 const literal_numbers = ['Integer_Literal', 'Decimal_Literal', 'Number_Literal'];
 const is_type_name = (name) => /^[A-Z]/.test(name ?? '');
@@ -209,7 +210,8 @@ export function file_errors(loaded) {
     const lists = new Map(record.fields.filter((each) => each.list || each.count).map((each) => [each.name, each]));
     next.forEach((term, at) => {
       const target = starred[at];
-      const whole = term.path?.length === 1 && lists.get(term.path[0]);
+      const rest_of = term.path?.length === 2 && term.path[1] === 'rest' && lists.get(term.path[0]);
+      const whole = (term.path?.length === 1 && lists.get(term.path[0])) || rest_of;
       if (target.list || target.count) {
         if (!whole) return bad(field.repeat.next_line, target.name + ' is a list, so next gives it a list');
         if (!same_items(whole.items, target.items)) {
@@ -226,7 +228,7 @@ export function file_errors(loaded) {
       }
     });
     if (!starred.some((target, at) => shrinks(record, field, target, next[at]))) {
-      bad(field.repeat.next_line, 'next must make a starred field smaller each time, a whole number with a lowest value: '
+      bad(field.repeat.next_line, 'next must make a starred field smaller each time, a list given its .rest, or a whole number with a lowest value: '
         + 'a field wrapped at it, it less a constant, or it divided by a constant of 2 or more (rounded lower, or less what a wrap at that constant leaves), while it is '
         + 'at least 1');
     }
@@ -236,6 +238,8 @@ export function file_errors(loaded) {
   // Whether next gives the starred field target a smaller value. Value is a field of this
   // record, or a field of a record this one makes, with that record's starred fields as given.
   function shrinks(record, field, target, value) {
+    // a list given its own rest is one item shorter each time
+    if ((target.list || target.count) && value.path?.length === 2 && value.path[0] === target.name && value.path[1] === 'rest') return true;
     if (!integer_type(target.items[0] ?? {}) || field_bounds(target, record).low === null) return false;
     if (!value.path || value.path.length > 2) return false;
     let holder = record;
@@ -492,7 +496,7 @@ export function file_errors(loaded) {
     for (const step of path.slice(1)) {
       // a record's own field may have a method's name, as Sum's first does
       const own = !(field?.list || field?.count) && field_of(given_record(field?.items?.[0]?.type), step);
-      if (methods.includes(step) && !own) return item_methods.includes(step) ? field?.items : [{ type: 'Integer' }];
+      if (methods.includes(step) && !own) return item_methods.includes(step) || step === 'rest' ? field?.items : [{ type: 'Integer' }];
       field = field_of(given_record(field?.items?.[0]?.type), step);
     }
     return field?.role === 'made' ? result_items(field.items) : field?.items;
@@ -717,7 +721,7 @@ export function file_errors(loaded) {
       if (index > 0 && methods.includes(step) && !own_field) {
         if (state === 'one') error(declaration, line, "'." + step + "' reads a list, but " + so_far + ' is not one', where);
         if (index !== path.length - 1) error(declaration, line, "a method ends the path ('." + step + "')", where);
-        if (step !== 'count' && !item_methods.includes(step) && last_field && !numeric(by_name, last_field.items)) {
+        if (step !== 'count' && step !== 'rest' && !item_methods.includes(step) && last_field && !numeric(by_name, last_field.items)) {
           error(declaration, line, "'." + step + "' takes a list of numbers", where);
         }
         return;

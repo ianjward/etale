@@ -114,6 +114,7 @@ const folds = {
   max: (items) => least_or_most(items, 1),
   first: (items) => items[0] ?? INVALID,
   last: (items) => items.at(-1) ?? INVALID,
+  rest: (items) => (items.length ? new Sequence(items.slice(1), null) : INVALID),
 };
 function least_or_most(items, side) {
   if (items.length === 0 || !items.every((item) => item instanceof Exact)) return INVALID;
@@ -196,7 +197,8 @@ export function evaluator(text, numeric, rules_by_head = new Map()) {
       const memo = new Map();
       for (const [index, name] of line.repeat.fields.entries()) {
         const term = line.repeat.next[index];
-        const value = term.path?.length === 1 ? get(at, term.path[0], outside) : calculate(term, at, outside);
+        const value = term.path?.length === 1 ? get(at, term.path[0], outside)
+          : term.path?.[1] === 'rest' ? list_value(term, at, outside) : calculate(term, at, outside);
         if (stop(value)) return value;
         const floor = line.repeat.floors[index];
         if (floor !== null && value instanceof Exact && order(value, exact(floor)) < 0) {
@@ -352,6 +354,7 @@ export function evaluator(text, numeric, rules_by_head = new Map()) {
     const [head, step] = term.path;
     const value = get(node, head, outside);
     if (step === undefined || stop(value)) return value;
+    if (value instanceof Sequence && step === 'rest') return folds.rest(value.items);
     return is_record(value) ? get(value, step, outside && [node, ...outside]) : INVALID;
   }
 

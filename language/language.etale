@@ -113,6 +113,8 @@ Field_Step {Text}
   1. {"."}
   2. {Field_Name}
 
+# After a list, the step may be .count, .sum, .min, .max, .first, .last, or .rest: the list
+# without its first item. A field of a record with one of these names is that field.
 Path {Text}                              # Example: 'due.minutes'
   1. {Name}
   2. {Field_Step} count: 0..1
