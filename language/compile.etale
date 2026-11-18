@@ -1,22 +1,28 @@
-# Etale compiled to the kernel: each Compiled type reads Etale text, and makes kernel text.
+# Etale compiled to the kernel: each Compiled type reads Etale text, and makes a kernel Program.
+
+Main_Number {Integer} (0)                # main is function 0
+Main_Name {"main"}
+No_Inputs {Integer} (0)                  # main takes nothing
 
 # A program whose main gives one number.
-Main_Giving {}
-  number* {Paren_Content}
-  text {Text}
-    1. {"function 0 main takes 0"}
-    2. {Newline}
-    3. {"  push "}
-    4. {number}
-    5. {Newline}
-    6. {"  return"}
-    7. {Newline}
+# Example: 7 gives "function 0 main takes 0", then "push 7" and "return".
+Number_To_Main {}
+  number* {U32}
+  argument {Number_Argument} (number)
+  arguments {Number_Argument...} (argument)
+  push {Instruction} (Push_Word, arguments, Empty_String)
+  give {Instruction} (Return_Word, Empty_String, Empty_String)
+  instructions {Instruction...} (push, give)
+  head {Function_Head} (Main_Number, Main_Name, No_Inputs)
+  main {Function} (head, instructions)
+  functions {Function...} (main)
+  result {Program} (functions)
 
 # The number in a constant's parentheses, as a program whose main gives it.
-# Example: " (7)" gives main, which pushes 7 and gives it.
+# Example: " (7)" gives main, which pushes 7 and gives it. " (1 + 1)" is refused.
 Parens_To_Main {}
   parens* {Parens}
-  result {Main_Giving} (parens.content)
+  result {Number_To_Main} (parens.content)
 
 # A constant as a program whose main gives its value.
 # Example: "Group_Width {Integer} (7)" gives main, which pushes 7 and gives it.
