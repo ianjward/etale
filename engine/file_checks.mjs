@@ -195,8 +195,6 @@ export function file_errors(loaded) {
     const where = record.name + '.' + field.name;
     const { next } = field.repeat;
     const bad = (line, message) => error(record, line, message, where);
-    const first = record.fields.find((each) => each.repeat);
-    if (first !== field) return bad(field.repeat.while_line, "a type has one 'while'; " + first.name + ' has it already');
     for (const each of record.fields) {
       if (each.items?.some((item) => item.type === record.name)) {
         bad(each.line, "a type with 'while' holds no field of its own type: '" + each.name + "'");
@@ -1216,7 +1214,6 @@ export function file_errors(loaded) {
     }
     if (declaration.kind === 'record') check_record(declaration);
     if (declaration.call) check_constant(declaration);
-    check_size(declaration);
   }
   check_spacing();
 
@@ -1256,20 +1253,8 @@ export function file_errors(loaded) {
     }
   }
 
-  // A type has at most 20 lines (decided on 17 November 2026); over it, it is doing more than one
-  // job. language.etale counts the cases of a table and the items of a union.
-  function check_size(declaration) {
-    if (declaration.kind !== 'record') return;
-    // fields, rules, claims and 'while' and 'next' count; case tables, text shapes and comments do not
-    const lines = declaration.fields.length + declaration.fields.filter((field) => field.repeat).length * 2;
-    if (lines > Most_Lines) {
-      error(declaration, declaration.line, declaration.name + ' has ' + lines + ' lines, and a type has at most '
-        + Most_Lines + ': give a step of working out a type of its own');
-    }
-  }
 }
 
-const Most_Lines = 20;
 const Most_Together = 7;
 
 function stopping_error(loaded) {

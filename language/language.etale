@@ -768,16 +768,33 @@ Repeated_Field {}
   while {While_Line}
   next {Next_Line}
 
-Field_Content {Field_Line | Union_Field_Line | Mapped_Field | Repeated_Field}
-Body_Content {Field_Content | Shape | Body_Comment_Line}
+Above_Line {Blank_Line | Body_Comment_Line}
+Plain_Field {Field_Line | Union_Field_Line | Mapped_Field}
 
-Body_Item {}                             # Blank lines only before more body
-  gap {Blank_Line...}
-  line {Body_Content}
+Field_Item {}                            # A field, with the blank and comment lines above it
+  above {Above_Line...}
+  line {Plain_Field}
 
+Repeated_Item {}
+  above {Above_Line...}
+  line {Repeated_Field}
+
+Shape_Item {}
+  above {Above_Line...}
+  line {Shape}
+
+# At most 20 lines: fields, rules and claims. Case tables, shapes and comments are not counted.
 Record_Block {}
   head {Record_Header}
-  body {Body_Item...}
+  fields {Field_Item...} count: 0..20
+  shape {Shape_Item} count: 0..1
+
+# 'while' and 'next' are two lines more, so at most 17 other fields.
+Repeating_Block {}
+  head {Record_Header}
+  fields {Field_Item...} count: 0..17
+  repeated {Repeated_Item}
+  shape {Shape_Item} count: 0..1
 
 Position_Content {Position_Line | Union_Position_Line}
 
@@ -786,7 +803,7 @@ Layout_Block {}
   positions {Position_Content...} count: 1..
 
 Line_Block {Refinement_Line | Union_Line | Intersection_Line}
-Block {Record_Block | Layout_Block | Line_Block | Comment_Line | Blank_Line}
+Block {Record_Block | Repeating_Block | Layout_Block | Line_Block | Comment_Line | Blank_Line}
 
 Blocks {Block...}
 

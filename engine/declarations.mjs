@@ -269,10 +269,14 @@ export function declarations_of(text, file) {
   function record(node) {
     const declaration = { name: slice(value(value(node, 'head'), 'name')), line: line_of(node), kind: 'record',
       fields: [], shape: null };
-    for (const body_item of items_of(value(node, 'body'))) {
-      const content = inner(value(body_item, 'line'));
-      if (content.head === 'Field_Content') declaration.fields.push(field_line(inner(content)));
-      else if (content.head === 'Shape') {
+    // the fields, then the repeated field, if there is one, then the shape (each item's 'line')
+    const parts = node.rule.parts.map((part) => part.name);
+    const lines = [...items_of(value(node, 'fields')).map((item) => inner(value(item, 'line'))),
+      ...(parts.includes('repeated') ? [value(value(node, 'repeated'), 'line')] : []),
+      ...items_of(value(node, 'shape')).map((item) => value(item, 'line'))];
+    for (const content of lines) {
+      if (content.head !== 'Shape') declaration.fields.push(field_line(content));
+      else {
         const head = value(content, 'head');
         const name = slice(value(head, 'name'));
         const base = slice(value(head, 'base'));
@@ -303,7 +307,7 @@ export function declarations_of(text, file) {
   const declarations = [];
   for (const block of items_of(inner(inner(file)))) {
     const node = inner(block);
-    if (node.head === 'Record_Block') declarations.push(record(node));
+    if (node.head === 'Record_Block' || node.head === 'Repeating_Block') declarations.push(record(node));
     else if (node.head === 'Layout_Block') declarations.push(layout(node));
     else if (node.head === 'Line_Block') declarations.push(line_declaration(inner(node)));
   }
