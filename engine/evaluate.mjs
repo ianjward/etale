@@ -230,6 +230,7 @@ export function evaluator(text, numeric, rules_by_head = new Map()) {
     if (line.make_one_of) return make_one_of(node, line, outside);
     if (line.make) return make(node, line, outside);
     if (line.list_of) return list_of(node, line, outside);
+    if (line.whole) return list_value({ path: [line.whole] }, node, outside);
     if (line.keep !== undefined || line.collect) return list_from(node, line, outside);
     let value;
     if (line.round) {
@@ -353,7 +354,9 @@ export function evaluator(text, numeric, rules_by_head = new Map()) {
   function choose_one_of(node, line, values, outside) {
     const text = (value) => (value instanceof Exact ? decimal_text(value) : String(value));
     const takes = (choice) => choice.accepts.every((taken, at) => taken === null || taken.includes(text(values[at])))
-      && (choice.types ?? []).every((types, at) => types.some((type) => fits(values[at], type)));
+      && (choice.types ?? []).every((types, at) => (types === null
+        ? values[at] instanceof Sequence || typeof values[at] === 'string'      // a list field takes a list or a text
+        : types.some((type) => fits(values[at], type))));
     const chosen = line.make_one_of.filter(takes);
     if (chosen.length !== 1) return INVALID;
     return make(node, { make: chosen[0].make, fields: line.fields, values: values.map((value) => ({ worked: value })) }, outside);
@@ -395,6 +398,8 @@ export function evaluator(text, numeric, rules_by_head = new Map()) {
   function list_of(node, line, outside) {
     const items = [];
     for (const term of line.list_of) {
+      // a type of one text, in a list, is one item a character: Empty_String adds none
+      if (term.text !== undefined) { items.push(...term.text); continue; }
       const value = term.all ? list_value(term, node, outside) : calculate(term, node, outside);
       if (stop(value)) return value;
       if (term.all && !(value instanceof Sequence)) return INVALID;

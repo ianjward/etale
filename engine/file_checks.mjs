@@ -663,6 +663,11 @@ export function file_errors(loaded) {
     if (!found || seen.has(name)) return undefined;
     if (found.kind === 'record') return found;
     if (members_of(by_name, name)) return shared_record(found);
+    // an intersection is read as its one record, as File is read as Blocks
+    if (found.kind === 'intersection') {
+      const records = found.types.map((type) => record_of(type, new Set([...seen, name]))).filter(Boolean);
+      return records.length === 1 ? records[0] : undefined;
+    }
     if (found.kind === 'refinement' && found.items.length === 1 && found.items[0].type) {
       return record_of(found.items[0].type, seen.add(name));
     }

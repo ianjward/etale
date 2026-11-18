@@ -213,17 +213,31 @@ function calls_of(declarations) {
     if (!result || seen.has(type)) return type;
     return given(result.items?.[0]?.type, seen.add(type));
   };
+  // the result a call to this type gives: its own, or the one every member of its union gives
+  const result_of = (type) => {
+    const results = (members_of(by_name, type) ?? [by_name.get(type)])
+      .map((member) => member?.fields?.find((each) => each.name === 'result'));
+    const shown = (each) => JSON.stringify([each?.items, Boolean(each?.list)]);
+    return results.every((each) => each && shown(each) === shown(results[0])) ? results[0] : undefined;
+  };
+  // an intersection is read as its one record, as File is read as Blocks
+  const as_record = (type) => {
+    const found = by_name.get(type);
+    if (found?.kind !== 'intersection') return found;
+    const records = found.types.map((each) => by_name.get(each)).filter((each) => each?.kind === 'record');
+    return records.length === 1 ? records[0] : found;
+  };
   const type_of = (declaration, [head, step]) => {
     const field = declaration.fields.find((each) => each.name === head);
     const type = field?.items?.[0]?.type;
     // a made field holds what its type gives: its result
-    const result = field?.call && by_name.get(type)?.fields?.find((each) => each.name === 'result');
+    const result = field?.call && result_of(type);
     const held = result ? result.items?.[0]?.type : type;
     // a record's own field may have a method's name, as Line_Group's first does
     const own = step !== undefined && !field?.list && !field?.count
-      && by_name.get(given(type))?.fields?.find((each) => each.name === step);
+      && as_record(given(type))?.fields?.find((each) => each.name === step);
     if (step === undefined || (['first', 'last'].includes(step) && !own)) return held;
-    const inner = by_name.get(given(type)) ?? undefined;
+    const inner = as_record(given(type)) ?? undefined;
     const record = inner?.kind === 'record' ? inner : members_of(by_name, inner?.name)?.[0];
     return record ? record.fields.find((each) => each.name === step)?.items?.[0]?.type : undefined;
   };

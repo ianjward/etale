@@ -249,7 +249,7 @@ export function rules_of(declarations, scope = declarations, heads_made_before =
             const choices = members.map((member) => ({ make: member.name,
               accepts: member.fields.filter((each) => each.required).map((each) => accepted(each.items)),
               types: member.fields.filter((each) => each.required)
-                .map((each) => each.items.map((item) => written_as[item.type] ?? item.type)) }));
+                .map((each) => (each.list || each.count ? null : each.items.map((item) => written_as[item.type] ?? item.type))) }));
             const stored = members[0].fields.filter((each) => each.required).map((each) => each.name);
             fields.push({ name, make_one_of: choices, fields: stored, values: field.positions.map((slot) => resolve(slot.value ?? { path: slot.path })),
               ...((field.each ?? field.list) ? { each: true } : {}) });
@@ -267,7 +267,9 @@ export function rules_of(declarations, scope = declarations, heads_made_before =
         } else if (field.role === 'collected') {
           // one value is a list of that one item; a path through one record gives its list
           if (!field.value.path || field.value.path.length > 2) throw new Error('not a collected list');
-          if (field.value.path.length === 1) fields.push({ name, list_of: [resolve(field.value)] });
+          // a list field named on its own is that whole list
+          if (field.value.path.length === 1 && lists.has(field.value.path[0])) fields.push({ name, whole: field.value.path[0] });
+          else if (field.value.path.length === 1) fields.push({ name, list_of: [resolve(field.value)] });
           else fields.push({ name, collect: field.value.path });
         } else if (field.role === 'mapping') {
           const cases = field.cases.flatMap(({ output, when }) => {
