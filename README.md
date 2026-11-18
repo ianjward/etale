@@ -19,12 +19,12 @@ reads, writes, checks and runs them. It needs Node 22 and nothing else. There ar
   constants, each of which may name the ones above it, are worked out while compiling, and
   main gives the last one's value:
   'node engine/etale.mjs print language/compile.etale Compiled_File FILE kernel'.
-  A type of one character range, such as 'Digit {"0".."9"}', becomes a program that reads it:
-  'print language/compile.etale Compiled_Range LINE reader'. It writes the character and gives
-  0, or gives 1 when its input is refused. A record is kept at a place in memory; 0 is refused.
-  A group whose last line is a list of such a type, such as 'Natural {Digit...} count: 1..',
-  becomes a program that reads the list: 'print language/compile.etale Compiled_List GROUP
-  reader'.
+  Types read from input become programs that read them: one character range
+  ('Compiled_Range LINE'), a list of one ('Compiled_List GROUP', e.g. Natural), and a layout of
+  quoted characters and such lists ('Compiled_Layout FILE', e.g. Integer_Literal and
+  Decimal_Literal), each with 'reader' as the field to print. The program writes what it read
+  and gives 0, or gives 1 when its input is refused. A byte that a list does not take is given
+  back for what follows (functions take and give_back); 0 is the refused place.
 - engine/: the engine, about 2,350 lines of code, with its command line in etale.mjs. It goes
   once Etale runs on its own kernel.
 
