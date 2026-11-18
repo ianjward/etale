@@ -13,8 +13,8 @@ reads, writes, checks and runs them. It needs Node 22 and nothing else. There ar
 - language/kernel.etale: the kernel, a small stack machine. Etale is to compile to its
   programs.
 - language/wasm.etale: kernel programs compiled to WebAssembly, in Etale. Functions are
-  numbered 0, 1, 2 and on, main first ("function 1 copy_one"), and a call gives the number
-  ("call 1").
+  numbered 0, 1, 2 and on, main first, and say how many values they take, at most three
+  ("function 1 copy_one takes 0"). A call gives the number ("call 1").
 - engine/: the engine, about 2,350 lines of code, with its command line in etale.mjs. It goes
   once Etale runs on its own kernel.
 

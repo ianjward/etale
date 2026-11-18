@@ -213,7 +213,7 @@ Wasm_Function {}
     5. {code}
     6. {"00001011"}                      # the end of the function
 
-Function_Type {Integer} (0)              # type 0: takes nothing, gives an i32
+Wasm_Type {Integer} (0..6)               # a function's type, in the types section
 
 # The functions section: its size, the count of functions, and the type of each: read,
 # write and _start, then the functions of the program.
@@ -296,41 +296,44 @@ Wasm_Program {}
   text {Binary_Digit}
     1. {"00000000011000010111001101101101"}
     2. {"00000001000000000000000000000000"}  # version 1
-    3. {"0000000100010100"}              # the types: section 1, 20 bytes
-    4. {"00000100"}                      # four types:
+    3. {"0000000100100110"}              # the types: section 1, 38 bytes
+    4. {"00000111"}                      # seven types:
     5. {"01100000000000000000000101111111"}  # type 0: takes nothing, gives an i32
     6. {"01100000000000010111111100000000"}  # type 1: takes an i32, gives nothing
     7. {"01100000000001000111111101111111011111110111111100000001"}
     8. {"01111111"}                      # and so on
     9. {"011000000000000000000000"}      # type 3: takes nothing, gives nothing
-    10. {"0000001001100111"}             # the imports: section 2, 103 bytes
-    11. {"00000011"}                     # three imports:
-    12. {"00010110011101110110000101110011011010010101111101110011"}
-    13. {"01101110011000010111000001110011011010000110111101110100"}  # "napshot"
-    14. {"01011111011100000111001001100101011101100110100101100101"}  # "_previe"
-    15. {"01110111001100010000011101100110011001000101111101110010"}  # "w1fd_r"
-    16. {"0110010101100001011001000000000000000010"}  # "ead"
-    17. {"00010110011101110110000101110011011010010101111101110011"}
-    18. {"01101110011000010111000001110011011010000110111101110100"}  # "napshot"
-    19. {"01011111011100000111001001100101011101100110100101100101"}  # "_previe"
-    20. {"01110111001100010000100001100110011001000101111101110111"}  # "w1fd_w"
-    21. {"011100100110100101110100011001010000000000000010"}  # "rite"
-    22. {"00010110011101110110000101110011011010010101111101110011"}
-    23. {"01101110011000010111000001110011011010000110111101110100"}  # "napshot"
-    24. {"01011111011100000111001001100101011101100110100101100101"}  # "_previe"
-    25. {"01110111001100010000100101110000011100100110111101100011"}  # "w1proc"
-    26. {"01011111011001010111100001101001011101000000000000000001"}  # "_exit"
-    27. {function_section}
-    28. {"0000010100000011"}             # the memory: section 5, 3 bytes
-    29. {"000000010000000000000001"}     # one memory, of at least one page
-    30. {"0000011100011010"}             # the exports: section 7, 26 bytes
-    31. {"00000011"}                     # three exports:
-    32. {"00000110011011010110010101101101011011110111001001111001"}  # "memory": memory 0
-    33. {"0000001000000000"}             # and so on
-    34. {"00000110010111110111001101110100011000010111001001110100"}  # "_start": function 5
-    35. {"0000000000000101"}             # and so on
-    36. {"00000100011011010110000101101001011011100000000000000110"}  # "main": function 6
-    37. {code_section}
+    10. {"0110000000000001011111110000000101111111"}  # type 4: takes an i32, gives an i32
+    11. {"011000000000001001111111011111110000000101111111"}  # type 5: takes two
+    12. {"01100000000000110111111101111111011111110000000101111111"}  # type 6: takes three
+    13. {"0000001001100111"}             # the imports: section 2, 103 bytes
+    14. {"00000011"}                     # three imports:
+    15. {"00010110011101110110000101110011011010010101111101110011"}
+    16. {"01101110011000010111000001110011011010000110111101110100"}  # "napshot"
+    17. {"01011111011100000111001001100101011101100110100101100101"}  # "_previe"
+    18. {"01110111001100010000011101100110011001000101111101110010"}  # "w1fd_r"
+    19. {"0110010101100001011001000000000000000010"}  # "ead"
+    20. {"00010110011101110110000101110011011010010101111101110011"}
+    21. {"01101110011000010111000001110011011010000110111101110100"}  # "napshot"
+    22. {"01011111011100000111001001100101011101100110100101100101"}  # "_previe"
+    23. {"01110111001100010000100001100110011001000101111101110111"}  # "w1fd_w"
+    24. {"011100100110100101110100011001010000000000000010"}  # "rite"
+    25. {"00010110011101110110000101110011011010010101111101110011"}
+    26. {"01101110011000010111000001110011011010000110111101110100"}  # "napshot"
+    27. {"01011111011100000111001001100101011101100110100101100101"}  # "_previe"
+    28. {"01110111001100010000100101110000011100100110111101100011"}  # "w1proc"
+    29. {"01011111011001010111100001101001011101000000000000000001"}  # "_exit"
+    30. {function_section}
+    31. {"0000010100000011"}             # the memory: section 5, 3 bytes
+    32. {"000000010000000000000001"}     # one memory, of at least one page
+    33. {"0000011100011010"}             # the exports: section 7, 26 bytes
+    34. {"00000011"}                     # three exports:
+    35. {"00000110011011010110010101101101011011110111001001111001"}  # "memory": memory 0
+    36. {"0000001000000000"}             # and so on
+    37. {"00000110010111110111001101110100011000010111001001110100"}  # "_start": function 5
+    38. {"0000000000000101"}             # and so on
+    39. {"00000100011011010110000101101001011011100000000000000110"}  # "main": function 6
+    40. {code_section}
 
 Compiled_Number {}                       # " 5", in "push 5"
   amount {U32}
@@ -371,11 +374,17 @@ Compiled_Instruction {}                  # "  push 5"
     4. {functions}
     5. {Newline}
 
-Compiled_Function {}                     # "function 0 main", then its instructions
+Compiled_Function {}                     # "function 0 main takes 0", then its instructions
   number {U32}
   name {Kernel_Name}
+  inputs {Input_Count}
   instructions {Compiled_Instruction...} count: 1..
-  type {Integer_To_Wasm_Number} (Function_Type)
+  type_number {Wasm_Type} (inputs)         # the type for the values it takes
+    {0} (0)
+    {4} (1)
+    {5} (2)
+    {6} (3)
+  type {Integer_To_Wasm_Number} (type_number)
   sizes {Integer...} (instructions.size)
   code_size {Integer} (sizes.sum)
   body_size {Integer} (code_size + Locals_And_End)
@@ -388,8 +397,10 @@ Compiled_Function {}                     # "function 0 main", then its instructi
     2. {number}
     3. {" "}
     4. {name}
-    5. {Newline}
-    6. {instructions}
+    5. {" takes "}
+    6. {inputs}
+    7. {Newline}
+    8. {instructions}
 
 # The functions section for a program's functions: a type for each, after read, write and _start.
 # Example: main and one other function give a count of 5 and two types of 0.
@@ -403,6 +414,19 @@ Functions_To_Wasm_Section {}
   types_length {Integer_To_Wasm_Number} (types_size)
   result {Wasm_Function_Section} (types_length, function_count, types)
 
+# The code section for a program's functions: its size, the count of functions, read, write and
+# _start, then the code of each function.
+# Example: main alone, with a count of 4, gives read, write, _start and main.
+Functions_To_Wasm_Code {}
+  functions* {Compiled_Function...}
+  function_count* {Wasm_Number}
+  function_sizes {Integer...} (functions.size)
+  function_bytes {Integer} (function_sizes.sum)
+  section_size {Integer} (function_bytes + Number_Size + Helper_Code_Size)
+  section_length {Integer_To_Wasm_Number} (section_size)
+  compiled {Wasm_Function...} (functions.wasm)
+  result {Wasm_Code_Section} (section_length, function_count, compiled)
+
 # A program's functions are numbered 0, 1, 2 and on, main first, as the kernel says. In
 # WebAssembly they come after the three imports and three helpers.
 Compiled_Program {}
@@ -411,6 +435,7 @@ Compiled_Program {}
   last_function {Compiled_Function} (functions.last)
   last_number {Integer} (functions.count - 1)
   main_is_0 {Needs} (first_function.number = 0 & first_function.name = "main")
+  main_takes_nothing {Needs} (first_function.inputs = 0)
   no_gaps {Needs} (last_function.number = last_number)
   mains {Compiled_Function...} (functions.name = "main")
   one_main {Needs} (mains.count = 1)
@@ -419,10 +444,5 @@ Compiled_Program {}
   called_functions {Compiled_Function_Number...} (calls.functions)
   calls_are_known {Needs} (called_functions.function in functions.number)
   function_section {Functions_To_Wasm_Section} (functions)
-  function_sizes {Integer...} (functions.size)
-  function_bytes {Integer} (function_sizes.sum)
-  section_size {Integer} (function_bytes + Number_Size + Helper_Code_Size)
-  section_length {Integer_To_Wasm_Number} (section_size)
-  compiled {Wasm_Function...} (functions.wasm)
-  code_section {Wasm_Code_Section} (section_length, function_section.function_count, compiled)
+  code_section {Functions_To_Wasm_Code} (functions, function_section.function_count)
   wasm {Wasm_Program} (function_section, code_section)
