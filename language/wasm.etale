@@ -232,12 +232,10 @@ Compiled_Number {}                       # " 5", in "push 5"
     1. {" "}
     2. {amount}
 
-Compiled_Instruction {}                  # "  push 5"
-  word {Compiled_Word}
-  numbers {Compiled_Number...} count: 0..1
-  arguments {Word_Arguments} (word)
-  right_numbers {Needs} (numbers.count = arguments.numbers)
-  head {Instruction_Head} (word)
+# What WebAssembly writes first for a word, and how many bytes that is.
+Word_Head {}
+  word* {Compiled_Word}
+  bits {Instruction_Head} (word)
     {Push_Opcode} ("push")
     {Get_Opcode} ("get")
     {Set_Opcode} ("set")
@@ -261,15 +259,22 @@ Compiled_Instruction {}                  # "  push 5"
     {Return_Opcode} ("return")
     {Read_Call} ("read")
     {Write_Call} ("write")
-  head_size {Head_Size} (word)
+  size {Head_Size} (word)
     {1} (Push_Word | Stack_Word | Local_Word | Arithmetic_Word | Compare_Word | "end")
     {1} (Break_Word | Return_Word)
     {2} ("block" | "loop" | Byte_Word)
     {3} (Memory_Word)
+
+Compiled_Instruction {}                  # "  push 5"
+  word {Compiled_Word}
+  numbers {Compiled_Number...} count: 0..1
+  arguments {Word_Arguments} (word)
+  right_numbers {Needs} (numbers.count = arguments.numbers)
+  head {Word_Head} (word)
   written {Wasm_Number...} (numbers.written)
   number_bytes {Integer} (arguments.numbers * Number_Size)
-  size {Integer} (head_size + number_bytes)
-  wasm {Wasm_Instruction} (head, written)
+  size {Integer} (head.size + number_bytes)
+  wasm {Wasm_Instruction} (head.bits, written)
   text {Text}
     1. {"  "}
     2. {word}
