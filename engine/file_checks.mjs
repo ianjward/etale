@@ -812,6 +812,16 @@ export function file_errors(loaded) {
       if (outputs && !outputs.some((each) => same(each, value))) {
         return error(declaration, line, 'case output ' + item_text(one_case.output) + ' is not a value of the output type', where);
       }
+      if (!outputs && typeof value !== 'string' && field.items.length === 1 && numeric(by_name, field.items)) {
+        // a number output of a type with a range, such as Head_Size {Integer} (1..3)
+        const { low, high } = type_bounds(field.items[0], []);
+        const outside = (low !== null && compare(value, low) < 0) || (high !== null && compare(value, high) > 0)
+          || (integer_type(field.items[0]) && !integral(value));
+        if (outside) {
+          return error(declaration, line, 'case output ' + item_text(one_case.output) + ' is not a value of '
+            + item_text(field.items[0]), where);
+        }
+      }
       const box = case_box(one_case.when, field.inputs, domains);
       if (typeof box === 'string') return error(declaration, line, box, where);
       boxes.push(box);
