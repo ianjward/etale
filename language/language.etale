@@ -803,9 +803,35 @@ Layout_Block {}
   positions {Position_Content...} count: 1..
 
 Line_Block {Refinement_Line | Union_Line | Intersection_Line}
-Block {Record_Block | Repeating_Block | Layout_Block | Line_Block | Comment_Line | Blank_Line}
+Long_Block {Record_Block | Repeating_Block | Layout_Block}
 
-Blocks {Block...}
+# A type of more than one line, with the comments above it: a blank line above and below.
+Type_Group {}
+  notes {Comment_Line...}
+  type {Long_Block}
+
+Noted_Line {}
+  notes {Comment_Line...}
+  line {Line_Block}
+
+# At most 7 one-line declarations stand together.
+Line_Group {}
+  first {Noted_Line}
+  rest {Noted_Line...} count: 0..6
+  end {Comment_Line...}
+
+Comment_Group {Comment_Line...} count: 1..
+Group {Type_Group | Line_Group | Comment_Group}
+
+Spaced_Group {}
+  gap {Blank_Line...} count: 1..
+  group {Group}
+
+Blocks {}
+  lead {Blank_Line...}
+  first {Group}
+  rest {Spaced_Group...}
+  tail {Blank_Line...}
 
 # A physical line: at most 100 characters, then a newline.
 Short_Line {Text}

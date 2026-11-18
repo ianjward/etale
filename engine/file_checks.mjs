@@ -1215,47 +1215,9 @@ export function file_errors(loaded) {
     if (declaration.kind === 'record') check_record(declaration);
     if (declaration.call) check_constant(declaration);
   }
-  check_spacing();
 
   return errors;
-
-  // A type of more than one line has a blank line above it (and its comments) and below it, and
-  // at most 7 one-line declarations stand together without a blank line.
-  function check_spacing() {
-    const lines = (loaded.text ?? '').split('\n');
-    const blank = (at) => at < 0 || at >= lines.length || lines[at].trim() === '';
-    const comment = (at) => /^#/.test(lines[at] ?? '');
-    const top = (at) => /^[A-Z]/.test(lines[at] ?? '');
-    const inside = (at) => /^ /.test(lines[at] ?? '');
-    const say = (at, message) => errors.push(file + ':' + (at + 1) + ': error: ' + message);
-    let together = 0;
-    for (let at = 0; at < lines.length; at += 1) {
-      if (!top(at)) {
-        if (blank(at)) together = 0;
-        continue;
-      }
-      const name = lines[at].split(' ')[0];
-      if (inside(at + 1)) {
-        let above = at - 1;
-        while (comment(above)) above -= 1;
-        if (!blank(above)) say(at, name + ' needs a blank line above it');
-        let end = at + 1;
-        while (inside(end + 1) || (comment(end + 1) && inside(end + 2))) end += 1;
-        if (!blank(end + 1)) say(at, name + ' needs a blank line below it');
-        together = 0;
-        at = end;
-        continue;
-      }
-      together += 1;
-      if (together === Most_Together + 1) {
-        say(at, 'at most ' + Most_Together + ' one-line declarations stand together; put a blank line before ' + name);
-      }
-    }
-  }
-
 }
-
-const Most_Together = 7;
 
 function stopping_error(loaded) {
   const { file, declarations: own, declared, language = [], uses } = loaded;

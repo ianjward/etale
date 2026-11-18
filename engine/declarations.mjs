@@ -305,8 +305,16 @@ export function declarations_of(text, file) {
   }
 
   const declarations = [];
-  for (const block of items_of(inner(inner(file)))) {
-    const node = inner(block);
+  // the declarations of each group, in order (only the declarations: comments and blank lines say nothing)
+  const blocks = inner(file);
+  const groups = [value(blocks, 'first'), ...items_of(value(blocks, 'rest')).map((spaced) => value(spaced, 'group'))]
+    .map(inner);
+  const lines = (group) => {
+    if (group.head === 'Type_Group') return [inner(value(group, 'type'))];
+    if (group.head !== 'Line_Group') return [];
+    return [value(group, 'first'), ...items_of(value(group, 'rest'))].map((noted) => value(noted, 'line'));
+  };
+  for (const node of groups.flatMap(lines)) {
     if (node.head === 'Record_Block' || node.head === 'Repeating_Block') declarations.push(record(node));
     else if (node.head === 'Layout_Block') declarations.push(layout(node));
     else if (node.head === 'Line_Block') declarations.push(line_declaration(inner(node)));
