@@ -1,21 +1,12 @@
 # Bits, binary numbers and bytes.
 
-Bit {Integer} (0..1)                     # a bit as a number. wasm.etale uses it.
+Bit {Integer} (0..1)                     # a bit as a number, as a remainder of halving
 
 # Binary digits, highest first, as in "101". Empty_String is the one with no digits.
 Binary_String {Binary_Digit...} count: 0..
 
 # A byte: eight binary digits, highest first. "01000001" is 65.
 Byte {Binary_Digit...} count: 8
-
-# The value of each place of a byte. wasm.etale uses them until it is rewritten.
-Place_7 {Integer} (128)
-Place_6 {Integer} (64)
-Place_5 {Integer} (32)
-Place_4 {Integer} (16)
-Place_3 {Integer} (8)
-Place_2 {Integer} (4)
-Place_1 {Integer} (2)
 
 Base {Integer} (2)                       # binary: each place is two of the place below
 Zero_Digit {"0"}
@@ -26,8 +17,8 @@ Division {}
   number* {Integer} (0..)
   divisor* {Integer} (1..)
   remainder {Integer} (number) wrap_at: divisor
-  multiple {Integer} (number - remainder)          # the part the divisor fits into
-  quotient {Integer} (multiple / divisor)
+  multiple_of {Integer} (number - remainder)       # the part the divisor fits into
+  quotient {Integer} (multiple_of / divisor)
 
 # A bit as a binary digit: 1 is "1".
 Bit_Digit {}

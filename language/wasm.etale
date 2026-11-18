@@ -100,8 +100,8 @@ Head_Size {Integer} (1..3)               # the bytes of a head
 
 # An instruction as WebAssembly writes it.
 Wasm_Instruction {}
-  head {Instruction_Head}
-  number {Wasm_Number} count: 0..1
+  head* {Instruction_Head}
+  number* {Wasm_Number} count: 0..1
   text {Binary_Digit}
     1. {head}
     2. {number}
@@ -109,8 +109,8 @@ Wasm_Instruction {}
 # A function as WebAssembly writes it: the size of its body, its four
 # i32 locals, its code and its end.
 Wasm_Function {}
-  body_length {Wasm_Number}
-  code {Wasm_Instruction...}
+  body_length* {Wasm_Number}
+  code* {Wasm_Instruction...}
   text {Binary_Digit}
     1. {body_length}
     2. {"00000001"}                      # one group of locals
@@ -121,8 +121,8 @@ Wasm_Function {}
 
 # A module as WebAssembly writes it, with the main function of a program.
 Wasm_Program {}
-  section_length {Wasm_Number}
-  functions {Wasm_Function...} count: 1
+  section_length* {Wasm_Number}
+  functions* {Wasm_Function...} count: 1
   text {Binary_Digit}
     1. {"00000000011000010111001101101101"}
     2. {"00000001000000000000000000000000"}  # version 1
@@ -268,9 +268,7 @@ Compiled_Instruction {}                  # "  push 5"
   written {Wasm_Number...} (numbers.written)
   number_bytes {Integer} (number_count * Number_Size)
   size {Integer} (head_size + number_bytes)
-  wasm {Wasm_Instruction}
-    1. {head}
-    2. {written}
+  wasm {Wasm_Instruction} (head, written)
   text {Text}
     1. {"  "}
     2. {word}
@@ -287,9 +285,7 @@ Compiled_Function {}                     # "function main", then its instruction
   size {Integer} (Number_Size + body_size)
   length {Integer_To_Wasm_Number} (body_size)
   code {Wasm_Instruction...} (instructions.wasm)
-  wasm {Wasm_Function}
-    1. {length}
-    2. {code}
+  wasm {Wasm_Function} (length, code)
   text {Text}
     1. {"function "}
     2. {name}
@@ -303,6 +299,4 @@ Compiled_Program {}
   section_size {Integer} (function_bytes + Helper_Code_Size)
   section_length {Integer_To_Wasm_Number} (section_size)
   compiled {Wasm_Function...} (functions.wasm)
-  wasm {Wasm_Program}
-    1. {section_length}
-    2. {compiled}
+  wasm {Wasm_Program} (section_length, compiled)

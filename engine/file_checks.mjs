@@ -338,6 +338,10 @@ export function file_errors(loaded) {
   function check_made(record, field, above) {
     const where = record.name + '.' + field.name;
     const type = field.makes ?? field.items[0]?.type;
+    if (!field.call) {
+      return error(record, field.line, 'a record is made by a call, ' + field.name + ' {' + type + '} (...); '
+        + "numbered positions only lay out a record's text", where);
+    }
     type_ok(record, type, field.line, false);
     const made = record_of(type);
     if (!made) return error(record, field.line, "'" + field.name + "' makes a " + type + ', which is not a record', where);

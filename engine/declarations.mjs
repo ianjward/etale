@@ -286,7 +286,7 @@ export function declarations_of(text, file) {
           return { number, line: line_of(position), ...base_box(value(position, 'base')), ...(count ? { count } : {}) };
         });
         // 'text' lays out the record in its medium, Text or Binary_Digit. Any other numbered list
-        // makes a record of its base, one position for each stored field of that record.
+        // is refused: a record is made by a call.
         if (name === 'text') {
           declaration.shape = positions;
           declaration.medium = base;

@@ -121,10 +121,6 @@ Path {Text}                              # Example: 'due.minutes'
   1. {Name}
   2. {Field_Step} count: 0..1
 
-Field_Path {Text}                        # Example: 'first.bits'
-  1. {Field_Name}
-  2. {Field_Step} count: 0..1
-
 
 # ---------- Step 4: Layout ----------
 
@@ -684,7 +680,7 @@ Shape_Head {}
     7. {finish}
 
 Field_Box {}
-  field {Field_Path}
+  field {Field_Name}
   text {Text}
     1. {"{"}
     2. {field}
