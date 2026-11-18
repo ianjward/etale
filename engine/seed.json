@@ -146,7 +146,7 @@
 {"head":"Escape","parts":[{"types":["Backslash"]},{"types":["Escape_Code"]}]},
 {"head":"String_Character","parts":[{"types":["Plain_String_Character"]}]},
 {"head":"String_Character","parts":[{"types":["Escape"]}]},
-{"head":"String_Literal","parts":[{"types":["Quote"]},{"types":["String_Character"],"list":true,"least":0,"most":null},{"types":["Quote"]}]},
+{"head":"String_Literal","record":true,"parts":[{"types":["Quote"]},{"name":"characters","types":["String_Character"],"list":true,"least":0,"most":null},{"types":["Quote"]}]},
 {"head":"Character_Range","record":true,"parts":[{"name":"low","types":["String_Literal"]},{"literal":".."},{"name":"high","types":["String_Literal"]}]},
 {"head":"Name_Character","parts":[{"types":["Uppercase"]}]},
 {"head":"Name_Character","parts":[{"types":["Lowercase"]}]},

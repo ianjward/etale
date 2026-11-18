@@ -82,10 +82,12 @@ Escape {Text}
 
 String_Character {Plain_String_Character | Escape}
 
-String_Literal {Text}
-  1. {Quote}
-  2. {String_Character...}
-  3. {Quote}
+String_Literal {}                        # Example: '"main"'
+  characters {String_Character...}
+  text {Text}
+    1. {Quote}
+    2. {characters}
+    3. {Quote}
 
 Character_Range {}                       # Example: '"A".."Z"'
   low {String_Literal}
