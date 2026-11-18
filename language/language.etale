@@ -738,7 +738,7 @@ Blank_Line {Text}                        # Empty, or only spaces
 
 Mapped_Field {}
   head {Mapping_Line}
-  cases {Case_Line...} count: 1..
+  cases {Case_Line...} count: 1..7
 
 While_Line {}                            #     while (division.quotient >= 1)
   condition {Conditions}

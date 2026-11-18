@@ -324,7 +324,7 @@
 {"head":"Comment_Line","record":true,"parts":[{"literal":"#"},{"name":"words","types":["Line_Text"]},{"types":["Newline"]}]},
 {"head":"Body_Comment_Line","record":true,"parts":[{"types":["Indent_2"]},{"literal":"#"},{"name":"words","types":["Line_Text"]},{"types":["Newline"]}]},
 {"head":"Blank_Line","parts":[{"types":["End_Spaces"]},{"types":["Newline"]}]},
-{"head":"Mapped_Field","record":true,"parts":[{"name":"head","types":["Mapping_Line"]},{"name":"cases","types":["Case_Line"],"list":true,"least":1,"most":null}]},
+{"head":"Mapped_Field","record":true,"parts":[{"name":"head","types":["Mapping_Line"]},{"name":"cases","types":["Case_Line"],"list":true,"least":1,"most":7}]},
 {"head":"While_Line","record":true,"parts":[{"types":["Indent_4"]},{"literal":"while"},{"types":["Gap"]},{"literal":"("},{"name":"condition","types":["Conditions"]},{"literal":")"},{"name":"finish","types":["Line_End"]}]},
 {"head":"Next_Values","parts":[{"types":["Call_Values"]}]},
 {"head":"Next_Values","parts":[{"types":["Term"]}]},

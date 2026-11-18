@@ -1277,17 +1277,11 @@ export function file_errors(loaded) {
         error(declaration, field.line, 'a union names at most ' + Most_Members + ' types, and ' + field.name + ' names '
           + many_types(field.items), declaration.name + '.' + field.name);
       }
-      if (field.role === 'mapping' && field.cases.length > Most_Cases) {
-        error(declaration, field.line, 'a table has at most ' + Most_Cases + ' cases, and ' + field.name + ' has '
-          + field.cases.length + ': make a type for each kind of input, and a union of them',
-          declaration.name + '.' + field.name);
-      }
     }
   }
 }
 
 const Most_Lines = 20;
-const Most_Cases = 7;
 const Most_Members = 7;
 const Most_Together = 7;
 
