@@ -1,36 +1,20 @@
-# WebAssembly from the kernel. Each Compiled type reads a kernel text, as
-# kernel.etale writes it, and makes the Wasm record of the same part: a
-# record that stores its bits. Every Wasm type's shape is 'text
-# {Binary_Digit}', so the bits read back to the same record. To compile:
-#
-#   node engine/etale.mjs print language/wasm.etale Compiled_Program FILE wasm
-#
-# This compiler takes a program of one function, main, and every word
-# but call. A call needs the number of its function in WebAssembly.
-#
-# The program runs on WASI, the standard way for WebAssembly to reach
-# its input and output. Every module has three functions besides main:
-# read and write, which call WASI for one byte, and _start, which runs
-# main and ends the program with main's value. read and write keep their
-# work in the last 16 bytes of memory, from 65520.
-#
-# WebAssembly writes a number in one to five bytes, seven bits of the
-# number in each. This compiler always writes five, which WebAssembly
-# allows. So a number's size is known, and nothing here recurses.
-#
-# A kernel number is a U32. WebAssembly writes the number of i32.const,
-# the opcode of push, as a signed number: from -2147483648 to
-# 2147483647. So a number of 2147483648 or more is written as that
-# number less 4294967296: the same 32 bits. Every other number here is
-# below 2147483648, where the two forms are the same.
+# WebAssembly from the kernel: each Compiled type reads kernel text, and makes its Wasm record.
 
-Number_Size {Integer} (5)                # the bytes of a number, always five
+Number_Size {Integer} (5)                # the bytes of a number: always five, as WebAssembly allows
 Locals_And_End {Integer} (4)             # three bytes for the locals, one for the end
 Helper_Code_Size {Integer} (114)         # the count of functions, and read, write and _start
 Half_Of_U32 {Integer} (2147483648)
 All_Of_U32 {Integer} (4294967296)
 
-# The words that this compiler takes.
+# A U32 read as WebAssembly reads an i32: from 2147483648 up, the same
+# 32 bits stand for that number less 4294967296.
+# Example: 5 is 5, and 4294967295 is -1.
+U32_To_I32 {}
+  amount* {U32}
+  moved_up {Integer} (amount + Half_Of_U32) wrap_at: All_Of_U32
+  result {Integer} (moved_up - Half_Of_U32)
+
+# The words this compiler takes: all but call, which needs its function's number in WebAssembly.
 Compiled_Word {Value_Word | Block_Word | Break_Word | Return_Word | Byte_Word}
 
 Group_Width {Integer} (7)                # WebAssembly writes a number seven bits to a byte
@@ -82,20 +66,42 @@ Integer_To_Wasm_Number {}
   bytes {Integer_To_Wasm_Bytes} (number, Number_Size, Empty_String)
   result {Wasm_Number} (bytes)
 
-# What WebAssembly writes for a word: its opcode, then for some opcodes
-# the type of a block, the alignment and offset of a memory access, or
-# the function that read and write call, 3 or 4.
-Value_Head {"01000001" | "00100000" | "00100001" | "00011010"}
-Arithmetic_Head {"01101010" | "01101011" | "01101100" | "01101110" | "01110000"}
-Compare_Head {"01001001" | "01000110"}
-Byte_Memory_Head {"001011010000000000000000" | "001110100000000000000000"}
-Word_Memory_Head {"001010000000001000000000" | "001101100000001000000000"}
-Block_Head {"0000001001000000" | "0000001101000000" | "00001011"}
-Break_Head {"00001100" | "00001101" | "00001111"}
-Byte_Head {"0001000000000011" | "0001000000000100"}
-Memory_Head {Byte_Memory_Head | Word_Memory_Head}
-Control_Head {Block_Head | Break_Head | Byte_Head}
-Instruction_Head {Value_Head | Arithmetic_Head | Compare_Head | Memory_Head | Control_Head}
+# What WebAssembly writes for each word: its opcode, then for some
+# the type of a block, or the alignment and offset of a memory access.
+Push_Opcode {"01000001"}                 # i32.const
+Get_Opcode {"00100000"}                  # local.get
+Set_Opcode {"00100001"}                  # local.set
+Drop_Opcode {"00011010"}
+Add_Opcode {"01101010"}                  # i32.add
+Subtract_Opcode {"01101011"}             # i32.sub
+Multiply_Opcode {"01101100"}             # i32.mul
+Divide_Opcode {"01101110"}               # i32.div_u
+Remainder_Opcode {"01110000"}            # i32.rem_u
+Less_Opcode {"01001001"}                 # i32.lt_u
+Equal_Opcode {"01000110"}                # i32.eq
+Load_Byte_Opcode {"001011010000000000000000"}   # i32.load8_u, aligned to 1, offset 0
+Store_Byte_Opcode {"001110100000000000000000"}  # i32.store8, aligned to 1, offset 0
+Load_Opcode {"001010000000001000000000"}        # i32.load, aligned to 4, offset 0
+Store_Opcode {"001101100000001000000000"}       # i32.store, aligned to 4, offset 0
+Block_Opcode {"0000001001000000"}        # block, giving nothing
+Loop_Opcode {"0000001101000000"}         # loop, giving nothing
+End_Opcode {"00001011"}
+Break_Opcode {"00001100"}                # br
+Break_If_Opcode {"00001101"}             # br_if
+Return_Opcode {"00001111"}
+Read_Call {"0001000000000011"}           # call function 3, read
+Write_Call {"0001000000000100"}          # call function 4, write
+Local_Opcodes {Get_Opcode | Set_Opcode}
+Division_Opcodes {Divide_Opcode | Remainder_Opcode}
+Arithmetic_Opcodes {Add_Opcode | Subtract_Opcode | Multiply_Opcode | Division_Opcodes}
+Compare_Opcodes {Less_Opcode | Equal_Opcode}
+Memory_Opcodes {Load_Byte_Opcode | Store_Byte_Opcode | Load_Opcode | Store_Opcode}
+Block_Opcodes {Block_Opcode | Loop_Opcode | End_Opcode}
+Break_Opcodes {Break_Opcode | Break_If_Opcode}
+Byte_Calls {Read_Call | Write_Call}
+Stack_Opcodes {Push_Opcode | Drop_Opcode | Local_Opcodes}
+Value_Opcodes {Stack_Opcodes | Arithmetic_Opcodes | Compare_Opcodes | Memory_Opcodes}
+Instruction_Head {Value_Opcodes | Block_Opcodes | Break_Opcodes | Return_Opcode | Byte_Calls}
 Head_Size {Integer} (1..3)               # the bytes of a head
 
 # An instruction as WebAssembly writes it.
@@ -219,8 +225,7 @@ Wasm_Program {}
 
 Compiled_Number {}                       # " 5", in "push 5"
   amount {U32}
-  moved_up {Integer} (amount + Half_Of_U32) wrap_at: All_Of_U32
-  signed {Integer} (moved_up - Half_Of_U32)
+  signed {U32_To_I32} (amount)
   number_written {Integer} (signed) wrap_at: Number_Values     # the same bits, but never below 0
   written {Integer_To_Wasm_Number} (number_written)
   text {Text}
@@ -230,43 +235,39 @@ Compiled_Number {}                       # " 5", in "push 5"
 Compiled_Instruction {}                  # "  push 5"
   word {Compiled_Word}
   numbers {Compiled_Number...} count: 0..1
-  numbers_needed {Argument_Count} (word)
-    {1} (Push_Word | Local_Word | Break_Word)
-    {0} (Stack_Word | Arithmetic_Word | Compare_Word | Memory_Word | Block_Word)
-    {0} (Return_Word | Byte_Word)
-  number_count {Integer} (numbers.count)
-  right_numbers {Needs} (number_count = numbers_needed)
+  arguments {Word_Arguments} (word)
+  right_numbers {Needs} (numbers.count = arguments.numbers)
   head {Instruction_Head} (word)
-    {"01000001"} ("push")
-    {"00100000"} ("get")
-    {"00100001"} ("set")
-    {"00011010"} ("drop")
-    {"01101010"} ("add")
-    {"01101011"} ("subtract")
-    {"01101100"} ("multiply")
-    {"01101110"} ("divide")
-    {"01110000"} ("remainder")
-    {"01001001"} ("less")
-    {"01000110"} ("equal")
-    {"001011010000000000000000"} ("load_byte")
-    {"001110100000000000000000"} ("store_byte")
-    {"001010000000001000000000"} ("load")
-    {"001101100000001000000000"} ("store")
-    {"0000001001000000"} ("block")
-    {"0000001101000000"} ("loop")
-    {"00001011"} ("end")
-    {"00001100"} ("break")
-    {"00001101"} ("break_if")
-    {"00001111"} ("return")
-    {"0001000000000011"} ("read")
-    {"0001000000000100"} ("write")
+    {Push_Opcode} ("push")
+    {Get_Opcode} ("get")
+    {Set_Opcode} ("set")
+    {Drop_Opcode} ("drop")
+    {Add_Opcode} ("add")
+    {Subtract_Opcode} ("subtract")
+    {Multiply_Opcode} ("multiply")
+    {Divide_Opcode} ("divide")
+    {Remainder_Opcode} ("remainder")
+    {Less_Opcode} ("less")
+    {Equal_Opcode} ("equal")
+    {Load_Byte_Opcode} ("load_byte")
+    {Store_Byte_Opcode} ("store_byte")
+    {Load_Opcode} ("load")
+    {Store_Opcode} ("store")
+    {Block_Opcode} ("block")
+    {Loop_Opcode} ("loop")
+    {End_Opcode} ("end")
+    {Break_Opcode} ("break")
+    {Break_If_Opcode} ("break_if")
+    {Return_Opcode} ("return")
+    {Read_Call} ("read")
+    {Write_Call} ("write")
   head_size {Head_Size} (word)
     {1} (Push_Word | Stack_Word | Local_Word | Arithmetic_Word | Compare_Word | "end")
     {1} (Break_Word | Return_Word)
     {2} ("block" | "loop" | Byte_Word)
     {3} (Memory_Word)
   written {Wasm_Number...} (numbers.written)
-  number_bytes {Integer} (number_count * Number_Size)
+  number_bytes {Integer} (arguments.numbers * Number_Size)
   size {Integer} (head_size + number_bytes)
   wasm {Wasm_Instruction} (head, written)
   text {Text}

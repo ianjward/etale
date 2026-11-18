@@ -415,7 +415,7 @@ export function file_errors(loaded) {
         return error(record, slot.line, slot.path[0] + ' is a list, but ' + type + '.' + target.name + ' is one value', where);
       }
       const source = path_items(record, slot.path);
-      if (source && !same_items(source, target.items)) {
+      if (source && !same_items(source, target.items) && !within(source, target.items)) {
         error(record, slot.line, slot.path.join('.') + ' is ' + items_text(source) + ', but ' + type + '.' + target.name
           + ' is ' + items_text(target.items), where);
       }
@@ -466,6 +466,13 @@ export function file_errors(loaded) {
     return field?.items;
   }
   const items_text = (items) => (items ?? []).map(item_text).join(' | ');
+  // a union whose every value is a value of another, as Compiled_Word is of Kernel_Word
+  const within = (one, two) => {
+    const given = finite_values(one);
+    const taken = finite_values(two);
+    const key = (each) => JSON.stringify(each);
+    return Boolean(given && taken) && given.every((each) => taken.some((other) => key(other) === key(each)));
+  };
   const same_items = (one, two) => items_text(one) === items_text(two)
     || (numeric(by_name, one ?? []) && numeric(by_name, two ?? []));
 
