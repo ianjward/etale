@@ -66,42 +66,114 @@ Integer_To_Wasm_Number {}
   bytes {Integer_To_Wasm_Bytes} (number, Number_Size, Empty_String)
   result {Wasm_Number} (bytes)
 
-# What WebAssembly writes for each word: its opcode, then for some
-# the type of a block, or the alignment and offset of a memory access.
+Head_Size {Integer} (1..3)               # the bytes of a head
+
+# What WebAssembly writes first for a word, and how many bytes that is.
+# Each kind of word has its own head; a word makes the head that takes it.
+
 Push_Opcode {"01000001"}                 # i32.const
+Drop_Opcode {"00011010"}
 Get_Opcode {"00100000"}                  # local.get
 Set_Opcode {"00100001"}                  # local.set
-Drop_Opcode {"00011010"}
+Stack_Opcodes {Push_Opcode | Drop_Opcode | Get_Opcode | Set_Opcode}
+Stack_Head {}                            # put on, throw away, or move a value
+  word* {Push_Word | Stack_Word | Local_Word}
+  bits {Stack_Opcodes} (word)
+    {Push_Opcode} ("push")
+    {Drop_Opcode} ("drop")
+    {Get_Opcode} ("get")
+    {Set_Opcode} ("set")
+  size {Head_Size} (word)
+    {1} (Push_Word | Stack_Word | Local_Word)
+
 Add_Opcode {"01101010"}                  # i32.add
 Subtract_Opcode {"01101011"}             # i32.sub
 Multiply_Opcode {"01101100"}             # i32.mul
 Divide_Opcode {"01101110"}               # i32.div_u
 Remainder_Opcode {"01110000"}            # i32.rem_u
+Division_Opcodes {Divide_Opcode | Remainder_Opcode}
+Arithmetic_Opcodes {Add_Opcode | Subtract_Opcode | Multiply_Opcode | Division_Opcodes}
+Arithmetic_Head {}
+  word* {Arithmetic_Word}
+  bits {Arithmetic_Opcodes} (word)
+    {Add_Opcode} ("add")
+    {Subtract_Opcode} ("subtract")
+    {Multiply_Opcode} ("multiply")
+    {Divide_Opcode} ("divide")
+    {Remainder_Opcode} ("remainder")
+  size {Head_Size} (word)
+    {1} (Arithmetic_Word)
+
 Less_Opcode {"01001001"}                 # i32.lt_u
 Equal_Opcode {"01000110"}                # i32.eq
+Compare_Opcodes {Less_Opcode | Equal_Opcode}
+Compare_Head {}
+  word* {Compare_Word}
+  bits {Compare_Opcodes} (word)
+    {Less_Opcode} ("less")
+    {Equal_Opcode} ("equal")
+  size {Head_Size} (word)
+    {1} (Compare_Word)
+
 Load_Byte_Opcode {"001011010000000000000000"}   # i32.load8_u, aligned to 1, offset 0
 Store_Byte_Opcode {"001110100000000000000000"}  # i32.store8, aligned to 1, offset 0
 Load_Opcode {"001010000000001000000000"}        # i32.load, aligned to 4, offset 0
 Store_Opcode {"001101100000001000000000"}       # i32.store, aligned to 4, offset 0
+Memory_Opcodes {Load_Byte_Opcode | Store_Byte_Opcode | Load_Opcode | Store_Opcode}
+Memory_Head {}                           # the opcode, its alignment and its offset
+  word* {Memory_Word}
+  bits {Memory_Opcodes} (word)
+    {Load_Byte_Opcode} ("load_byte")
+    {Store_Byte_Opcode} ("store_byte")
+    {Load_Opcode} ("load")
+    {Store_Opcode} ("store")
+  size {Head_Size} (word)
+    {3} (Memory_Word)
+
 Block_Opcode {"0000001001000000"}        # block, giving nothing
 Loop_Opcode {"0000001101000000"}         # loop, giving nothing
 End_Opcode {"00001011"}
+Block_Opcodes {Block_Opcode | Loop_Opcode | End_Opcode}
+Block_Head {}                            # a block or a loop also says what it gives
+  word* {Block_Word}
+  bits {Block_Opcodes} (word)
+    {Block_Opcode} ("block")
+    {Loop_Opcode} ("loop")
+    {End_Opcode} ("end")
+  size {Head_Size} (word)
+    {2} ("block" | "loop")
+    {1} ("end")
+
 Break_Opcode {"00001100"}                # br
 Break_If_Opcode {"00001101"}             # br_if
 Return_Opcode {"00001111"}
+Break_Opcodes {Break_Opcode | Break_If_Opcode | Return_Opcode}
+Break_Head {}                            # leave blocks, or the function
+  word* {Break_Word | Return_Word}
+  bits {Break_Opcodes} (word)
+    {Break_Opcode} ("break")
+    {Break_If_Opcode} ("break_if")
+    {Return_Opcode} ("return")
+  size {Head_Size} (word)
+    {1} (Break_Word | Return_Word)
+
 Read_Call {"0001000000000011"}           # call function 3, read
 Write_Call {"0001000000000100"}          # call function 4, write
-Division_Opcodes {Divide_Opcode | Remainder_Opcode}
-Arithmetic_Opcodes {Add_Opcode | Subtract_Opcode | Multiply_Opcode | Division_Opcodes}
-Compare_Opcodes {Less_Opcode | Equal_Opcode}
-Memory_Opcodes {Load_Byte_Opcode | Store_Byte_Opcode | Load_Opcode | Store_Opcode}
-Block_Opcodes {Block_Opcode | Loop_Opcode | End_Opcode}
-Break_Opcodes {Break_Opcode | Break_If_Opcode | Return_Opcode}
 Byte_Calls {Read_Call | Write_Call}
-Stack_Opcodes {Push_Opcode | Drop_Opcode | Get_Opcode | Set_Opcode}
+Byte_Head {}                             # a call to read or write, the helpers 3 and 4
+  word* {Byte_Word}
+  bits {Byte_Calls} (word)
+    {Read_Call} ("read")
+    {Write_Call} ("write")
+  size {Head_Size} (word)
+    {2} (Byte_Word)
+
+Value_Head {Stack_Head | Arithmetic_Head | Compare_Head | Memory_Head}
+Control_Head {Block_Head | Break_Head | Byte_Head}
+Word_Head {Value_Head | Control_Head}
+
 Value_Opcodes {Stack_Opcodes | Arithmetic_Opcodes | Compare_Opcodes | Memory_Opcodes}
 Instruction_Head {Value_Opcodes | Block_Opcodes | Break_Opcodes | Byte_Calls}
-Head_Size {Integer} (1..3)               # the bytes of a head
 
 # An instruction as WebAssembly writes it.
 Wasm_Instruction {}
@@ -230,79 +302,6 @@ Compiled_Number {}                       # " 5", in "push 5"
   text {Text}
     1. {" "}
     2. {amount}
-
-# What WebAssembly writes first for a word, and how many bytes that is.
-# Each kind of word has its own head; a word makes the head that takes it.
-
-Stack_Head {}                            # put on, throw away, or move a value
-  word* {Push_Word | Stack_Word | Local_Word}
-  bits {Stack_Opcodes} (word)
-    {Push_Opcode} ("push")
-    {Drop_Opcode} ("drop")
-    {Get_Opcode} ("get")
-    {Set_Opcode} ("set")
-  size {Head_Size} (word)
-    {1} (Push_Word | Stack_Word | Local_Word)
-
-Arithmetic_Head {}
-  word* {Arithmetic_Word}
-  bits {Arithmetic_Opcodes} (word)
-    {Add_Opcode} ("add")
-    {Subtract_Opcode} ("subtract")
-    {Multiply_Opcode} ("multiply")
-    {Divide_Opcode} ("divide")
-    {Remainder_Opcode} ("remainder")
-  size {Head_Size} (word)
-    {1} (Arithmetic_Word)
-
-Compare_Head {}
-  word* {Compare_Word}
-  bits {Compare_Opcodes} (word)
-    {Less_Opcode} ("less")
-    {Equal_Opcode} ("equal")
-  size {Head_Size} (word)
-    {1} (Compare_Word)
-
-Memory_Head {}                           # the opcode, its alignment and its offset
-  word* {Memory_Word}
-  bits {Memory_Opcodes} (word)
-    {Load_Byte_Opcode} ("load_byte")
-    {Store_Byte_Opcode} ("store_byte")
-    {Load_Opcode} ("load")
-    {Store_Opcode} ("store")
-  size {Head_Size} (word)
-    {3} (Memory_Word)
-
-Block_Head {}                            # a block or a loop also says what it gives
-  word* {Block_Word}
-  bits {Block_Opcodes} (word)
-    {Block_Opcode} ("block")
-    {Loop_Opcode} ("loop")
-    {End_Opcode} ("end")
-  size {Head_Size} (word)
-    {2} ("block" | "loop")
-    {1} ("end")
-
-Break_Head {}                            # leave blocks, or the function
-  word* {Break_Word | Return_Word}
-  bits {Break_Opcodes} (word)
-    {Break_Opcode} ("break")
-    {Break_If_Opcode} ("break_if")
-    {Return_Opcode} ("return")
-  size {Head_Size} (word)
-    {1} (Break_Word | Return_Word)
-
-Byte_Head {}                             # a call to read or write, the helpers 3 and 4
-  word* {Byte_Word}
-  bits {Byte_Calls} (word)
-    {Read_Call} ("read")
-    {Write_Call} ("write")
-  size {Head_Size} (word)
-    {2} (Byte_Word)
-
-Value_Head {Stack_Head | Arithmetic_Head | Compare_Head | Memory_Head}
-Control_Head {Block_Head | Break_Head | Byte_Head}
-Word_Head {Value_Head | Control_Head}
 
 Compiled_Instruction {}                  # "  push 5"
   word {Compiled_Word}
