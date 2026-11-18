@@ -296,7 +296,7 @@ const commands = {
       }
       return 1;
     }
-    const problems = [...file_errors(loaded), ...loaded.problems];
+    const problems = [...file_errors(loaded), ...loaded.problems, ...left_out_errors(loaded)];
     for (const problem of problems) console.log(problem);
     console.log(file + ': ' + loaded.declarations.length + ' declarations, ' + problems.length + ' problems');
     return problems.length > 0 ? 1 : 0;
@@ -344,6 +344,22 @@ const commands = {
     return 0;
   },
 };
+
+// A part of this file that the engine cannot work out is left out of every reading: a problem.
+function left_out_errors(loaded) {
+  const own = new Map(loaded.declarations.map((declaration) => [declaration.name, declaration]));
+  return loaded.left_out.flatMap((what) => {
+    const [, head, name, why] = what.match(/^(\w+)(?:\.(\w+))? \((.*)\)$/) ?? [];
+    const declaration = own.get(head);
+    if (!declaration) return [];
+    const field = name && declaration.fields?.find((each) => each.name === name);
+    const line = field?.line ?? declaration.line;
+    const kind = { kept: 'a kept list', collected: 'a collected list', worked: 'a worked-out value',
+      made: 'a made record', mapping: 'a case table', claim: 'a claim' }[why] ?? why;
+    return [loaded.file + ':' + line + ': error: the engine cannot work this out, so every reading leaves it out ('
+      + kind + ') [' + head + (name ? '.' + name : '') + ']'];
+  });
+}
 
 // One record field of a reading, printed by its own type's shape: a stored record, or one
 // made from values. Its text must read back as that type to the same values. A record whose

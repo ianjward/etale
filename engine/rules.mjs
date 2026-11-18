@@ -481,7 +481,10 @@ export function in_words(rule) {
     : each.claims ? ' claims ' + condition(each.claims)
     : each.keep ? ' keeps the items of ' + each.keep + ' where ' + condition(each.condition)
     : each.collect ? ' collects ' + each.collect[1] + ' from each item of ' + each.collect[0]
+    : each.list_of ? ' is the list of ' + each.list_of.map(term).join(', ')
     : each.make ? ' is a ' + each.make + ' made with ' + each.fields.map((name, at) => name + ' ' + term(each.values[at])).join(', ')
+    : each.make_one_of ? ' is the one of ' + each.make_one_of.map((choice) => choice.make).join(', ') + ' made with '
+      + each.fields.map((name, at) => name + ' ' + term(each.values[at])).join(', ')
     : each.cases ? ' is ' + each.cases.map((one_case) => term(one_case.output) + ' when ' + condition(one_case.when)).join(', or ')
     : ' is ' + term(each.value) + (each.round ? ', rounded to ' + each.round.unit + ' (' + each.round.direction + ')' : '')
       + (each.wrap ? ', wrapped at ' + each.wrap : '') + (each.wrap_by ? ', wrapped at ' + each.wrap_by : ''))
