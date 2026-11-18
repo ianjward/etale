@@ -90,8 +90,19 @@ Multiplication_Value {}
   product {Product_Of} (others, first)
   result {Integer} (product)
 
+# A quotient that divides exactly. A divisor of 0, or a remainder, is refused.
+# Example: "Group_Values / 2" gives 64.
+Division_Value {}
+  written* {Quotient}
+  known* {Known_Constant...}
+  dividend {Term_Value} (written.dividend, known)
+  divisor {Term_Value} (written.divisor, known)
+  division {Division} (dividend, divisor)
+  exact {Needs} (division.remainder = 0)
+  result {Integer} (division.quotient)
+
 # A calculation makes the one of these that takes it.
-Operation_Value {Addition_Value | Subtraction_Value | Multiplication_Value}
+Operation_Value {Addition_Value | Subtraction_Value | Multiplication_Value | Division_Value}
 Calculation_Value {Term_Value | Operation_Value}
 
 # The value of the calculation in parentheses.
