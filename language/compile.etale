@@ -1,0 +1,27 @@
+# Etale compiled to the kernel: each Compiled type reads Etale text, and makes kernel text.
+
+# A program whose main gives one number.
+Main_Giving {}
+  number* {Paren_Content}
+  text {Text}
+    1. {"function 0 main takes 0"}
+    2. {Newline}
+    3. {"  push "}
+    4. {number}
+    5. {Newline}
+    6. {"  return"}
+    7. {Newline}
+
+# The number in a constant's parentheses, as a program whose main gives it.
+# Example: " (7)" gives main, which pushes 7 and gives it.
+Parens_To_Main {}
+  parens* {Parens}
+  result {Main_Giving} (parens.content)
+
+# A constant as a program whose main gives its value.
+# Example: "Group_Width {Integer} (7)" gives main, which pushes 7 and gives it.
+Compiled_Constant {}
+  line {Refinement_Line}
+  kernel {Parens_To_Main} (line.parens)
+  text {Text}
+    1. {line}
