@@ -377,7 +377,7 @@ export function evaluator(text, numeric, rules_by_head = new Map()) {
     if (stop(source)) return source;
     const sources = source instanceof Sequence ? source.items : is_record(source) ? [source] : null;
     if (sources === null) return INVALID;
-    const around = outside && [node, ...outside];
+    const around = outside ? [node, ...outside] : line.keep !== undefined ? [node] : outside;
     const items = [];
     for (const item of sources) {
       if (!is_record(item)) return INVALID;
@@ -419,7 +419,12 @@ export function evaluator(text, numeric, rules_by_head = new Map()) {
     let value;
     let walk = outside && [node, ...outside];
     if (lines_of(node.rule).has(head)) value = get(node, head, outside);
-    else if (steps.length === 0) return INVALID;
+    else if (steps.length === 0) {
+      // in a kept list's condition, a field of the record that keeps it
+      const holder = walk?.find((record) => lines_of(record.rule).has(head));
+      if (!holder) return INVALID;
+      return get(holder, head, walk.slice(walk.indexOf(holder) + 1));
+    }
     else {                                            // the nearest record of that type around this one
       if (outside === null) return LATER;
       const at = walk.findIndex((record) => record.head === head);
