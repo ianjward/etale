@@ -215,6 +215,18 @@ export function rules_of(declarations, scope = declarations, heads_made_before =
       });
       return { [condition.all ? 'all' : 'any']: comparisons };
     };
+    // the texts a starred field takes, when they are a finite union, or null for any value
+    const accepted = (items) => {
+      const values = [];
+      for (const item of items ?? []) {
+        if (item.literal !== undefined) { values.push(item.literal); continue; }
+        const fixed = item.type && one_value(by_name, constants, item.type);
+        const many = item.type && !fixed && union_values(by_name, constants, item.type);
+        if (!fixed && !many) return null;
+        values.push(...(fixed ? [fixed] : many).map((each) => each.text ?? each.number));
+      }
+      return values;
+    };
     const fields = [];
     for (const field of declaration.fields.filter((each) => each.role !== 'stored')) {
       const name = field.name;
@@ -231,6 +243,15 @@ export function rules_of(declarations, scope = declarations, heads_made_before =
         } else if (field.role === 'made') {
           // a made record: its positions give its stored fields, in the order they are declared
           const type = field.makes ?? field.items[0].type;
+          const members = members_of(by_name, type);
+          if (members) {
+            // a call to a union of records: the member whose starred fields take the values
+            const choices = members.map((member) => ({ make: member.name,
+              accepts: member.fields.filter((each) => each.required).map((each) => accepted(each.items)) }));
+            const stored = members[0].fields.filter((each) => each.required).map((each) => each.name);
+            fields.push({ name, make_one_of: choices, fields: stored, values: field.positions.map((slot) => resolve(slot.value ?? { path: slot.path })) });
+            continue;
+          }
           const made = by_name.get(type);
           if (made?.kind !== 'record') throw new Error('not a record');
           const stored = made.fields.filter((each) => each.role === 'stored' && (!field.call || each.required)).map((each) => each.name);
@@ -413,6 +434,25 @@ export function union_values(by_name, constants, name, seen = new Set()) {
     else return undefined;
   }
   return values;
+}
+
+// The records that a union of records stands for, such as Word_Head {Value_Head | Control_Head},
+// or undefined when the name is not such a union. A call to one makes the member that takes
+// its values.
+export function members_of(by_name, name, seen = new Set()) {
+  const found = by_name.get(name);
+  if (found?.kind !== 'union' || seen.has(name) || !found.items.every((item) => item.type)) return undefined;
+  const members = [];
+  for (const item of found.items) {
+    const inner = by_name.get(item.type);
+    if (inner?.kind === 'record') members.push(inner);
+    else {
+      const deeper = members_of(by_name, item.type, new Set([...seen, name]));
+      if (!deeper) return undefined;
+      members.push(...deeper);
+    }
+  }
+  return members;
 }
 
 // The characters of a range such as "A".."Z", in code-point order.

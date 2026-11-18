@@ -19,7 +19,7 @@
 // starred field proved to get smaller), constant records and lists, 'result' (worked out, in a
 // made type, and all that is seen of it outside), and lists from items ('...' on a list only).
 import { Exact, exact, plus, minus, times, decimal_text } from './evaluate.mjs';
-import { fixed_value, one_value, union_values, characters } from './rules.mjs';
+import { fixed_value, one_value, union_values, characters, members_of } from './rules.mjs';
 
 const reserved = ['value', 'text', 'count', 'sum', 'min', 'max'];
 const methods = ['count', 'sum', 'min', 'max', 'first', 'last'];
@@ -343,6 +343,7 @@ export function file_errors(loaded) {
         + "numbered positions only lay out a record's text", where);
     }
     type_ok(record, type, field.line, false);
+    if (record_of(type)?.members) return check_one_of(record, field, type, where);
     const made = record_of(type);
     if (!made) return error(record, field.line, "'" + field.name + "' makes a " + type + ', which is not a record', where);
     const stored = made.fields.filter((each) => each.role === 'stored' && (!field.call || each.required));
@@ -437,6 +438,37 @@ export function file_errors(loaded) {
     if ([...text].length < least) return false;
     const texts = finite_values(target.items);
     return [...text].every((character) => texts?.some((each) => each === character || each?.text === character));
+  }
+
+  // A call to a union of records makes the one member that takes its values. Every member takes
+  // the same starred fields, in the same order, and each value given is taken by one member.
+  function check_one_of(record, field, type, where) {
+    const { members } = record_of(type);
+    const starred = (member) => member.fields.filter((each) => each.required);
+    const names = (member) => starred(member).map((each) => each.name).join(', ');
+    const odd = members.find((member) => names(member) !== names(members[0]));
+    if (odd) {
+      return error(record, field.line, 'the members of ' + type + ' take different starred fields: ' + members[0].name
+        + ' takes ' + names(members[0]) + ', but ' + odd.name + ' takes ' + names(odd), where);
+    }
+    if (starred(members[0]).length !== field.positions.length) {
+      return error(record, field.line, type + ' takes ' + names(members[0]) + ', but ' + field.positions.length
+        + ' values are given', where);
+    }
+    field.positions.forEach((slot, at) => {
+      const source = slot.path && path_items(record, slot.path);
+      const given = source && finite_values(source);
+      if (!given) return;
+      const key = (each) => JSON.stringify(each);
+      for (const value of given) {
+        const takers = members.filter((member) => (finite_values(starred(member)[at].items) ?? [])
+          .some((each) => key(each) === key(value)));
+        if (takers.length !== 1) {
+          error(record, slot.line, (takers.length ? takers.map((each) => each.name).join(' and ') + ' both take '
+            : 'no member of ' + type + ' takes ') + JSON.stringify(value.text ?? value), where);
+        }
+      }
+    });
   }
 
   function makes_back(record, home, chain) {
@@ -573,10 +605,28 @@ export function file_errors(loaded) {
 
   // ---------- Paths
 
+  // A union of records reads as one record of the fields every member has: a field whose type
+  // differs from member to member holds any of their types.
+  const shared = new Map();
+  const shared_record = (found) => {
+    if (shared.has(found.name)) return shared.get(found.name);
+    const members = members_of(by_name, found.name);
+    const fields = members[0].fields.filter((field) => !field.required && field.name !== 'text'
+      && members.every((member) => member.fields.some((each) => each.name === field.name && !each.required)))
+      .map((field) => {
+        const all = members.flatMap((member) => member.fields.find((each) => each.name === field.name).items);
+        const items = all.filter((item, at) => all.findIndex((each) => items_text([each]) === items_text([item])) === at);
+        return { ...field, items };
+      });
+    const record = { ...found, kind: 'record', fields, members };
+    shared.set(found.name, record);
+    return record;
+  };
   const record_of = (name, seen = new Set()) => {
     const found = by_name.get(name);
     if (!found || seen.has(name)) return undefined;
     if (found.kind === 'record') return found;
+    if (members_of(by_name, name)) return shared_record(found);
     if (found.kind === 'refinement' && found.items.length === 1 && found.items[0].type) {
       return record_of(found.items[0].type, seen.add(name));
     }
@@ -1166,10 +1216,44 @@ export function file_errors(loaded) {
     }
     if (declaration.kind === 'record') check_record(declaration);
     if (declaration.call) check_constant(declaration);
+    check_size(declaration);
   }
 
   return errors;
+
+  // Limits that keep a type short (decided on 17 and 18 November 2026): at most 20 lines, at
+  // most 7 cases in a table, and at most 7 types in a union. A type over them is doing more
+  // than one job; break it into types of one kind each.
+  function check_size(declaration) {
+    const many_types = (items) => (items ?? []).filter((item) => item.type).length;
+    if (declaration.kind === 'union' && many_types(declaration.items) > Most_Members) {
+      error(declaration, declaration.line, 'a union names at most ' + Most_Members + ' types, and '
+        + declaration.name + ' names ' + many_types(declaration.items) + ': group them in unions of their own');
+    }
+    if (declaration.kind !== 'record') return;
+    // fields, rules, claims and 'while' and 'next' count; case tables, text shapes and comments do not
+    const lines = declaration.fields.length + declaration.fields.filter((field) => field.repeat).length * 2;
+    if (lines > Most_Lines) {
+      error(declaration, declaration.line, declaration.name + ' has ' + lines + ' lines, and a type has at most '
+        + Most_Lines + ': give a step of working out a type of its own');
+    }
+    for (const field of declaration.fields) {
+      if (many_types(field.items) > Most_Members) {
+        error(declaration, field.line, 'a union names at most ' + Most_Members + ' types, and ' + field.name + ' names '
+          + many_types(field.items), declaration.name + '.' + field.name);
+      }
+      if (field.role === 'mapping' && field.cases.length > Most_Cases) {
+        error(declaration, field.line, 'a table has at most ' + Most_Cases + ' cases, and ' + field.name + ' has '
+          + field.cases.length + ': make a type for each kind of input, and a union of them',
+          declaration.name + '.' + field.name);
+      }
+    }
+  }
 }
+
+const Most_Lines = 20;
+const Most_Cases = 7;
+const Most_Members = 7;
 
 function stopping_error(loaded) {
   const { file, declarations: own, declared, language = [], uses } = loaded;

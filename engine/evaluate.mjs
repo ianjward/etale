@@ -225,6 +225,7 @@ export function evaluator(text, numeric, rules_by_head = new Map()) {
       return INVALID;
     }
     if (line.cases) return mapping(node, line, outside);
+    if (line.make_one_of) return make_one_of(node, line, outside);
     if (line.make) return make(node, line, outside);
     if (line.list_of) return list_of(node, line, outside);
     if (line.keep !== undefined || line.collect) return list_from(node, line, outside);
@@ -292,6 +293,18 @@ export function evaluator(text, numeric, rules_by_head = new Map()) {
     }
     return new Sequence(made, null);
   }
+  // A call to a union of records: the one member whose starred fields take the values given.
+  function make_one_of(node, line, outside) {
+    const values = line.values.map((term) => calculate(term, node, outside));
+    const stopped = values.find(stop);
+    if (stopped) return stopped;
+    const text = (value) => (value instanceof Exact ? decimal_text(value) : String(value));
+    const takes = (choice) => choice.accepts.every((taken, at) => taken === null || taken.includes(text(values[at])));
+    const chosen = line.make_one_of.filter(takes);
+    if (chosen.length !== 1) return INVALID;
+    return make(node, { make: chosen[0].make, fields: line.fields, values: line.values }, outside);
+  }
+
   // A made record, or its result when its type has one.
   function given(record, node, outside) {
     return lines_of(record.rule).has('result') ? get(record, 'result', outside && [node, ...outside]) : record;
@@ -580,7 +593,7 @@ export function evaluator(text, numeric, rules_by_head = new Map()) {
           if (down) failures.push(down);
         }
         for (const part of value.rule.parts) if (part.name !== undefined) visit(value.memo.get(part.name), [value, ...outside]);
-        for (const field of value.rule.fields ?? []) if (field.make) visit(value.memo.get(field.name), [value, ...outside]);
+        for (const field of value.rule.fields ?? []) if (field.make || field.make_one_of) visit(value.memo.get(field.name), [value, ...outside]);
       };
       visit(item_value(node, false), []);
       return failures;

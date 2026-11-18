@@ -15,7 +15,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { reader } from './read.mjs';
 import { declarations_of } from './declarations.mjs';
-import { rules_of, in_words } from './rules.mjs';
+import { rules_of, in_words, members_of } from './rules.mjs';
 import { refusals } from './checks.mjs';
 import { file_errors } from './file_checks.mjs';
 import { printer } from './print.mjs';
@@ -217,9 +217,12 @@ function calls_of(declarations) {
     const field = declaration.fields.find((each) => each.name === head);
     const type = field?.items?.[0]?.type;
     if (step === undefined || ['first', 'last'].includes(step)) return type;
-    const inner = by_name.get(given(type));
-    return inner?.kind === 'record' ? inner.fields.find((each) => each.name === step)?.items?.[0]?.type : undefined;
+    const inner = by_name.get(given(type)) ?? undefined;
+    const record = inner?.kind === 'record' ? inner : members_of(by_name, inner?.name)?.[0];
+    return record ? record.fields.find((each) => each.name === step)?.items?.[0]?.type : undefined;
   };
+  // a record, or a union of records: a call to the union makes the member that takes its values
+  const record_like = (found) => found?.kind === 'record' || Boolean(members_of(by_name, found?.name));
   for (const declaration of declarations) {
     // a constant of a record type with one value is a constant record made with that value
     const base = declaration.kind === 'refinement' && by_name.get(declaration.items?.[0]?.type);
@@ -233,12 +236,12 @@ function calls_of(declarations) {
       // a list made from items: every value is an item of the list's type, or a list of them
       const items_given = field.positions?.every((slot) => slot.value?.path?.length === 1
         && type_of(declaration, slot.value.path) === field.items[0].type);
-      if (field.role === 'made' && field.call && field.list && (made?.kind !== 'record' || items_given)) {
+      if (field.role === 'made' && field.call && field.list && (!record_like(made) || items_given)) {
         field.role = 'listed';
         field.values = field.positions.map((slot) => slot.value);
         continue;
       }
-      if (field.role !== 'worked' || made?.kind !== 'record' || !field.value?.path || field.round || field.wrap) continue;
+      if (field.role !== 'worked' || !record_like(made) || !field.value?.path || field.round || field.wrap) continue;
       if (type_of(declaration, field.value.path) === field.items[0].type) continue;
       field.role = 'made';
       field.call = true;
