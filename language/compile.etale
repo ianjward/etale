@@ -18,11 +18,41 @@ Number_To_Main {}
   functions {Function...} (main)
   result {Program} (functions)
 
+# A whole number as it is written, worked out while compiling.
+# Example: "7" gives 7.
+Literal_Value {}
+  calculation* {Number_Literal}
+  result {Integer} (calculation)
+
+# A sum of whole numbers, worked out while compiling.
+# Example: "1 + 2 + 3" gives 6.
+Addition_Value {}
+  calculation* {Sum}
+  tails {Sum_Tail...} (calculation.rest)
+  numbers {Integer...} (tails.next)
+  rest_total {Integer} (numbers.sum)
+  first {Integer} (calculation.first)
+  result {Integer} (first + rest_total)
+
+# A difference of whole numbers, worked out while compiling: the first, less each of the others.
+# Example: "10 - 2 - 3" gives 5.
+Subtraction_Value {}
+  calculation* {Difference}
+  tails {Difference_Tail...} (calculation.rest)
+  numbers {Integer...} (tails.next)
+  rest_total {Integer} (numbers.sum)
+  first {Integer} (calculation.first)
+  result {Integer} (first - rest_total)
+
+# A calculation makes the one of these that takes it.
+Calculation_Value {Literal_Value | Addition_Value | Subtraction_Value}
+
 # The number in a constant's parentheses, as a program whose main gives it.
-# Example: " (7)" gives main, which pushes 7 and gives it. " (1 + 1)" is refused.
+# Example: " (1 + 1)" gives main, which pushes 2 and gives it. " (0..5)" is refused.
 Parens_To_Main {}
   parens* {Parens}
-  result {Number_To_Main} (parens.content)
+  number {Calculation_Value} (parens.content)
+  result {Number_To_Main} (number)
 
 # A constant as a program whose main gives its value.
 # Example: "Group_Width {Integer} (7)" gives main, which pushes 7 and gives it.
