@@ -55,6 +55,8 @@ export function reader(rules) {
     const nowhere = new Map();
     const evaluation = evaluator(text, numeric, rules_of);
     const broken = [];                                // what refused the readings of the whole text
+    let stopped = null;                               // the last place where a count ended a list
+    let furthest = 0;                                 // the furthest end of any reading
     const merge = (ends, end, count, node) => {
       const old = ends.get(end);
       if (old) old.count = Math.min(old.count + count, 2);
@@ -79,6 +81,7 @@ export function reader(rules) {
       const set = characters_of(type);
       if (set) {
         if (!set.has(text[start])) return nowhere;
+        furthest = Math.max(furthest, start + 1);
         return new Map([[start + 1, { count: 1, node: { head: type, start, end: start + 1 } }]]);
       }
       const key = type + ' ' + start;
@@ -93,7 +96,7 @@ export function reader(rules) {
         for (const part of rule.parts) {
           const next = new Map();
           for (const entry of reached) {
-            for (const [end, result] of part_ends(part, entry.bounds[entry.bounds.length - 1])) {
+            for (const [end, result] of part_ends(part, entry.bounds[entry.bounds.length - 1], rule)) {
               const place = apart ? entry.bounds.join() + ',' + end : end;
               const count = entry.count * result.count;
               const old = next.get(place);
@@ -106,7 +109,7 @@ export function reader(rules) {
         }
         for (const { bounds, count, values } of reached) {
           const node = { head: type, rule, start, end: bounds[bounds.length - 1], values };
-          if (holds(rule, node)) merge(ends, node.end, count, node);
+          if (holds(rule, node)) merge(ends, node.end, count, node), furthest = Math.max(furthest, node.end);
           else if (start === 0 && node.end === text.length) broken.push(...(node.failures ?? []));
         }
       }
@@ -127,7 +130,7 @@ export function reader(rules) {
     }
 
     // A part: one item, or a list of items, each of which reads at least one character.
-    function part_ends(part, start) {
+    function part_ends(part, start, rule) {
       if (!part.list) return item_ends(part, start);
       const least = part.least ?? 0;
       const most = part.most ?? Infinity;
@@ -144,15 +147,37 @@ export function reader(rules) {
         if (items >= least) for (const [end, entry] of next) merge(ends, end, entry.count, entry.node);
         reached = next;
       }
+      // the count stopped the list where another item reads
+      // (of those, the one whose next item would read furthest is named)
+      for (const from of reached.keys()) {
+        const reach = Math.max(from, ...item_ends(part, from).keys());
+        if (reach > from && (stopped === null || reach > stopped.reach)) {
+          stopped = { at: from, reach, head: rule.head, name: part.name, item: part.types?.[0], most };
+        }
+      }
       return ends;
     }
 
     return (head) => {
-      const whole = ends_of(head, 0).get(text.length) ?? { count: 0, node: null, failures: [...new Set(broken)] };
+      const whole = ends_of(head, 0).get(text.length) ?? { count: 0, node: null, failures: [...new Set(broken)],
+        stopped: stopped && stopped.reach >= furthest ? stopped : null };
+      if (whole.count === 0) whole.stopped = why(head, text) ?? whole.stopped;
       if (whole.count !== 1) return whole;
       const failures = evaluation.settle(whole.node);
       return failures.length ? { count: 0, node: whole.node, failures } : whole;
     };
+  }
+
+  // Why a text does not read as a head that must read as several types at once: the first of
+  // them that does not read it, and the count that stopped a list there, if one did.
+  function why(head, text) {
+    const [rule, other] = rules_of.get(head) ?? [];
+    if (other || rule?.parts.length !== 1 || !(rule.parts[0].types?.length > 1)) return undefined;
+    for (const type of rule.parts[0].types) {
+      const reading = session(text)(type);
+      if (reading.count === 0) return reading.stopped;
+    }
+    return undefined;
   }
 
   return {

@@ -34,8 +34,8 @@ const file_reader = reader(seed);
 // Read one text as File with the seed: in how many ways, and its declarations.
 function read_file(file, text = fs.readFileSync(file, 'utf8'), rules_reader = file_reader) {
   const whole = with_newline(text);
-  const { count, node } = rules_reader.read('File', whole);
-  if (count !== 1) return { file, count, declarations: [] };
+  const { count, node, stopped } = rules_reader.read('File', whole);
+  if (count !== 1) return { file, count, declarations: [], stopped, text: whole };
   const declarations = declarations_of(whole, node).map((declaration) => ({ ...declaration, file: shown(file) }));
   return { file, count, declarations, text: whole };
 }
@@ -289,6 +289,11 @@ const commands = {
     const loaded = load(path.resolve(file));
     if (loaded.count !== 1) {
       console.log(file + ': does not read as File in one way (' + loaded.count + ')');
+      if (loaded.count === 0 && loaded.stopped) {
+        const { at, head, name, item, most } = loaded.stopped;
+        const line = loaded.text.slice(0, at).split('\n').length;
+        console.log(file + ':' + line + ': ' + head + (name ? '.' + name : '') + ' takes at most ' + most + ' ' + item);
+      }
       return 1;
     }
     const problems = [...file_errors(loaded), ...loaded.problems];
