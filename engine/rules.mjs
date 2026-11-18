@@ -251,7 +251,8 @@ export function rules_of(declarations, scope = declarations, heads_made_before =
               types: member.fields.filter((each) => each.required)
                 .map((each) => each.items.map((item) => written_as[item.type] ?? item.type)) }));
             const stored = members[0].fields.filter((each) => each.required).map((each) => each.name);
-            fields.push({ name, make_one_of: choices, fields: stored, values: field.positions.map((slot) => resolve(slot.value ?? { path: slot.path })) });
+            fields.push({ name, make_one_of: choices, fields: stored, values: field.positions.map((slot) => resolve(slot.value ?? { path: slot.path })),
+              ...((field.each ?? field.list) ? { each: true } : {}) });
             continue;
           }
           const made = by_name.get(type);

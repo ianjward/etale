@@ -177,7 +177,10 @@ export function file_errors(loaded) {
       const source = term.path ? path_items(record, term.path) : term.number !== undefined ? [{ type: 'Integer' }] : undefined;
       const name = term.path?.join('.') ?? term.number;
       const head = term.path && record.fields.find((each) => each.name === term.path[0]);
-      const is_list = term.path?.length === 1 && head && (head.list || head.count);
+      const listed = (one) => Boolean(one && (one.list || one.count));
+      // a list field of this record, or of a record one step down
+      const is_list = term.path?.length === 1 ? listed(head)
+        : term.path?.length === 2 && head && !listed(head) && listed(field_of(given_record(head.items?.[0]?.type), term.path[1]));
       if (term.all && !is_list) error(record, field.line, name + "... adds the items of a list, but " + name + ' is not a list', where);
       else if (!term.all && is_list) error(record, field.line, name + " is a list: mark it " + name + '... to add its items', where);
       else if (source && !same_items(source, field.items)) {
@@ -565,7 +568,8 @@ export function file_errors(loaded) {
     if (field.role === 'worked' && !(field.repeat && field.value.path?.length === 1)) of_term(field.value);
     if (field.role === 'listed') {
       const is_list = (name) => record.fields.some((each) => each.name === name && (each.list || each.count));
-      for (const term of field.values) if (!(term.path?.length === 1 && is_list(term.path[0]))) of_term(term);
+      // a list marked '...' is checked with the list it is part of
+      for (const term of field.values) if (!term.all && !(term.path?.length === 1 && is_list(term.path[0]))) of_term(term);
     }
     if (field.repeat) {
       // the condition of 'while', and the values of 'next' but a whole list

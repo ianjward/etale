@@ -302,6 +302,11 @@ export function evaluator(text, numeric, rules_by_head = new Map()) {
   // A number or a record given in a call must be a value of the field's type: a number within
   // its ranges, a record of that type or of a member of its union. Otherwise the call is refused.
   function fits(value, head, seen = new Set()) {
+    // a text is never a value of a number type or a record
+    if (typeof value === 'string') {
+      const rules = rules_by_head.get(head);
+      return !['Integer', 'Decimal'].includes(head) && !(rules?.length && rules.every((rule) => rule.number || rule.record));
+    }
     if (!(value instanceof Exact) && !is_record(value)) return true;
     if (head === 'Integer' || head === 'Integer_Literal') return value instanceof Exact && value.bottom === 1n;
     if (head === 'Decimal' || head === 'Decimal_Literal') return value instanceof Exact;
@@ -324,15 +329,34 @@ export function evaluator(text, numeric, rules_by_head = new Map()) {
 
   // A call to a union of records: the one member whose starred fields take the values given.
   function make_one_of(node, line, outside) {
-    const values = line.values.map((term) => calculate(term, node, outside));
+    // a value for a list field is the whole list
+    const rule = (rules_by_head.get(line.make_one_of[0].make) ?? []).find((each) => each.record);
+    const is_list = (at) => rule?.parts.find((part) => part.name === line.fields[at])?.list;
+    const values = line.values.map((term, at) => (is_list(at) || (line.each && term.all)
+      ? list_value(term, node, outside) : calculate(term, node, outside)));
     const stopped = values.find(stop);
     if (stopped) return stopped;
+    // one record for each item of the list marked '...'
+    const each_at = line.each ? line.values.findIndex((term) => term.all) : -1;
+    if (each_at >= 0) {
+      if (!(values[each_at] instanceof Sequence)) return INVALID;
+      const made = [];
+      for (const item of values[each_at].items) {
+        const one = choose_one_of(node, line, values.map((value, at) => (at === each_at ? item : value)), outside);
+        if (stop(one)) return one;
+        made.push(one);
+      }
+      return new Sequence(made, null);
+    }
+    return choose_one_of(node, line, values, outside);
+  }
+  function choose_one_of(node, line, values, outside) {
     const text = (value) => (value instanceof Exact ? decimal_text(value) : String(value));
     const takes = (choice) => choice.accepts.every((taken, at) => taken === null || taken.includes(text(values[at])))
       && (choice.types ?? []).every((types, at) => types.some((type) => fits(values[at], type)));
     const chosen = line.make_one_of.filter(takes);
     if (chosen.length !== 1) return INVALID;
-    return make(node, { make: chosen[0].make, fields: line.fields, values: line.values }, outside);
+    return make(node, { make: chosen[0].make, fields: line.fields, values: values.map((value) => ({ worked: value })) }, outside);
   }
 
   // A made record, or its result when its type has one.
@@ -349,7 +373,7 @@ export function evaluator(text, numeric, rules_by_head = new Map()) {
 
   // A whole list: a field, a field of a record one step down, or a constant list.
   function list_value(term, node, outside) {
-    if (term.list || term.constant) return calculate(term, node, outside);
+    if ('worked' in term || term.list || term.constant) return calculate(term, node, outside);
     if (!term.path) return calculate(term, node, outside);
     const [head, step] = term.path;
     const value = get(node, head, outside);
@@ -469,6 +493,7 @@ export function evaluator(text, numeric, rules_by_head = new Map()) {
   }
 
   function calculate(expression, node, outside) {
+    if ('worked' in expression) return expression.worked;          // a value already worked out
     if (expression.number !== undefined) return exact(expression.number);
     if (expression.constant) return constant_value(expression.constant, node, outside);
     if (expression.list) {

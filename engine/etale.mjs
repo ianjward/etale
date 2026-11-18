@@ -218,8 +218,11 @@ function calls_of(declarations) {
     const type = field?.items?.[0]?.type;
     // a made field holds what its type gives: its result
     const result = field?.call && by_name.get(type)?.fields?.find((each) => each.name === 'result');
-    if (step === undefined && result) return result.items?.[0]?.type;
-    if (step === undefined || ['first', 'last'].includes(step)) return type;
+    const held = result ? result.items?.[0]?.type : type;
+    // a record's own field may have a method's name, as Line_Group's first does
+    const own = step !== undefined && !field?.list && !field?.count
+      && by_name.get(given(type))?.fields?.find((each) => each.name === step);
+    if (step === undefined || (['first', 'last'].includes(step) && !own)) return held;
     const inner = by_name.get(given(type)) ?? undefined;
     const record = inner?.kind === 'record' ? inner : members_of(by_name, inner?.name)?.[0];
     return record ? record.fields.find((each) => each.name === step)?.items?.[0]?.type : undefined;
@@ -237,7 +240,7 @@ function calls_of(declarations) {
     for (const field of declaration.fields ?? []) {
       const made = by_name.get(field.items?.[0]?.type);
       // a list made from items: every value is an item of the list's type, or a list of them
-      const items_given = field.positions?.every((slot) => slot.value?.path?.length === 1
+      const items_given = field.positions?.every((slot) => slot.value?.path?.length <= 2
         && type_of(declaration, slot.value.path) === field.items[0].type);
       if (field.role === 'made' && field.call && field.list && (!record_like(made) || items_given)) {
         field.role = 'listed';
@@ -261,11 +264,12 @@ function calls_of(declarations) {
       const result = results.every((each) => each && shown(each) === shown(results[0])) ? results[0] : undefined;
       if (!result) continue;
       if (members_of(by_name, type)) {
-        if (!result.list) continue;                    // a union of records keeps its own type
-        field.each = false;
+        // a union of records keeps its own type, unless every member gives a list or a value
+        if (!result.list && by_name.get(result.items?.[0]?.type)?.kind === 'record') continue;
+        field.each = Boolean(field.list);              // one record for each item of a list
         field.makes = type;
         field.items = result.items;
-        field.list = true;
+        if (result.list) field.list = true;
         continue;
       }
       field.each = Boolean(field.list);                // one record for each item of a list
