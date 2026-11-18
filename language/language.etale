@@ -321,6 +321,7 @@ All_Items {Text}                         # 'rules...': each item of a list
   1. {Path}
   2. {"..."}
 
+# A type of one text can be a value in a call or a list. In a list, each character is one item.
 Call_Item {All_Items | Term}
 
 Call_Tail {}
@@ -330,6 +331,7 @@ Call_Tail {}
     2. {Gap}
     3. {next}
 
+# A call to a union of records makes the one member whose starred fields take the values.
 Call_Values {}                           # Example: '(number, place_value)'
   first {Call_Item}
   rest {Call_Tail...} count: 1..
@@ -524,6 +526,8 @@ Refinement_Line {}                       # A base of one item, then parentheses 
     6. {properties}
     7. {finish}
 
+# Outside, a union of records has only the fields that every member has.
+# Do not give a second name to the same texts. The checker refuses it and names the first.
 Union_Line {}                            # Union base, nothing after it
   name {Type_Name}
   base {Union_Box}
@@ -557,8 +561,10 @@ Record_Header {}
     4. {Empty_Box}
     5. {finish}
 
+# You can give a union to a starred field when each value of the union fits the field's type.
 Required {"*"}                           # given by whoever makes the record
 
+# A field of a named list type is that list. It has the list's count, unless it has its own.
 Field_Line {}                            # Example: 'plausible {Needs} (delay <= 60)'
   name {Field_Name}
   required {Required} count: 0..1
@@ -660,7 +666,7 @@ Union_Position_Line {}
     4. {base}
     5. {finish}
 
-# 'text {Text}' or 'text {Binary_Digit}' lays out a record; any other name makes one.
+# 'text {Text}' or 'text {Binary_Digit}' lays out a record. Only a call makes a record.
 Shape_Head {}
   name {Field_Name}
   base {Type_Name}
