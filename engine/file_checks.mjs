@@ -1256,15 +1256,9 @@ export function file_errors(loaded) {
     }
   }
 
-  // Limits that keep a type short (decided on 17 and 18 November 2026): at most 20 lines, at
-  // most 7 cases in a table, and at most 7 types in a union. A type over them is doing more
-  // than one job; break it into types of one kind each.
+  // A type has at most 20 lines (decided on 17 November 2026); over it, it is doing more than one
+  // job. language.etale counts the cases of a table and the items of a union.
   function check_size(declaration) {
-    const many_types = (items) => (items ?? []).filter((item) => item.type).length;
-    if (declaration.kind === 'union' && many_types(declaration.items) > Most_Members) {
-      error(declaration, declaration.line, 'a union names at most ' + Most_Members + ' types, and '
-        + declaration.name + ' names ' + many_types(declaration.items) + ': group them in unions of their own');
-    }
     if (declaration.kind !== 'record') return;
     // fields, rules, claims and 'while' and 'next' count; case tables, text shapes and comments do not
     const lines = declaration.fields.length + declaration.fields.filter((field) => field.repeat).length * 2;
@@ -1272,17 +1266,10 @@ export function file_errors(loaded) {
       error(declaration, declaration.line, declaration.name + ' has ' + lines + ' lines, and a type has at most '
         + Most_Lines + ': give a step of working out a type of its own');
     }
-    for (const field of declaration.fields) {
-      if (many_types(field.items) > Most_Members) {
-        error(declaration, field.line, 'a union names at most ' + Most_Members + ' types, and ' + field.name + ' names '
-          + many_types(field.items), declaration.name + '.' + field.name);
-      }
-    }
   }
 }
 
 const Most_Lines = 20;
-const Most_Members = 7;
 const Most_Together = 7;
 
 function stopping_error(loaded) {

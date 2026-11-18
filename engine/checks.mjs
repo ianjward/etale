@@ -6,6 +6,7 @@
 //    Such a list has more than one reading: for the empty text, any number of empty items.
 // 3. No type is only the same texts as another (decided on 17 November 2026): '{""}' is
 //    Empty_String, and a second name for it is refused. Use the first.
+import { characters } from './rules.mjs';
 
 // Which heads can be the empty text: add heads until nothing new follows.
 function empty_heads(rules) {
@@ -66,8 +67,9 @@ function texts_of(declaration) {
   if (!['union', 'refinement'].includes(declaration.kind) || declaration.list) return undefined;
   if (declaration.count || declaration.allowed || declaration.constant || declaration.call) return undefined;
   const items = declaration.items ?? [];
-  if (items.length === 0 || !items.every((item) => item.literal !== undefined && !item.number)) return undefined;
-  return JSON.stringify(items.map((item) => item.literal).sort());
+  const text = (item) => item.literal !== undefined && !item.number;
+  if (items.length === 0 || !items.every((item) => text(item) || item.characters)) return undefined;
+  return JSON.stringify(items.flatMap((item) => item.characters ? characters(item.characters) : [item.literal]).sort());
 }
 
 // The refusals as messages, one for each declaration that they name. A head of its own
