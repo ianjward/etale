@@ -347,10 +347,11 @@ export function evaluator(text, numeric, rules_by_head = new Map()) {
   function list_from(node, line, outside) {
     const source = get(node, line.keep ?? line.collect[0], outside);
     if (stop(source)) return source;
-    if (!(source instanceof Sequence)) return INVALID;
+    const sources = source instanceof Sequence ? source.items : is_record(source) ? [source] : null;
+    if (sources === null) return INVALID;
     const around = outside && [node, ...outside];
     const items = [];
-    for (const item of source.items) {
+    for (const item of sources) {
       if (!is_record(item)) return INVALID;
       const result = line.keep !== undefined ? test(line.condition, item, around) : get(item, line.collect[1], around);
       if (stop(result)) return result;
@@ -358,7 +359,7 @@ export function evaluator(text, numeric, rules_by_head = new Map()) {
       else if (line.keep === undefined) items.push(result);
       else if (result === 'yes') items.push(item);
     }
-    return new Sequence(items, source.most);
+    return new Sequence(items, source instanceof Sequence ? source.most : null);
   }
 
   // A mapping: take each input in order; stop when no case left names it; drop the cases

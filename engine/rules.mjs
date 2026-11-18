@@ -262,8 +262,10 @@ export function rules_of(declarations, scope = declarations, heads_made_before =
         } else if (field.role === 'listed') {
           fields.push({ name, list_of: field.values.map(resolve) });
         } else if (field.role === 'collected') {
-          if (!field.value.path || !in_list(field.value.path)) throw new Error('not a collected list');
-          fields.push({ name, collect: field.value.path });
+          // one value is a list of that one item; a path through one record gives its list
+          if (!field.value.path || field.value.path.length > 2) throw new Error('not a collected list');
+          if (field.value.path.length === 1) fields.push({ name, list_of: [resolve(field.value)] });
+          else fields.push({ name, collect: field.value.path });
         } else if (field.role === 'mapping') {
           const cases = field.cases.flatMap(({ output, when }) => {
             if (!output.range) {
