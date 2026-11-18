@@ -281,6 +281,10 @@ export function evaluator(text, numeric, rules_by_head = new Map()) {
       }
       if (stop(values.get(name))) return values.get(name);
     }
+    for (const part of rule.parts) {
+      if (!part.name || part.list || !values.has(part.name)) continue;
+      if (!(part.types ?? []).some((type) => fits(values.get(part.name), type))) return INVALID;
+    }
     const one = (memo) => given({ head: line.make, rule, values: [], made: true, memo }, node, outside);
     if (each_name === undefined) return one(values);
     const items = values.get(each_name);
@@ -293,6 +297,29 @@ export function evaluator(text, numeric, rules_by_head = new Map()) {
     }
     return new Sequence(made, null);
   }
+  // A number or a record given in a call must be a value of the field's type: a number within
+  // its ranges, a record of that type or of a member of its union. Otherwise the call is refused.
+  function fits(value, head, seen = new Set()) {
+    if (!(value instanceof Exact) && !is_record(value)) return true;
+    if (head === 'Integer' || head === 'Integer_Literal') return value instanceof Exact && value.bottom === 1n;
+    if (head === 'Decimal' || head === 'Decimal_Literal') return value instanceof Exact;
+    if (is_record(value) && value.head === head) return true;
+    const rules = rules_by_head.get(head);
+    if (!rules || seen.has(head)) return !rules;
+    const inside = new Set([...seen, head]);
+    const number = value instanceof Exact ? Number(value.top) / Number(value.bottom) : null;
+    return rules.some((rule) => {
+      if (rule.record) return false;
+      if (rule.ranges && (number === null
+        || !rule.ranges.some(([low, high]) => (low === null || number >= low) && (high === null || number <= high)))) return false;
+      if (rule.parts.length !== 1) return number !== null && Boolean(rule.number);
+      const [part] = rule.parts;
+      if (part.literal !== undefined) return number !== null && decimal_text(value) === part.literal;
+      if (part.list) return false;
+      return (part.types ?? []).some((type) => fits(value, type, inside));
+    });
+  }
+
   // A call to a union of records: the one member whose starred fields take the values given.
   function make_one_of(node, line, outside) {
     const values = line.values.map((term) => calculate(term, node, outside));

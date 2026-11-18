@@ -561,7 +561,7 @@ Record_Header {}
     4. {Empty_Box}
     5. {finish}
 
-# You can give a union to a starred field when each value of the union fits the field's type.
+# You can give a union to a starred field when some of its values fit. A call refuses the others.
 Required {"*"}                           # given by whoever makes the record
 
 # A field of a named list type is that list. It has the list's count, unless it has its own.

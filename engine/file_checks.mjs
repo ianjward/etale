@@ -414,7 +414,7 @@ export function file_errors(loaded) {
         return error(record, slot.line, slot.path[0] + ' is a list, but ' + type + '.' + target.name + ' is one value', where);
       }
       const source = path_items(record, slot.path);
-      if (source && !same_items(source, target.items) && !within(source, target.items)) {
+      if (source && !same_items(source, target.items) && !within(source, target.items) && !overlaps(source, target.items)) {
         error(record, slot.line, slot.path.join('.') + ' is ' + items_text(source) + ', but ' + type + '.' + target.name
           + ' is ' + items_text(target.items), where);
       }
@@ -503,6 +503,14 @@ export function file_errors(loaded) {
     const key = (each) => JSON.stringify(each);
     return Boolean(given && taken) && given.every((each) => taken.some((other) => key(other) === key(each)));
   };
+  // a union some of whose values are values of another: a call refuses the others when it runs
+  const overlaps = (one, two, seen = new Set()) => (one ?? []).some((item) => {
+    if (same_items([item], two) || within([item], two)) return true;
+    const found = item.type && !seen.has(item.type) ? by_name.get(item.type) : undefined;
+    if (found?.kind !== 'union') return false;
+    seen.add(item.type);
+    return overlaps(found.items, two, seen);
+  });
   const same_items = (one, two) => items_text(one) === items_text(two)
     || (numeric(by_name, one ?? []) && numeric(by_name, two ?? []));
 
