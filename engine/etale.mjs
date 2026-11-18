@@ -34,8 +34,8 @@ const file_reader = reader(seed);
 // Read one text as File with the seed: in how many ways, and its declarations.
 function read_file(file, text = fs.readFileSync(file, 'utf8'), rules_reader = file_reader) {
   const whole = with_newline(text);
-  const { count, node, stopped } = rules_reader.read('File', whole);
-  if (count !== 1) return { file, count, declarations: [], stopped, text: whole };
+  const { count, node, stopped, furthest, read_to } = rules_reader.read('File', whole);
+  if (count !== 1) return { file, count, declarations: [], stopped, furthest, read_to, text: whole };
   const declarations = declarations_of(whole, node).map((declaration) => ({ ...declaration, file: shown(file) }));
   return { file, count, declarations, text: whole };
 }
@@ -260,6 +260,64 @@ function calls_of(declarations) {
   }
 }
 
+// The comment lines that language.etale writes above a type, and after its first line: the
+// reason for a count in it, and what to do instead.
+function reason_of(head) {
+  const declaration = (language_again().declarations ?? []).find((each) => each.name === head);
+  if (!declaration) return [];
+  const lines = fs.readFileSync(language, 'utf8').split('\n');
+  let top = declaration.line - 1;
+  while (top > 0 && lines[top - 1].startsWith('#')) top--;
+  const notes = lines.slice(top, declaration.line - 1);
+  const after = lines[declaration.line - 1].match(/\s#\s.*$/);
+  if (after) notes.push(after[0].trim());
+  return notes.map((note, at) => '  ' + (at === 0 ? shown(language) + ':' + (top + 1) + ': ' : '') + note);
+}
+
+// Whether the file reads, or reads further, with no most count on the list that a count
+// stopped: if so, that count is what refuses it.
+function count_refuses({ text, stopped, read_to = 0 }) {
+  const { rule, part } = stopped;
+  const open = { ...part, most: undefined };
+  const loosened = seed.map((each) => (each === rule ? { ...each, parts: each.parts.map((one) => (one === part ? open : one)) } : each));
+  const again = reader(loosened).read('File', text);
+  return again.count === 1 || (again.read_to ?? 0) > read_to;
+}
+
+// Why a file does not read as File. When a count refuses it: that count, with its reason
+// from language.etale. Otherwise: the first line that does not read, how far the type there
+// reads, and whether a blank line above it would help.
+function why_refused(file, loaded) {
+  const { text, stopped, furthest = 0, read_to = 0 } = loaded;
+  const line_at = (at) => text.slice(0, at).split('\n').length;
+  if (stopped && count_refuses(loaded)) {
+    const { at, rule, part, item, most } = stopped;
+    // a first item and then a list of the rest is counted as one list of them all
+    const before = rule.parts[rule.parts.indexOf(part) - 1];
+    const first = before && !before.list && before.types?.length === 1 ? before.types[0] : null;
+    const holds_first = (each) => each.head === item && each.parts.some((one) => !one.list && one.types?.[0] === first);
+    const whole = first !== null && (item === first || seed.some(holds_first));
+    const what = whole ? rule.head + ' takes at most ' + (most + 1) + ' ' + first
+      : rule.head + (part.name ? '.' + part.name : '') + ' takes at most ' + most + ' ' + item;
+    return [file + ':' + line_at(at) + ': ' + what, ...reason_of(rule.head)];
+  }
+  const lines = text.split('\n');
+  const line = line_at(read_to);
+  const reached = line_at(furthest);
+  const found = [file + ':' + line + ': from this line on, the file does not read', '  ' + lines[line - 1]];
+  if (reached > line && reached < lines.length) {
+    found.push(file + ':' + reached + ': what starts on line ' + line + ' reads as far as this line', '  ' + lines[reached - 1]);
+  }
+  if (line > 1 && lines[line - 2].trim() !== '') {
+    const spaced = [...lines.slice(0, line - 1), '', ...lines.slice(line - 1)].join('\n');
+    const again = file_reader.read('File', spaced);
+    if (again.count === 1 || line_at(again.read_to ?? 0) > line + 1) {
+      found.push(file + ':' + line + ': with a blank line above this line, the file reads' + (again.count === 1 ? '' : ' further'));
+    }
+  }
+  return found;
+}
+
 const commands = {
   self() {
     const again = language_again();
@@ -289,11 +347,7 @@ const commands = {
     const loaded = load(path.resolve(file));
     if (loaded.count !== 1) {
       console.log(file + ': does not read as File in one way (' + loaded.count + ')');
-      if (loaded.count === 0 && loaded.stopped) {
-        const { at, head, name, item, most } = loaded.stopped;
-        const line = loaded.text.slice(0, at).split('\n').length;
-        console.log(file + ':' + line + ': ' + head + (name ? '.' + name : '') + ' takes at most ' + most + ' ' + item);
-      }
+      if (loaded.count === 0) for (const line of why_refused(file, loaded)) console.log(line);
       return 1;
     }
     const problems = [...file_errors(loaded), ...loaded.problems, ...left_out_errors(loaded)];

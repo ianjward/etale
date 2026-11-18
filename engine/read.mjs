@@ -148,20 +148,24 @@ export function reader(rules) {
         reached = next;
       }
       // the count stopped the list where another item reads
-      // (of those, the one whose next item would read furthest is named)
-      for (const from of reached.keys()) {
+      // (of those, the one whose next item would read furthest is named; a list of one fixed
+      // count, such as an indent, is a width, not a limit)
+      if (least !== most) for (const from of reached.keys()) {
         const reach = Math.max(from, ...item_ends(part, from).keys());
         if (reach > from && (stopped === null || reach > stopped.reach)) {
-          stopped = { at: from, reach, head: rule.head, name: part.name, item: part.types?.[0], most };
+          stopped = { at: from, reach, rule, part, item: part.types?.[0], most };
         }
       }
       return ends;
     }
 
     return (head) => {
-      const whole = ends_of(head, 0).get(text.length) ?? { count: 0, node: null, failures: [...new Set(broken)],
-        stopped: stopped && stopped.reach >= furthest ? stopped : null };
-      if (whole.count === 0) whole.stopped = why(head, text) ?? whole.stopped;
+      // when there is no reading: how far the whole head reads (read_to), how far any part
+      // of it reads (furthest), and the count that stopped a list, if one did
+      const prefix = ends_of(head, 0);
+      const whole = prefix.get(text.length) ?? { count: 0, node: null, failures: [...new Set(broken)],
+        stopped, furthest, read_to: Math.max(0, ...prefix.keys()) };
+      if (whole.count === 0) Object.assign(whole, why(head, text));
       if (whole.count !== 1) return whole;
       const failures = evaluation.settle(whole.node);
       return failures.length ? { count: 0, node: whole.node, failures } : whole;
@@ -169,15 +173,16 @@ export function reader(rules) {
   }
 
   // Why a text does not read as a head that must read as several types at once: the first of
-  // them that does not read it, and the count that stopped a list there, if one did.
+  // them that does not read it, the count that stopped a list there, if one did, and how far
+  // its readings got.
   function why(head, text) {
     const [rule, other] = rules_of.get(head) ?? [];
-    if (other || rule?.parts.length !== 1 || !(rule.parts[0].types?.length > 1)) return undefined;
+    if (other || rule?.parts.length !== 1 || !(rule.parts[0].types?.length > 1)) return {};
     for (const type of rule.parts[0].types) {
-      const reading = session(text)(type);
-      if (reading.count === 0) return reading.stopped;
+      const { count, stopped, furthest, read_to } = session(text)(type);
+      if (count === 0) return { stopped, furthest, read_to };
     }
-    return undefined;
+    return {};
   }
 
   return {
