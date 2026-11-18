@@ -19,6 +19,9 @@ reads, writes, checks and runs them. It needs Node 22 and nothing else. There ar
   constants, each of which may name the ones above it, are worked out while compiling, and
   main gives the last one's value:
   'node engine/etale.mjs print language/compile.etale Compiled_File FILE kernel'.
+  A type of one character range, such as 'Digit {"0".."9"}', becomes a program that reads it:
+  'print language/compile.etale Compiled_Range LINE reader'. It writes the character and gives
+  0, or gives 1 when its input is refused. A record is kept at a place in memory; 0 is refused.
 - engine/: the engine, about 2,350 lines of code, with its command line in etale.mjs. It goes
   once Etale runs on its own kernel.
 

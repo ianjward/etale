@@ -207,3 +207,195 @@ Compiled_File {}
   kernel {Number_To_Main} (last.number)
   text {Text}
     1. {file}
+
+# ---------- Reading input
+
+# Kernel code that reads text works on the bytes 'read' gives, and keeps each record it reads
+# at a place in memory. A record's place is never 0, so 0 means refused.
+
+Record_Place {Integer} (16)              # where the record read is kept
+Reader_Number {Integer} (1)              # the function that reads the record
+Reader_Name {"reader"}
+Zero {Integer} (0)
+End_Of_Input {Integer} (4294967295)      # what 'read' gives when no byte is left
+
+Get {"get"}
+Set {"set"}
+Less {"less"}
+Equal {"equal"}
+
+Block {"block"}
+End {"end"}
+Break_If {"break_if"}
+Read {"read"}
+Write {"write"}
+Store {"store"}
+Load {"load"}
+
+# A kernel instruction written with no number: "add".
+Bare_Instruction {}
+  word* {Kernel_Word}
+  result {Instruction} (word, Empty_String, Empty_String)
+
+# A kernel instruction written with a number: "push 5".
+Number_Instruction {}
+  word* {Kernel_Word}
+  number* {U32}
+  argument {Number_Argument} (number)
+  arguments {Number_Argument...} (argument)
+  result {Instruction} (word, arguments, Empty_String)
+
+# A call to a function by its number: "call 1".
+Call_Instruction {}
+  function* {U32}
+  argument {Function_Argument} (function)
+  functions {Function_Argument...} (argument)
+  result {Instruction} (Call_Word, Empty_String, functions)
+
+# Leave the block when local 0 is below a number.
+# Example: 48 gives "get 0", "push 48", "less", "break_if 0".
+Below_Code {}
+  low* {U32}
+  get {Number_Instruction} (Get, Zero)
+  push {Number_Instruction} (Push_Word, low)
+  less {Bare_Instruction} (Less)
+  leave {Number_Instruction} (Break_If, Zero)
+  result {Instruction...} (get, push, less, leave)
+
+# Leave the block when local 0 is above a number.
+# Example: 57 gives "push 57", "get 0", "less", "break_if 0".
+Above_Code {}
+  high* {U32}
+  push {Number_Instruction} (Push_Word, high)
+  get {Number_Instruction} (Get, Zero)
+  less {Bare_Instruction} (Less)
+  leave {Number_Instruction} (Break_If, Zero)
+  result {Instruction...} (push, get, less, leave)
+
+# Keep local 0 as the one field of the record at its place, and give the place.
+# Example: 16 gives "push 16", "get 0", "store", "push 16", "return".
+Hold_Code {}
+  place* {U32}
+  push {Number_Instruction} (Push_Word, place)
+  get {Number_Instruction} (Get, Zero)
+  store {Bare_Instruction} (Store)
+  give {Bare_Instruction} (Return_Word)
+  result {Instruction...} (push, get, store, push, give)
+
+# Give a number from the function: "push 0", "return".
+Give_Code {}
+  number* {U32}
+  push {Number_Instruction} (Push_Word, number)
+  give {Bare_Instruction} (Return_Word)
+  result {Instruction...} (push, give)
+
+# Kernel code that reads one character from low to high. It gives the place of the record that
+# holds the character, or 0 when the character is outside the range.
+# Example: 48 and 57 give the code that reads one digit.
+Range_Code {}
+  low* {U32}
+  high* {U32}
+  take {Bare_Instruction} (Read)
+  keep {Number_Instruction} (Set, Zero)
+  open {Bare_Instruction} (Block)
+  below {Below_Code} (low)
+  above {Above_Code} (high)
+  hold {Hold_Code} (Record_Place)
+  close {Bare_Instruction} (End)
+  refuse {Give_Code} (Zero)
+  result {Instruction...} (take, keep, open, below..., above..., hold..., close, refuse...)
+
+# Leave the block when local 0 holds a number: "get 0", "push 0", "equal", "break_if 0".
+Refused_Check {}
+  number* {U32}
+  get {Number_Instruction} (Get, Zero)
+  push {Number_Instruction} (Push_Word, number)
+  equal {Bare_Instruction} (Equal)
+  leave {Number_Instruction} (Break_If, Zero)
+  result {Instruction...} (get, push, equal, leave)
+
+# Leave the block unless no byte is left: "read", "push 4294967295", "equal", "push 0",
+# "equal", "break_if 0".
+End_Check {}
+  end_value* {U32}
+  take {Bare_Instruction} (Read)
+  push {Number_Instruction} (Push_Word, end_value)
+  equal {Bare_Instruction} (Equal)
+  push_zero {Number_Instruction} (Push_Word, Zero)
+  leave {Number_Instruction} (Break_If, Zero)
+  result {Instruction...} (take, push, equal, push_zero, equal, leave)
+
+# Write the one field of the record at local 0, and give 0: "get 0", "load", "write", "push 0",
+# "return".
+Write_Code {}
+  number* {U32}
+  get {Number_Instruction} (Get, Zero)
+  load {Bare_Instruction} (Load)
+  write {Bare_Instruction} (Write)
+  give {Give_Code} (number)
+  result {Instruction...} (get, load, write, give...)
+
+# Main for a reader: read the whole input as one record. Main writes its field and gives 0, or
+# gives 1 when the input is refused, or when bytes are left after the record.
+# Example: "7" writes "7" and gives 0; "x" gives 1.
+Reading_Main {}
+  reader* {U32}
+  call {Call_Instruction} (reader)
+  keep {Number_Instruction} (Set, Zero)
+  open {Bare_Instruction} (Block)
+  refused {Refused_Check} (Zero)
+  whole {End_Check} (End_Of_Input)
+  write {Write_Code} (Zero)
+  close {Bare_Instruction} (End)
+  refuse {Give_Code} (One)
+  result {Instruction...} (call, keep, open, refused..., whole..., write..., close, refuse...)
+
+# A program that reads its input with the reader's code, function 1.
+Reading_Program {}
+  code* {Instruction...} count: 1..
+  main_code {Reading_Main} (Reader_Number)
+  main_head {Function_Head} (Main_Number, Main_Name, No_Inputs)
+  main {Function} (main_head, main_code)
+  reader_head {Function_Head} (Reader_Number, Reader_Name, No_Inputs)
+  reader {Function} (reader_head, code)
+  functions {Function...} (main, reader)
+  result {Program} (functions)
+
+# A printable character's number.
+# Example: "0" gives 48.
+Character_Code {}
+  character* {Line_Character}
+  result {Integer} (character)
+    {32..126} (" ".."~")
+
+# The number of the one character in quotes.
+# Example: '"0"' gives 48.
+Quoted_Code {}
+  quoted* {String_Literal}
+  characters {String_Character...} (quoted.characters)
+  one_character {Needs} (characters.count = 1)
+  character {String_Character} (characters.first)
+  code {Character_Code} (character)
+  result {Integer} (code)
+
+# The code that reads a character of a range.
+# Example: '"0".."9"' gives the code that reads one digit.
+Range_Reader {}
+  range* {Character_Range}
+  low {Quoted_Code} (range.low)
+  high {Quoted_Code} (range.high)
+  code {Range_Code} (low, high)
+  result {Reading_Program} (code)
+
+# The code that reads a union line's one character range.
+Box_Reader {}
+  box* {Union_Box}
+  result {Range_Reader} (box.items)
+
+# A type of one character range as a program that reads it from its input.
+# Example: 'Digit {"0".."9"}' gives a program that reads one digit, writes it and gives 0.
+Compiled_Range {}
+  line {Union_Line}
+  reader {Box_Reader} (line.base)
+  text {Text}
+    1. {line}
