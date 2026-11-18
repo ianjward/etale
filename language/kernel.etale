@@ -11,12 +11,14 @@ Local_Word {"get" | "set"}                         # move a value to or from a l
 Arithmetic_Word {"add" | "subtract" | "multiply" | "divide" | "remainder"}
 Compare_Word {"less" | "equal"}                    # give 1 if it holds, or 0
 Memory_Word {"load_byte" | "store_byte" | "load" | "store"}
+
 Block_Word {"block" | "loop" | "end"}              # open a block, or close one
 Break_Word {"break" | "break_if"}                  # leave blocks, or go back in a loop
 Call_Word {"call"}                                 # run a function, and get its value
 Return_Word {"return"}                             # give the function's value
 # read gives 4294967295 at the end of the input: 32 bits that are all 1.
 Byte_Word {"read" | "write"}                       # one byte in, or one byte out
+
 Value_Word {Push_Word | Stack_Word | Local_Word | Arithmetic_Word | Compare_Word | Memory_Word}
 Control_Word {Block_Word | Break_Word | Call_Word | Return_Word}
 Kernel_Word {Value_Word | Control_Word | Byte_Word}

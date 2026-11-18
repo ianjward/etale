@@ -37,7 +37,7 @@ function read_file(file, text = fs.readFileSync(file, 'utf8'), rules_reader = fi
   const { count, node } = rules_reader.read('File', whole);
   if (count !== 1) return { file, count, declarations: [] };
   const declarations = declarations_of(whole, node).map((declaration) => ({ ...declaration, file: shown(file) }));
-  return { file, count, declarations };
+  return { file, count, declarations, text: whole };
 }
 
 // Rules as stored: one rule a line.

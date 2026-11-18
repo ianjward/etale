@@ -76,6 +76,7 @@ Drop_Opcode {"00011010"}
 Get_Opcode {"00100000"}                  # local.get
 Set_Opcode {"00100001"}                  # local.set
 Stack_Opcodes {Push_Opcode | Drop_Opcode | Get_Opcode | Set_Opcode}
+
 Stack_Head {}                            # put on, throw away, or move a value
   word* {Push_Word | Stack_Word | Local_Word}
   bits {Stack_Opcodes} (word)
@@ -93,6 +94,7 @@ Divide_Opcode {"01101110"}               # i32.div_u
 Remainder_Opcode {"01110000"}            # i32.rem_u
 Division_Opcodes {Divide_Opcode | Remainder_Opcode}
 Arithmetic_Opcodes {Add_Opcode | Subtract_Opcode | Multiply_Opcode | Division_Opcodes}
+
 Arithmetic_Head {}
   word* {Arithmetic_Word}
   bits {Arithmetic_Opcodes} (word)
@@ -107,6 +109,7 @@ Arithmetic_Head {}
 Less_Opcode {"01001001"}                 # i32.lt_u
 Equal_Opcode {"01000110"}                # i32.eq
 Compare_Opcodes {Less_Opcode | Equal_Opcode}
+
 Compare_Head {}
   word* {Compare_Word}
   bits {Compare_Opcodes} (word)
@@ -120,6 +123,7 @@ Store_Byte_Opcode {"001110100000000000000000"}  # i32.store8, aligned to 1, offs
 Load_Opcode {"001010000000001000000000"}        # i32.load, aligned to 4, offset 0
 Store_Opcode {"001101100000001000000000"}       # i32.store, aligned to 4, offset 0
 Memory_Opcodes {Load_Byte_Opcode | Store_Byte_Opcode | Load_Opcode | Store_Opcode}
+
 Memory_Head {}                           # the opcode, its alignment and its offset
   word* {Memory_Word}
   bits {Memory_Opcodes} (word)
@@ -134,6 +138,7 @@ Block_Opcode {"0000001001000000"}        # block, giving nothing
 Loop_Opcode {"0000001101000000"}         # loop, giving nothing
 End_Opcode {"00001011"}
 Block_Opcodes {Block_Opcode | Loop_Opcode | End_Opcode}
+
 Block_Head {}                            # a block or a loop also says what it gives
   word* {Block_Word}
   bits {Block_Opcodes} (word)
@@ -148,6 +153,7 @@ Break_Opcode {"00001100"}                # br
 Break_If_Opcode {"00001101"}             # br_if
 Return_Opcode {"00001111"}
 Break_Opcodes {Break_Opcode | Break_If_Opcode | Return_Opcode}
+
 Break_Head {}                            # leave blocks, or the function
   word* {Break_Word | Return_Word}
   bits {Break_Opcodes} (word)
@@ -160,6 +166,7 @@ Break_Head {}                            # leave blocks, or the function
 Read_Call {"0001000000000011"}           # call function 3, read
 Write_Call {"0001000000000100"}          # call function 4, write
 Byte_Calls {Read_Call | Write_Call}
+
 Byte_Head {}                             # a call to read or write, the helpers 3 and 4
   word* {Byte_Word}
   bits {Byte_Calls} (word)
