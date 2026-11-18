@@ -30,14 +30,14 @@ Argument_Count {Integer} (0..1)          # how many of one kind a word is writte
 Taken_Count {Integer} (0..2)             # how many values a word takes from the stack
 Given_Count {Integer} (0..1)             # how many it puts back
 
-# How many numbers and names a word is written with: "push 5", "call main", "add".
+# How many numbers and functions a word is written with: "push 5", "call 1", "add".
 Word_Arguments {}
   word* {Kernel_Word}
   numbers {Argument_Count} (word)
     {1} (Push_Word | Local_Word | Break_Word)
     {0} (Stack_Word | Arithmetic_Word | Compare_Word | Memory_Word | Block_Word)
     {0} (Call_Word | Return_Word | Byte_Word)
-  names {Argument_Count} (word)
+  functions {Argument_Count} (word)
     {1} (Call_Word)
     {0} (Push_Word | Stack_Word | Local_Word | Arithmetic_Word | Compare_Word)
     {0} (Memory_Word | Block_Word | Break_Word | Return_Word | Byte_Word)
@@ -61,44 +61,53 @@ Number_Argument {}                       # " 5", in "push 5"
     1. {" "}
     2. {number}
 
-Name_Argument {}                         # " main", in "call main"
-  function {Kernel_Name}
+Function_Argument {}                     # " 1", in "call 1": the number of a function
+  function {U32}
   text {Text}
     1. {" "}
     2. {function}
 
-# One line of a function: a word, and the number or name it is written with.
+# One line of a function: a word, and the number or function it is written with.
 Instruction {}                           # "  push 5"
   word {Kernel_Word}
   number {Number_Argument} count: 0..1
-  name {Name_Argument} count: 0..1
+  function {Function_Argument} count: 0..1
   arguments {Word_Arguments} (word)
   stack {Word_Stack} (word)
   right_number {Needs} (number.count = arguments.numbers)
-  right_name {Needs} (name.count = arguments.names)
+  right_function {Needs} (function.count = arguments.functions)
   text {Text}
     1. {"  "}
     2. {word}
     3. {number}
-    4. {name}
+    4. {function}
     5. {Newline}
 
-# A function takes no values and gives one: "function main", then its instructions.
+# A function takes no values and gives one: "function 1 copy_one", then its instructions.
+# Its number is how a call finds it. The name is for the reader.
 Function {}
+  number {U32}
   name {Kernel_Name}
   instructions {Instruction...} count: 1..
   text {Text}
     1. {"function "}
-    2. {name}
-    3. {Newline}
-    4. {instructions}
+    2. {number}
+    3. {" "}
+    4. {name}
+    5. {Newline}
+    6. {instructions}
 
-# A program: its functions, and every call to a function it has. Main's value is its exit code.
+# A program: its functions, numbered 0, 1, 2 and on, main first. Main's value is its exit code.
 Program {}
-  functions {Function...} count: 1.., unique: name
-  instructions {Instruction...} (functions.instructions)
-  calls {Instruction...} (instructions.word = "call")
-  called_functions {Name_Argument...} (calls.name)
+  functions {Function...} count: 1.., order: number, unique: number
+  first_function {Function} (functions.first)
+  last_function {Function} (functions.last)
+  last_number {Integer} (functions.count - 1)
+  main_is_0 {Needs} (first_function.number = 0 & first_function.name = "main")
+  no_gaps {Needs} (last_function.number = last_number)
   mains {Function...} (functions.name = "main")
   one_main {Needs} (mains.count = 1)
-  calls_are_known {Needs} (called_functions.function in functions.name)
+  instructions {Instruction...} (functions.instructions)
+  calls {Instruction...} (instructions.word = "call")
+  called_functions {Function_Argument...} (calls.function)
+  calls_are_known {Needs} (called_functions.function in functions.number)

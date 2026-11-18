@@ -2,7 +2,9 @@
 
 Number_Size {Integer} (5)                # the bytes of a number: always five, as WebAssembly allows
 Locals_And_End {Integer} (4)             # three bytes for the locals, one for the end
-Helper_Code_Size {Integer} (114)         # the count of functions, and read, write and _start
+Helper_Code_Size {Integer} (113)         # read, write and _start
+Helper_Count {Integer} (3)               # read, write and _start, before the program's functions
+First_Program_Function {Integer} (6)     # three imports and three helpers come first
 Half_Of_U32 {Integer} (2147483648)
 All_Of_U32 {Integer} (4294967296)
 
@@ -14,8 +16,7 @@ U32_To_I32 {}
   moved_up {Integer} (amount + Half_Of_U32) wrap_at: All_Of_U32
   result {Integer} (moved_up - Half_Of_U32)
 
-# The words this compiler takes: all but call, which needs its function's number in WebAssembly.
-Compiled_Word {Value_Word | Block_Word | Break_Word | Return_Word | Byte_Word}
+Compiled_Word {Value_Word | Block_Word | Break_Word | Call_Word | Return_Word | Byte_Word}
 
 Group_Width {Integer} (7)                # WebAssembly writes a number seven bits to a byte
 
@@ -175,12 +176,21 @@ Byte_Head {}                             # a call to read or write, the helpers 
   size {Head_Size} (word)
     {2} (Byte_Word)
 
+Call_Opcode {"00010000"}                 # call, then the function's number
+
+Call_Head {}                             # run a function of the program
+  word* {Call_Word}
+  bits {Call_Opcode} (word)
+    {Call_Opcode} ("call")
+  size {Head_Size} (word)
+    {1} (Call_Word)
+
 Value_Head {Stack_Head | Arithmetic_Head | Compare_Head | Memory_Head}
-Control_Head {Block_Head | Break_Head | Byte_Head}
+Control_Head {Block_Head | Break_Head | Call_Head | Byte_Head}
 Word_Head {Value_Head | Control_Head}
 
 Value_Opcodes {Stack_Opcodes | Arithmetic_Opcodes | Compare_Opcodes | Memory_Opcodes}
-Instruction_Head {Value_Opcodes | Block_Opcodes | Break_Opcodes | Byte_Calls}
+Instruction_Head {Value_Opcodes | Block_Opcodes | Break_Opcodes | Call_Opcode | Byte_Calls}
 
 # An instruction as WebAssembly writes it.
 Wasm_Instruction {}
@@ -203,10 +213,86 @@ Wasm_Function {}
     5. {code}
     6. {"00001011"}                      # the end of the function
 
-# A module as WebAssembly writes it, with the main function of a program.
+Function_Type {Integer} (0)              # type 0: takes nothing, gives an i32
+
+# The functions section: its size, the count of functions, and the type of each: read,
+# write and _start, then the functions of the program.
+Wasm_Function_Section {}
+  length* {Wasm_Number}
+  function_count* {Wasm_Number}
+  types* {Wasm_Number...}
+  text {Binary_Digit}
+    1. {"00000011"}                      # section 3
+    2. {length}
+    3. {function_count}
+    4. {"00000000"}                      # function 3, read: type 0
+    5. {"00000001"}                      # function 4, write: type 1
+    6. {"00000011"}                      # function 5, _start: type 3
+    7. {types}                           # function 6 and on: type 0
+
+# The code section: its size, the count of functions, read, write and _start, then the
+# functions of the program.
+Wasm_Code_Section {}
+  length* {Wasm_Number}
+  function_count* {Wasm_Number}
+  functions* {Wasm_Function...} count: 1..
+  text {Binary_Digit}
+    1. {"00001010"}                      # section 10
+    2. {length}
+    3. {function_count}
+    4. {"00111010"}                      # function read, 58 bytes:
+    5. {"00000000"}                      # no locals
+    6. {"01000001111100001111111100000011"}  # i32.const 65520
+    7. {"01000001111111001111111100000011"}  # i32.const 65532
+    8. {"001101100000001000000000"}      # i32.store
+    9. {"01000001111101001111111100000011"}  # i32.const 65524
+    10. {"0100000100000001"}             # i32.const 1
+    11. {"001101100000001000000000"}     # i32.store
+    12. {"0100000100000000"}             # i32.const 0
+    13. {"01000001111100001111111100000011"}  # i32.const 65520
+    14. {"0100000100000001"}             # i32.const 1
+    15. {"01000001111110001111111100000011"}  # i32.const 65528
+    16. {"0001000000000000"}             # call fd_read
+    17. {"00011010"}                     # drop
+    18. {"01000001111110001111111100000011"}  # i32.const 65528
+    19. {"001010000000001000000000"}     # i32.load
+    20. {"01000101"}                     # i32.eqz: no byte was read
+    21. {"0000010001111111"}             # if, giving an i32
+    22. {"0100000101111111"}             # i32.const -1
+    23. {"00000101"}                     # else
+    24. {"01000001111111001111111100000011"}  # i32.const 65532
+    25. {"001011010000000000000000"}     # i32.load8_u
+    26. {"00001011"}                     # end
+    27. {"00001011"}                     # end
+    28. {"00101110"}                     # function write, 46 bytes:
+    29. {"00000000"}                     # no locals
+    30. {"01000001111111001111111100000011"}  # i32.const 65532
+    31. {"0010000000000000"}             # local.get 0: the byte
+    32. {"001110100000000000000000"}     # i32.store8
+    33. {"01000001111100001111111100000011"}  # i32.const 65520
+    34. {"01000001111111001111111100000011"}  # i32.const 65532
+    35. {"001101100000001000000000"}     # i32.store
+    36. {"01000001111101001111111100000011"}  # i32.const 65524
+    37. {"0100000100000001"}             # i32.const 1
+    38. {"001101100000001000000000"}     # i32.store
+    39. {"0100000100000001"}             # i32.const 1
+    40. {"01000001111100001111111100000011"}  # i32.const 65520
+    41. {"0100000100000001"}             # i32.const 1
+    42. {"01000001111110001111111100000011"}  # i32.const 65528
+    43. {"0001000000000001"}             # call fd_write
+    44. {"00011010"}                     # drop
+    45. {"00001011"}                     # end
+    46. {"00000110"}                     # function _start, 6 bytes:
+    47. {"00000000"}                     # no locals
+    48. {"0001000000000110"}             # call main
+    49. {"0001000000000010"}             # call proc_exit
+    50. {"00001011"}                     # end
+    51. {functions}
+
+# A module as WebAssembly writes it, with the functions of a program.
 Wasm_Program {}
-  section_length* {Wasm_Number}
-  functions* {Wasm_Function...} count: 1
+  function_section* {Wasm_Function_Section}
+  code_section* {Wasm_Code_Section}
   text {Binary_Digit}
     1. {"00000000011000010111001101101101"}
     2. {"00000001000000000000000000000000"}  # version 1
@@ -234,72 +320,17 @@ Wasm_Program {}
     24. {"01011111011100000111001001100101011101100110100101100101"}  # "_previe"
     25. {"01110111001100010000100101110000011100100110111101100011"}  # "w1proc"
     26. {"01011111011001010111100001101001011101000000000000000001"}  # "_exit"
-    27. {"0000001100000101"}             # the functions: section 3, 5 bytes
-    28. {"00000100"}                     # four functions:
-    29. {"00000000"}                     # function 3, read: type 0
-    30. {"00000001"}                     # function 4, write: type 1
-    31. {"00000011"}                     # function 5, _start: type 3
-    32. {"00000000"}                     # function 6, main: type 0
-    33. {"0000010100000011"}             # the memory: section 5, 3 bytes
-    34. {"000000010000000000000001"}     # one memory, of at least one page
-    35. {"0000011100011010"}             # the exports: section 7, 26 bytes
-    36. {"00000011"}                     # three exports:
-    37. {"00000110011011010110010101101101011011110111001001111001"}  # "memory": memory 0
-    38. {"0000001000000000"}             # and so on
-    39. {"00000110010111110111001101110100011000010111001001110100"}  # "_start": function 5
-    40. {"0000000000000101"}             # and so on
-    41. {"00000100011011010110000101101001011011100000000000000110"}  # "main": function 6
-    42. {"00001010"}                     # the code: section 10, its size, then four functions
-    43. {section_length}
-    44. {"00000100"}                     # four functions
-    45. {"00111010"}                     # function read, 58 bytes:
-    46. {"00000000"}                     # no locals
-    47. {"01000001111100001111111100000011"}  # i32.const 65520
-    48. {"01000001111111001111111100000011"}  # i32.const 65532
-    49. {"001101100000001000000000"}     # i32.store
-    50. {"01000001111101001111111100000011"}  # i32.const 65524
-    51. {"0100000100000001"}             # i32.const 1
-    52. {"001101100000001000000000"}     # i32.store
-    53. {"0100000100000000"}             # i32.const 0
-    54. {"01000001111100001111111100000011"}  # i32.const 65520
-    55. {"0100000100000001"}             # i32.const 1
-    56. {"01000001111110001111111100000011"}  # i32.const 65528
-    57. {"0001000000000000"}             # call fd_read
-    58. {"00011010"}                     # drop
-    59. {"01000001111110001111111100000011"}  # i32.const 65528
-    60. {"001010000000001000000000"}     # i32.load
-    61. {"01000101"}                     # i32.eqz: no byte was read
-    62. {"0000010001111111"}             # if, giving an i32
-    63. {"0100000101111111"}             # i32.const -1
-    64. {"00000101"}                     # else
-    65. {"01000001111111001111111100000011"}  # i32.const 65532
-    66. {"001011010000000000000000"}     # i32.load8_u
-    67. {"00001011"}                     # end
-    68. {"00001011"}                     # end
-    69. {"00101110"}                     # function write, 46 bytes:
-    70. {"00000000"}                     # no locals
-    71. {"01000001111111001111111100000011"}  # i32.const 65532
-    72. {"0010000000000000"}             # local.get 0: the byte
-    73. {"001110100000000000000000"}     # i32.store8
-    74. {"01000001111100001111111100000011"}  # i32.const 65520
-    75. {"01000001111111001111111100000011"}  # i32.const 65532
-    76. {"001101100000001000000000"}     # i32.store
-    77. {"01000001111101001111111100000011"}  # i32.const 65524
-    78. {"0100000100000001"}             # i32.const 1
-    79. {"001101100000001000000000"}     # i32.store
-    80. {"0100000100000001"}             # i32.const 1
-    81. {"01000001111100001111111100000011"}  # i32.const 65520
-    82. {"0100000100000001"}             # i32.const 1
-    83. {"01000001111110001111111100000011"}  # i32.const 65528
-    84. {"0001000000000001"}             # call fd_write
-    85. {"00011010"}                     # drop
-    86. {"00001011"}                     # end
-    87. {"00000110"}                     # function _start, 6 bytes:
-    88. {"00000000"}                     # no locals
-    89. {"0001000000000110"}             # call main
-    90. {"0001000000000010"}             # call proc_exit
-    91. {"00001011"}                     # end
-    92. {functions}                        # main
+    27. {function_section}
+    28. {"0000010100000011"}             # the memory: section 5, 3 bytes
+    29. {"000000010000000000000001"}     # one memory, of at least one page
+    30. {"0000011100011010"}             # the exports: section 7, 26 bytes
+    31. {"00000011"}                     # three exports:
+    32. {"00000110011011010110010101101101011011110111001001111001"}  # "memory": memory 0
+    33. {"0000001000000000"}             # and so on
+    34. {"00000110010111110111001101110100011000010111001001110100"}  # "_start": function 5
+    35. {"0000000000000101"}             # and so on
+    36. {"00000100011011010110000101101001011011100000000000000110"}  # "main": function 6
+    37. {code_section}
 
 Compiled_Number {}                       # " 5", in "push 5"
   amount {U32}
@@ -310,26 +341,41 @@ Compiled_Number {}                       # " 5", in "push 5"
     1. {" "}
     2. {amount}
 
+Compiled_Function_Number {}              # " 1", in "call 1"
+  function {U32}
+  index {Integer} (function + First_Program_Function)
+  written {Integer_To_Wasm_Number} (index)
+  text {Text}
+    1. {" "}
+    2. {function}
+
 Compiled_Instruction {}                  # "  push 5"
   word {Compiled_Word}
   numbers {Compiled_Number...} count: 0..1
+  functions {Compiled_Function_Number...} count: 0..1
   arguments {Word_Arguments} (word)
   right_numbers {Needs} (numbers.count = arguments.numbers)
+  right_functions {Needs} (functions.count = arguments.functions)
   head {Word_Head} (word)
-  written {Wasm_Number...} (numbers.written)
-  number_bytes {Integer} (arguments.numbers * Number_Size)
+  number_values {Wasm_Number...} (numbers.written)
+  function_values {Wasm_Number...} (functions.written)
+  written {Wasm_Number...} (number_values..., function_values...)
+  argument_count {Integer} (arguments.numbers + arguments.functions)
+  number_bytes {Integer} (argument_count * Number_Size)
   size {Integer} (head.size + number_bytes)
   wasm {Wasm_Instruction} (head.bits, written)
   text {Text}
     1. {"  "}
     2. {word}
     3. {numbers}
-    4. {Newline}
+    4. {functions}
+    5. {Newline}
 
-Compiled_Function {}                     # "function main", then its instructions
+Compiled_Function {}                     # "function 0 main", then its instructions
+  number {U32}
   name {Kernel_Name}
   instructions {Compiled_Instruction...} count: 1..
-  is_main {Needs} (name = "main")
+  type {Integer_To_Wasm_Number} (Function_Type)
   sizes {Integer...} (instructions.size)
   code_size {Integer} (sizes.sum)
   body_size {Integer} (code_size + Locals_And_End)
@@ -339,15 +385,44 @@ Compiled_Function {}                     # "function main", then its instruction
   wasm {Wasm_Function} (length, code)
   text {Text}
     1. {"function "}
-    2. {name}
-    3. {Newline}
-    4. {instructions}
+    2. {number}
+    3. {" "}
+    4. {name}
+    5. {Newline}
+    6. {instructions}
 
+# The functions section for a program's functions: a type for each, after read, write and _start.
+# Example: main and one other function give a count of 5 and two types of 0.
+Functions_To_Wasm_Section {}
+  functions* {Compiled_Function...}
+  all_functions {Integer} (functions.count + Helper_Count)
+  function_count {Integer_To_Wasm_Number} (all_functions)
+  types {Wasm_Number...} (functions.type)
+  type_bytes {Integer} (functions.count * Number_Size)
+  types_size {Integer} (Number_Size + Helper_Count + type_bytes)
+  types_length {Integer_To_Wasm_Number} (types_size)
+  result {Wasm_Function_Section} (types_length, function_count, types)
+
+# A program's functions are numbered 0, 1, 2 and on, main first, as the kernel says. In
+# WebAssembly they come after the three imports and three helpers.
 Compiled_Program {}
-  functions {Compiled_Function...} count: 1
+  functions {Compiled_Function...} count: 1.., order: number, unique: number
+  first_function {Compiled_Function} (functions.first)
+  last_function {Compiled_Function} (functions.last)
+  last_number {Integer} (functions.count - 1)
+  main_is_0 {Needs} (first_function.number = 0 & first_function.name = "main")
+  no_gaps {Needs} (last_function.number = last_number)
+  mains {Compiled_Function...} (functions.name = "main")
+  one_main {Needs} (mains.count = 1)
+  instructions {Compiled_Instruction...} (functions.instructions)
+  calls {Compiled_Instruction...} (instructions.word = "call")
+  called_functions {Compiled_Function_Number...} (calls.functions)
+  calls_are_known {Needs} (called_functions.function in functions.number)
+  function_section {Functions_To_Wasm_Section} (functions)
   function_sizes {Integer...} (functions.size)
   function_bytes {Integer} (function_sizes.sum)
-  section_size {Integer} (function_bytes + Helper_Code_Size)
+  section_size {Integer} (function_bytes + Number_Size + Helper_Code_Size)
   section_length {Integer_To_Wasm_Number} (section_size)
   compiled {Wasm_Function...} (functions.wasm)
-  wasm {Wasm_Program} (section_length, compiled)
+  code_section {Wasm_Code_Section} (section_length, function_section.function_count, compiled)
+  wasm {Wasm_Program} (function_section, code_section)

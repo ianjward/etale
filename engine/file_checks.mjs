@@ -175,7 +175,7 @@ export function file_errors(loaded) {
     for (const term of field.values) {
       const source = term.path ? path_items(record, term.path) : term.number !== undefined ? [{ type: 'Integer' }] : undefined;
       const name = term.path?.join('.') ?? term.number;
-      const head = term.path && field_of(record, term.path[0]);
+      const head = term.path && record.fields.find((each) => each.name === term.path[0]);
       const is_list = term.path?.length === 1 && head && (head.list || head.count);
       if (term.all && !is_list) error(record, field.line, name + "... adds the items of a list, but " + name + ' is not a list', where);
       else if (!term.all && is_list) error(record, field.line, name + " is a list: mark it " + name + '... to add its items', where);
