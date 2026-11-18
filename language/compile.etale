@@ -112,13 +112,43 @@ Parens_Value {}
   calculation {Calculation_Value} (parens.content, known)
   result {Integer} (calculation)
 
-# A constant's line: its name, and the value of its calculation.
-# Example: "Group_Values {Integer} (Group_Width + 121)" gives Group_Values, 128.
-Line_Constant {}
+# A calculation in parentheses adds a constant: the line's name, and the calculation's value.
+# Example: "(Group_Width * 18)" on Group_Values gives Group_Values, 126.
+Calculation_Constant {}
+  written* {Calculation}
+  name* {Type_Name}
+  known* {Known_Constant...}
+  worked {Calculation_Value} (written, known)
+  constant {Known_Constant} (name, worked)
+  result {Known_Constant...} (constant)
+
+# Parentheses that hold a range, a choice, conditions or a call add no constant.
+# Example: "(0..9)" adds nothing.
+No_Constant {}
+  written* {Range_Literal | Allowed_Choice | Conditions | Call_Values}
+  name* {Type_Name}
+  known* {Known_Constant...}
+  result {Known_Constant...} (Empty_String)
+
+Content_Constants {Calculation_Constant | No_Constant}
+
+# A refinement line adds a constant when its parentheses hold a calculation.
+# Example: "Group_Width {Integer} (7)" adds Group_Width, 7. "Text {Character...}" adds nothing.
+Refinement_Constants {}
   line* {Refinement_Line}
   known* {Known_Constant...}
-  parens {Parens_Value} (line.parens, known)
-  result {Known_Constant} (line.name, parens)
+  written_parens {Parens...} (line.parens)
+  contents {Paren_Content...} (written_parens.content)
+  found {Content_Constants...} (contents..., line.name, known)
+  result {Known_Constant...} (found.result)
+
+# A union line or an intersection line adds no constant.
+Other_Line_Constants {}
+  line* {Union_Line | Intersection_Line}
+  known* {Known_Constant...}
+  result {Known_Constant...} (Empty_String)
+
+Line_Constants {Refinement_Constants | Other_Line_Constants}
 
 # The constants of a group of lines, worked out in order: each may name the ones above it.
 # Example: "A {Integer} (2)" then "B {Integer} (A * 3)" give A, 2 and B, 6.
@@ -126,19 +156,54 @@ Group_Constants {}
   lines* {Noted_Line...}
   known* {Known_Constant...}
   noted {Noted_Line} (lines.first)
-  constant {Line_Constant} (noted.line, known)
-  with_line {Known_Constant...} (known..., constant)
+  added {Line_Constants} (noted.line, known)
+  with_line {Known_Constant...} (known..., added...)
   result {Known_Constant...} (known)
     while (lines.count >= 1)
     next (lines.rest, with_line)
 
-# A group of one-line constants as a program whose main gives the last one's value.
-# Example: "A {Integer} (2)" then "B {Integer} (A * 3)" give main, which pushes 6 and gives it.
-Compiled_Group {}
-  group {Line_Group}
+# A group of one-line declarations adds its constants.
+Line_Group_Constants {}
+  group* {Line_Group}
+  known* {Known_Constant...}
   lines {Noted_Line...} (group.first, group.rest...)
-  known {Group_Constants} (lines, Empty_String)
+  with_group {Group_Constants} (lines, known)
+  result {Known_Constant...} (with_group)
+
+# A type of more than one line adds no constant.
+Type_Group_Constants {}
+  group* {Type_Group}
+  known* {Known_Constant...}
+  result {Known_Constant...} (known)
+
+# Comment lines add no constant.
+Comment_Group_Constants {}
+  group* {Comment_Group}
+  known* {Known_Constant...}
+  result {Known_Constant...} (known)
+
+Group_Value {Line_Group_Constants | Type_Group_Constants | Comment_Group_Constants}
+
+# The constants of a file's groups, in order.
+# Example: a comment, "A {Integer} (2)", a type, then "B {Integer} (A * 3)" give A, 2 and B, 6.
+File_Constants {}
+  groups* {Group...}
+  known* {Known_Constant...}
+  group {Group} (groups.first)
+  with_group {Group_Value} (group, known)
+  result {Known_Constant...} (known)
+    while (groups.count >= 1)
+    next (groups.rest, with_group)
+
+# A file as a program whose main gives the value of its last constant.
+# Example: "A {Integer} (2)", then a type, then "B {Integer} (A * 3)" give main, which gives 6.
+Compiled_File {}
+  file {File}
+  spaced {Spaced_Group...} (file.rest)
+  later_groups {Group...} (spaced.group)
+  groups {Group...} (file.first, later_groups...)
+  known {File_Constants} (groups, Empty_String)
   last {Known_Constant} (known.last)
   kernel {Number_To_Main} (last.number)
   text {Text}
-    1. {group}
+    1. {file}
