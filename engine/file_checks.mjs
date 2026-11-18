@@ -383,7 +383,7 @@ export function file_errors(loaded) {
         if (target.list || target.count) return error(record, slot.line, type + '.' + target.name + ' is a list: give it without ...', where);
         const source = list_source(slot.path);
         if (!source) return error(record, slot.line, slot.path.join('.') + '... names no list', where);
-        if (!same_items(source.items, target.items)) {
+        if (!same_items(source.items, target.items) && !overlaps(source.items, target.items)) {
           error(record, slot.line, slot.path.join('.') + ' holds ' + items_text(source.items) + ', but ' + type + '.' + target.name
             + ' is ' + items_text(target.items), where);
         }
@@ -490,7 +490,9 @@ export function file_errors(loaded) {
     }
     let field = record.fields.find((each) => each.name === path[0]);
     for (const step of path.slice(1)) {
-      if (methods.includes(step)) return item_methods.includes(step) ? field?.items : [{ type: 'Integer' }];
+      // a record's own field may have a method's name, as Sum's first does
+      const own = !(field?.list || field?.count) && field_of(given_record(field?.items?.[0]?.type), step);
+      if (methods.includes(step) && !own) return item_methods.includes(step) ? field?.items : [{ type: 'Integer' }];
       field = field_of(given_record(field?.items?.[0]?.type), step);
     }
     return field?.role === 'made' ? result_items(field.items) : field?.items;
@@ -513,8 +515,16 @@ export function file_errors(loaded) {
     return Boolean(given && taken) && given.every((each) => taken.some((other) => key(other) === key(each)));
   };
   // a union some of whose values are values of another: a call refuses the others when it runs
+  // a type that is a member of a union, or of a union inside it
+  const member_of = (type, items, seen = new Set()) => (items ?? []).some((each) => {
+    if (each.type === type) return true;
+    const found = each.type && !seen.has(each.type) ? by_name.get(each.type) : undefined;
+    if (found?.kind !== 'union') return false;
+    seen.add(each.type);
+    return member_of(type, found.items, seen);
+  });
   const overlaps = (one, two, seen = new Set()) => (one ?? []).some((item) => {
-    if (same_items([item], two) || within([item], two)) return true;
+    if (same_items([item], two) || within([item], two) || (item.type && member_of(item.type, two))) return true;
     const found = item.type && !seen.has(item.type) ? by_name.get(item.type) : undefined;
     if (found?.kind !== 'union') return false;
     seen.add(item.type);
@@ -570,7 +580,8 @@ export function file_errors(loaded) {
         && (each.list || each.count || ['kept', 'collected'].includes(each.role)));
       field.positions.forEach((slot, at) => {
         const whole_list = slot.path?.length === 1 && list_name(slot.path[0]);
-        if (slot.path && !whole_list && !(stored[at]?.list || stored[at]?.count)) paths.push(through(slot.path));
+        // a list marked '...' gives one item at a time, and is checked with the make
+        if (slot.path && !whole_list && !slot.value?.all && !(stored[at]?.list || stored[at]?.count)) paths.push(through(slot.path));
       });
     }
     if (['rule', 'claim'].includes(field.role) && field.condition) {

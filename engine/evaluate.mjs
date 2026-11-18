@@ -334,8 +334,15 @@ export function evaluator(text, numeric, rules_by_head = new Map()) {
   }
 
   // A made record, or its result when its type has one.
+  // A made record gives its result, or itself. A rule of the record that fails refuses it.
   function given(record, node, outside) {
-    return lines_of(record.rule).has('result') ? get(record, 'result', outside && [node, ...outside]) : record;
+    const around = outside && [node, ...outside];
+    for (const line of record.rule.fields ?? []) {
+      if (!line.needs) continue;
+      const holds = get(record, line.name, around);
+      if (holds !== 'TRUE') return holds === LATER ? LATER : INVALID;
+    }
+    return lines_of(record.rule).has('result') ? get(record, 'result', around) : record;
   }
 
   // A whole list: a field, a field of a record one step down, or a constant list.
@@ -380,8 +387,11 @@ export function evaluator(text, numeric, rules_by_head = new Map()) {
     const around = outside ? [node, ...outside] : line.keep !== undefined ? [node] : outside;
     const items = [];
     for (const item of sources) {
-      if (!is_record(item)) return INVALID;
-      const result = line.keep !== undefined ? test(line.condition, item, around) : get(item, line.collect[1], around);
+      // an item of a list of made records is what it gives: its result
+      const given_result = line.keep === undefined && line.collect[1] === 'result' && !is_record(item);
+      if (!is_record(item) && !given_result) return INVALID;
+      const result = given_result ? item
+        : line.keep !== undefined ? test(line.condition, item, around) : get(item, line.collect[1], around);
       if (stop(result)) return result;
       if (result instanceof Sequence) items.push(...result.items);
       else if (line.keep === undefined) items.push(result);

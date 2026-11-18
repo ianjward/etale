@@ -216,6 +216,9 @@ function calls_of(declarations) {
   const type_of = (declaration, [head, step]) => {
     const field = declaration.fields.find((each) => each.name === head);
     const type = field?.items?.[0]?.type;
+    // a made field holds what its type gives: its result
+    const result = field?.call && by_name.get(type)?.fields?.find((each) => each.name === 'result');
+    if (step === undefined && result) return result.items?.[0]?.type;
     if (step === undefined || ['first', 'last'].includes(step)) return type;
     const inner = by_name.get(given(type)) ?? undefined;
     const record = inner?.kind === 'record' ? inner : members_of(by_name, inner?.name)?.[0];
@@ -250,8 +253,21 @@ function calls_of(declarations) {
     // a made field of a type with a result holds that result: its type, and whether it is a list
     for (const field of declaration.fields ?? []) {
       if (field.role !== 'made' || !field.call || field.makes) continue;
-      const result = by_name.get(field.items?.[0]?.type)?.fields?.find((each) => each.name === 'result');
+      const type = field.items?.[0]?.type;
+      // for a union of records, the result that every member gives
+      const results = (members_of(by_name, type) ?? [by_name.get(type)])
+        .map((member) => member?.fields?.find((each) => each.name === 'result'));
+      const shown = (each) => JSON.stringify([each?.items, Boolean(each?.list)]);
+      const result = results.every((each) => each && shown(each) === shown(results[0])) ? results[0] : undefined;
       if (!result) continue;
+      if (members_of(by_name, type)) {
+        if (!result.list) continue;                    // a union of records keeps its own type
+        field.each = false;
+        field.makes = type;
+        field.items = result.items;
+        field.list = true;
+        continue;
+      }
       field.each = Boolean(field.list);                // one record for each item of a list
       field.makes = field.items[0].type;
       field.items = result.items;
