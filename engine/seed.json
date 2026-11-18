@@ -130,7 +130,7 @@
 {"head":"Number_Literal","parts":[{"types":["Decimal_Literal"]}],"number":true},
 {"head":"Number_Literal","parts":[{"types":["Integer_Literal"]}],"number":true},
 {"head":"Bounded_Range","record":true,"parts":[{"name":"low","types":["Number_Literal"],"number":true},{"literal":".."},{"name":"high","types":["Number_Literal"],"number":true}],"fields":[{"name":"ordered","needs":{"all":[{"path":["high"],"comparison":">","right":{"path":["low"]}}]}}]},
-{"head":"Lower_Range","parts":[{"types":["Number_Literal"]},{"literal":".."}]},
+{"head":"Lower_Range","record":true,"parts":[{"name":"low","types":["Number_Literal"],"number":true},{"literal":".."}]},
 {"head":"Upper_Range","parts":[{"literal":".."},{"types":["Number_Literal"]}]},
 {"head":"Plain_Symbol","parts":[{"types":["Operator_Symbol"]}]},
 {"head":"Plain_Symbol","parts":[{"types":["Other_Symbol"]}]},

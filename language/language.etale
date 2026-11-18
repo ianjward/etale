@@ -64,9 +64,11 @@ Bounded_Range {}
     2. {".."}
     3. {high}
 
-Lower_Range {Text}                       # 'low..' is low and everything above
-  1. {Number_Literal}
-  2. {".."}
+Lower_Range {}                           # 'low..' is low and everything above
+  low {Number_Literal}
+  text {Text}
+    1. {low}
+    2. {".."}
 
 Upper_Range {Text}                       # '..high' is high and everything below
   1. {".."}
