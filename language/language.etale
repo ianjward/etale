@@ -455,7 +455,9 @@ Union_Tail {}
     3. {Pad}
     4. {next}
 
-Union_List {}                            # Two or more items
+# Two to 7 items, so that a reader can keep every choice in mind at once.
+# For more items, put each group of items in a type of its own, and join the types in a union.
+Union_List {}
   first {Union_Item}
   rest {Union_Tail...} count: 1..6
 
@@ -738,6 +740,8 @@ Blank_Line {Text}                        # Empty, or only spaces
   1. {End_Spaces}
   2. {Newline}
 
+# At most 7 cases, so that a reader sees every case of a table at once.
+# For more cases, put each group of cases in a type of its own, and join the types in a union.
 Mapped_Field {}
   head {Mapping_Line}
   cases {Case_Line...} count: 1..7
@@ -789,13 +793,16 @@ Shape_Item {}
   above {Above_Line...}
   line {Shape}
 
-# At most 20 lines: fields, rules and claims. Case tables, shapes and comments are not counted.
+# At most 20 lines: fields, rules and claims. Case tables, shapes and comments are data, so
+# they are not counted. 20 lines fit on one screen. A longer type does more than one job:
+# split it into a type for each job.
 Record_Block {}
   head {Record_Header}
   fields {Field_Item...} count: 0..20
   shape {Shape_Item} count: 0..1
 
-# 'while' and 'next' are two lines more, so at most 17 other fields.
+# At most 20 lines, as in Record_Block. 'while' and 'next' are two of them, and the repeated
+# field is one more, so at most 17 other fields.
 Repeating_Block {}
   head {Record_Header}
   fields {Field_Item...} count: 0..17
@@ -820,7 +827,8 @@ Noted_Line {}
   notes {Comment_Line...}
   line {Line_Block}
 
-# At most 7 one-line declarations stand together.
+# At most 7 one-line declarations stand together, so that a reader sees each group at once.
+# For more, put a blank line between the groups of declarations that belong together.
 Line_Group {}
   first {Noted_Line}
   rest {Noted_Line...} count: 0..6
@@ -839,7 +847,8 @@ Blocks {}
   rest {Spaced_Group...}
   tail {Blank_Line...}
 
-# A physical line: at most 100 characters, then a newline.
+# A physical line: at most 100 characters, then a newline, so that a line fits on a screen.
+# Write a long comment on more lines. Give part of a long calculation a field of its own.
 Short_Line {Text}
   1. {Line_Character...} count: 0..100
   2. {Newline}
