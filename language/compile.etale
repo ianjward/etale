@@ -252,24 +252,26 @@ Call_Instruction {}
   functions {Function_Argument...} (argument)
   result {Instruction} (Call_Word, Empty_String, functions)
 
-# Leave the block when local 0 is below a number.
-# Example: 48 gives "get 0", "push 48", "less", "break_if 0".
+# Leave as many blocks as depth, and one more, when local 0 is below a number.
+# Example: 48 and 0 give "get 0", "push 48", "less", "break_if 0".
 Below_Code {}
   low* {U32}
+  depth* {U32}
   get {Number_Instruction} (Get, Zero)
   push {Number_Instruction} (Push_Word, low)
   less {Bare_Instruction} (Less)
-  leave {Number_Instruction} (Break_If, Zero)
+  leave {Number_Instruction} (Break_If, depth)
   result {Instruction...} (get, push, less, leave)
 
-# Leave the block when local 0 is above a number.
-# Example: 57 gives "push 57", "get 0", "less", "break_if 0".
+# Leave as many blocks as depth, and one more, when local 0 is above a number.
+# Example: 57 and 0 give "push 57", "get 0", "less", "break_if 0".
 Above_Code {}
   high* {U32}
+  depth* {U32}
   push {Number_Instruction} (Push_Word, high)
   get {Number_Instruction} (Get, Zero)
   less {Bare_Instruction} (Less)
-  leave {Number_Instruction} (Break_If, Zero)
+  leave {Number_Instruction} (Break_If, depth)
   result {Instruction...} (push, get, less, leave)
 
 # Keep local 0 as the one field of the record at its place, and give the place.
@@ -298,8 +300,8 @@ Range_Code {}
   take {Bare_Instruction} (Read)
   keep {Number_Instruction} (Set, Zero)
   open {Bare_Instruction} (Block)
-  below {Below_Code} (low)
-  above {Above_Code} (high)
+  below {Below_Code} (low, Zero)
+  above {Above_Code} (high, Zero)
   hold {Hold_Code} (Record_Place)
   close {Bare_Instruction} (End)
   refuse {Give_Code} (Zero)
@@ -327,7 +329,7 @@ End_Check {}
 
 # Write the one field of the record at local 0, and give 0: "get 0", "load", "write", "push 0",
 # "return".
-Write_Code {}
+Write_Field_Code {}
   number* {U32}
   get {Number_Instruction} (Get, Zero)
   load {Bare_Instruction} (Load)
@@ -335,25 +337,26 @@ Write_Code {}
   give {Give_Code} (number)
   result {Instruction...} (get, load, write, give...)
 
-# Main for a reader: read the whole input as one record. Main writes its field and gives 0, or
-# gives 1 when the input is refused, or when bytes are left after the record.
+# Main for a reader: read the whole input as one record. Main writes the record with the show
+# code and gives 0, or gives 1 when the input is refused, or when bytes are left after it.
 # Example: "7" writes "7" and gives 0; "x" gives 1.
 Reading_Main {}
-  reader* {U32}
-  call {Call_Instruction} (reader)
+  show* {Instruction...}
+  call {Call_Instruction} (Reader_Number)
   keep {Number_Instruction} (Set, Zero)
   open {Bare_Instruction} (Block)
   refused {Refused_Check} (Zero)
   whole {End_Check} (End_Of_Input)
-  write {Write_Code} (Zero)
   close {Bare_Instruction} (End)
   refuse {Give_Code} (One)
-  result {Instruction...} (call, keep, open, refused..., whole..., write..., close, refuse...)
+  result {Instruction...} (call, keep, open, refused..., whole..., show..., close, refuse...)
 
-# A program that reads its input with the reader's code, function 1.
+# A program that reads its input with the reader's code, function 1, and writes the record
+# with the show code.
 Reading_Program {}
   code* {Instruction...} count: 1..
-  main_code {Reading_Main} (Reader_Number)
+  show* {Instruction...} count: 1..
+  main_code {Reading_Main} (show)
   main_head {Function_Head} (Main_Number, Main_Name, No_Inputs)
   main {Function} (main_head, main_code)
   reader_head {Function_Head} (Reader_Number, Reader_Name, No_Inputs)
@@ -385,7 +388,8 @@ Range_Reader {}
   low {Quoted_Code} (range.low)
   high {Quoted_Code} (range.high)
   code {Range_Code} (low, high)
-  result {Reading_Program} (code)
+  show {Write_Field_Code} (Zero)
+  result {Reading_Program} (code, show)
 
 # The code that reads a union line's one character range.
 Box_Reader {}
@@ -399,3 +403,280 @@ Compiled_Range {}
   reader {Box_Reader} (line.base)
   text {Text}
     1. {line}
+
+# ---------- Reading a list of characters
+
+# A list record keeps its count at its place, and its characters, a byte each, from Items_Place.
+Items_Place {Integer} (20)
+Count_Local {Integer} (1)                # local 1 counts the characters read
+Two {Integer} (2)
+
+Break {"break"}
+Loop {"loop"}
+Add {"add"}
+Store_Byte {"store_byte"}
+Load_Byte {"load_byte"}
+
+# Put a number in a local: "push 0", "set 1".
+Local_Start {}
+  number* {U32}
+  local* {U32}
+  push {Number_Instruction} (Push_Word, number)
+  keep {Number_Instruction} (Set, local)
+  result {Instruction...} (push, keep)
+
+# Leave as many blocks as depth, and one more, at the end of the input.
+# Example: 2 gives "get 0", "push 4294967295", "equal", "break_if 2".
+End_Leave {}
+  depth* {U32}
+  get {Number_Instruction} (Get, Zero)
+  push {Number_Instruction} (Push_Word, End_Of_Input)
+  equal {Bare_Instruction} (Equal)
+  leave {Number_Instruction} (Break_If, depth)
+  result {Instruction...} (get, push, equal, leave)
+
+# Keep the byte in local 0 as the next character of the list: "push 20", "get 1", "add",
+# "get 0", "store_byte".
+Keep_Byte {}
+  place* {U32}
+  push {Number_Instruction} (Push_Word, place)
+  counted {Number_Instruction} (Get, Count_Local)
+  add {Bare_Instruction} (Add)
+  get {Number_Instruction} (Get, Zero)
+  store {Bare_Instruction} (Store_Byte)
+  result {Instruction...} (push, counted, add, get, store)
+
+# Add 1 to a local: "get 1", "push 1", "add", "set 1".
+Count_Up {}
+  local* {U32}
+  get {Number_Instruction} (Get, local)
+  push {Number_Instruction} (Push_Word, One)
+  add {Bare_Instruction} (Add)
+  keep {Number_Instruction} (Set, local)
+  result {Instruction...} (get, push, add, keep)
+
+# Leave as many blocks as depth, and one more, when local 0 is below low or above high.
+# Example: 48, 57 and 1 give the tests for a digit inside a loop and a block.
+Range_Leave {}
+  low* {U32}
+  high* {U32}
+  depth* {U32}
+  below {Below_Code} (low, depth)
+  above {Above_Code} (high, depth)
+  result {Instruction...} (below..., above...)
+
+# The loop that reads characters from low to high until the end of the input. It leaves the
+# two blocks around it at the end of the input, and the one block around it for a character
+# outside the range.
+List_Loop {}
+  low* {U32}
+  high* {U32}
+  open {Bare_Instruction} (Loop)
+  take {Bare_Instruction} (Read)
+  keep {Number_Instruction} (Set, Zero)
+  finished {End_Leave} (Two)
+  outside {Range_Leave} (low, high, One)
+  item {Keep_Byte} (Items_Place)
+  next_count {Count_Up} (Count_Local)
+  again {Number_Instruction} (Break, Zero)
+  close {Bare_Instruction} (End)
+  steps {Instruction...} (take, keep, finished..., outside..., item..., next_count..., again)
+  result {Instruction...} (open, steps..., close)
+
+# Give 0 when fewer characters were read than the least count.
+# Example: 1 gives "block", "get 1", "push 1", "less", "push 0", "equal", "break_if 0",
+# "push 0", "return", "end".
+Least_Check {}
+  least* {U32}
+  open {Bare_Instruction} (Block)
+  counted {Number_Instruction} (Get, Count_Local)
+  push {Number_Instruction} (Push_Word, least)
+  less {Bare_Instruction} (Less)
+  zero {Number_Instruction} (Push_Word, Zero)
+  equal {Bare_Instruction} (Equal)
+  leave {Number_Instruction} (Break_If, Zero)
+  refuse {Give_Code} (Zero)
+  close {Bare_Instruction} (End)
+  result {Instruction...} (open, counted, push, less, zero, equal, leave, refuse..., close)
+
+# Keep the count as the first field of the record at its place, and give the place.
+# Example: 16 gives "push 16", "get 1", "store", "push 16", "return".
+Hold_Count {}
+  place* {U32}
+  push {Number_Instruction} (Push_Word, place)
+  counted {Number_Instruction} (Get, Count_Local)
+  store {Bare_Instruction} (Store)
+  give {Bare_Instruction} (Return_Word)
+  result {Instruction...} (push, counted, store, push, give)
+
+# Kernel code that reads a list of characters from low to high, to the end of the input, with
+# at least a least count. It gives the place of the list, or 0 when it is refused.
+# Example: 48, 57 and 1 give the code that reads a whole number.
+List_Code {}
+  low* {U32}
+  high* {U32}
+  least* {U32}
+  start {Local_Start} (Zero, Count_Local)
+  done {Bare_Instruction} (Block)
+  refused {Bare_Instruction} (Block)
+  items {List_Loop} (low, high)
+  close {Bare_Instruction} (End)
+  refuse {Give_Code} (Zero)
+  check {Least_Check} (least)
+  hold {Hold_Count} (Record_Place)
+  reading {Instruction...} (start..., done, refused, items..., close, refuse..., close)
+  result {Instruction...} (reading..., check..., hold...)
+
+# Leave the loop and its block when every character is written: "get 1", "get 0", "load",
+# "less", "push 0", "equal", "break_if 1".
+Characters_Left {}
+  number* {U32}
+  counted {Number_Instruction} (Get, Count_Local)
+  place {Number_Instruction} (Get, Zero)
+  load {Bare_Instruction} (Load)
+  less {Bare_Instruction} (Less)
+  zero {Number_Instruction} (Push_Word, number)
+  equal {Bare_Instruction} (Equal)
+  leave {Number_Instruction} (Break_If, One)
+  result {Instruction...} (counted, place, load, less, zero, equal, leave)
+
+# Write the next character of the list: "push 20", "get 1", "add", "load_byte", "write".
+Write_Item {}
+  place* {U32}
+  push {Number_Instruction} (Push_Word, place)
+  counted {Number_Instruction} (Get, Count_Local)
+  add {Bare_Instruction} (Add)
+  load {Bare_Instruction} (Load_Byte)
+  write {Bare_Instruction} (Write)
+  result {Instruction...} (push, counted, add, load, write)
+
+# Write each character of the list at local 0, and give 0.
+Write_List_Code {}
+  number* {U32}
+  start {Local_Start} (Zero, Count_Local)
+  open {Bare_Instruction} (Block)
+  loop {Bare_Instruction} (Loop)
+  left {Characters_Left} (Zero)
+  item {Write_Item} (Items_Place)
+  next_count {Count_Up} (Count_Local)
+  again {Number_Instruction} (Break, Zero)
+  close {Bare_Instruction} (End)
+  give {Give_Code} (number)
+  writing {Instruction...} (open, loop, left..., item..., next_count..., again, close, close)
+  result {Instruction...} (start..., writing..., give...)
+
+# A character range's type: its name, and the numbers of its ends.
+Known_Range {}
+  name* {Type_Name}
+  low* {U32}
+  high* {U32}
+
+# A base of one character range adds its range, for the line's name.
+# Example: '"0".."9"' on Digit adds Digit, 48, 57.
+Range_Known {}
+  items* {Character_Range}
+  name* {Type_Name}
+  low {Quoted_Code} (items.low)
+  high {Quoted_Code} (items.high)
+  known {Known_Range} (name, low, high)
+  result {Known_Range...} (known)
+
+# A union of several items adds no range.
+Union_No_Range {}
+  items* {Union_List}
+  name* {Type_Name}
+  result {Known_Range...} (Empty_String)
+
+Box_Ranges {Range_Known | Union_No_Range}
+
+# The range a union box adds, for the line's name.
+Box_Items_Ranges {}
+  box* {Union_Box}
+  name* {Type_Name}
+  result {Box_Ranges} (box.items, name)
+
+# A union line adds its range when its base is one character range.
+Union_Line_Ranges {}
+  line* {Union_Line}
+  result {Box_Items_Ranges} (line.base, line.name)
+
+# A refinement line or an intersection line adds no range.
+Other_Line_Ranges {}
+  line* {Refinement_Line | Intersection_Line}
+  result {Known_Range...} (Empty_String)
+
+Line_Ranges {Union_Line_Ranges | Other_Line_Ranges}
+
+# The ranges of a group of lines, in order.
+# Example: 'Digit {"0".."9"}' then 'Natural {Digit...} count: 1..' give Digit, 48, 57.
+Group_Ranges {}
+  lines* {Noted_Line...}
+  known* {Known_Range...}
+  noted {Noted_Line} (lines.first)
+  added {Line_Ranges} (noted.line)
+  with_line {Known_Range...} (known..., added...)
+  result {Known_Range...} (known)
+    while (lines.count >= 1)
+    next (lines.rest, with_line)
+
+# A count from a low number up gives that number: '1..' gives 1.
+Lower_Least {}
+  quantity* {Lower_Range}
+  result {Integer} (quantity.low)
+
+# The least count a count property gives: 'count: 1..' gives 1.
+Count_Least {}
+  property* {Count_Property}
+  otherwise* {U32}
+  lower {Lower_Least} (property.allowed)
+  result {Integer} (lower)
+
+# Any other property gives the least count there is with no count property.
+Other_Least {}
+  property* {Places_Property | Round_Property | Wrap_Property | List_Property}
+  otherwise* {U32}
+  result {Integer} (otherwise)
+
+Property_Least {Count_Least | Other_Least}
+
+# The code that reads a list of a known range, with its least count.
+# Example: Digit, Digit's range and 1 give the code that reads a whole number.
+Known_List_Code {}
+  item* {Type_Name}
+  known* {Known_Range...}
+  least* {U32}
+  found {Known_Range...} (known.name = item)
+  range {Known_Range} (found.first)
+  code {List_Code} (range.low, range.high, least)
+  show {Write_List_Code} (Zero)
+  result {Reading_Program} (code, show)
+
+# The code that reads a list box's items, with the least count of the line's properties.
+List_Box_Reader {}
+  box* {List_Box}
+  known* {Known_Range...}
+  least* {U32}
+  result {Known_List_Code} (box.item, known, least)
+
+# The code that reads a refinement line's list. With no count, the least count is 0.
+# Example: 'Natural {Digit...} count: 1..' gives the code that reads a whole number.
+List_Line_Reader {}
+  line* {Refinement_Line}
+  known* {Known_Range...}
+  written {Properties...} (line.properties)
+  firsts {Property...} (written.first)
+  leasts {Property_Least...} (firsts..., Zero)
+  least {Integer} (leasts.sum)
+  result {List_Box_Reader} (line.base, known, least)
+
+# A group of lines whose last line is a list of a character range, as a program that reads it.
+# Example: 'Digit {"0".."9"}' then 'Natural {Digit...} count: 1..' give a program that reads a
+# whole number, writes it and gives 0.
+Compiled_List {}
+  group {Line_Group}
+  lines {Noted_Line...} (group.first, group.rest...)
+  known {Group_Ranges} (lines, Empty_String)
+  last {Noted_Line} (lines.last)
+  reader {List_Line_Reader} (last.line, known)
+  text {Text}
+    1. {group}
