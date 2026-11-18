@@ -37,9 +37,14 @@ Wasm_Byte {}
   more_follows* {Binary_Digit}
   bits* {Binary_String} count: 7
 
-# A number as WebAssembly writes it here: five bytes, lowest first.
+# A number as WebAssembly writes it here: five bytes, lowest first. More bytes follow each of
+# the first four, and none follows the last.
 Wasm_Number {}
   bytes* {Wasm_Byte...} count: 5
+  continued {Wasm_Byte...} (bytes.more_follows = "1")
+  four_continued {Needs} (continued.count = 4)
+  last_byte {Wasm_Byte} (bytes.last)
+  ends {Needs} (last_byte.more_follows = "0")
 
 # Writing a number in bytes by dividing by 128 again and again: each
 # remainder is the seven bits of the next byte, until no bytes are left.
