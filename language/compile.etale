@@ -3,56 +3,96 @@
 Main_Number {Integer} (0)                # main is function 0
 Main_Name {"main"}
 No_Inputs {Integer} (0)                  # main takes nothing
+Add {"add"}
+Subtract {"subtract"}
+Multiply {"multiply"}
+Most_U32 {Integer} (4294967295)          # the most a kernel number holds
 
-# A program whose main gives one number.
-# Example: 7 gives "function 0 main takes 0", then "push 7" and "return".
-Number_To_Main {}
+# The instruction that puts one number on the stack.
+# Example: 7 gives "push 7".
+Push_Number {}
   number* {U32}
   argument {Number_Argument} (number)
   arguments {Number_Argument...} (argument)
-  push {Instruction} (Push_Word, arguments, Empty_String)
+  result {Instruction} (Push_Word, arguments, Empty_String)
+
+# A program whose main runs some code, then gives the value on the stack.
+# Example: "push 7" gives "function 0 main takes 0", then "push 7" and "return".
+Code_To_Main {}
+  code* {Instruction...} count: 1..
   give {Instruction} (Return_Word, Empty_String, Empty_String)
-  instructions {Instruction...} (push, give)
+  instructions {Instruction...} (code..., give)
   head {Function_Head} (Main_Number, Main_Name, No_Inputs)
   main {Function} (head, instructions)
   functions {Function...} (main)
   result {Program} (functions)
 
-# A whole number as it is written, worked out while compiling.
-# Example: "7" gives 7.
-Literal_Value {}
-  calculation* {Number_Literal}
-  result {Integer} (calculation)
+Operator_Tail {Sum_Tail | Difference_Tail | Product_Tail}
 
-# A sum of whole numbers, worked out while compiling.
-# Example: "1 + 2 + 3" gives 6.
-Addition_Value {}
+# One number after an operator, as code: put the number on the stack, then do the operation.
+# Example: "add" and " + 3" give "push 3", then "add".
+Step_Code {}
+  word* {Arithmetic_Word}
+  tail* {Operator_Tail}
+  push {Push_Number} (tail.next)
+  operate {Instruction} (word, Empty_String, Empty_String)
+  result {Instruction...} (push, operate)
+
+# A whole number as code.
+# Example: "7" gives "push 7".
+Literal_Code {}
+  calculation* {Number_Literal}
+  push {Push_Number} (calculation)
+  result {Instruction...} (push)
+
+# A sum as code: the first number, then each other number and "add". The sum must fit in U32.
+# Example: "1 + 2" gives "push 1", "push 2", "add". "4294967295 + 1" is refused.
+Addition_Code {}
   calculation* {Sum}
   tails {Sum_Tail...} (calculation.rest)
   numbers {Integer...} (tails.next)
   rest_total {Integer} (numbers.sum)
-  first {Integer} (calculation.first)
-  result {Integer} (first + rest_total)
+  first_number {Integer} (calculation.first)
+  total {Integer} (first_number + rest_total)
+  fits {Needs} (total <= Most_U32)
+  first {Push_Number} (calculation.first)
+  steps {Step_Code...} (Add, calculation.rest...)
+  rest {Instruction...} (steps.result)
+  result {Instruction...} (first, rest...)
 
-# A difference of whole numbers, worked out while compiling: the first, less each of the others.
-# Example: "10 - 2 - 3" gives 5.
-Subtraction_Value {}
+# A difference as code: the first number, then each other number and "subtract". The difference
+# must not go below 0.
+# Example: "10 - 2" gives "push 10", "push 2", "subtract". "1 - 2" is refused.
+Subtraction_Code {}
   calculation* {Difference}
   tails {Difference_Tail...} (calculation.rest)
   numbers {Integer...} (tails.next)
   rest_total {Integer} (numbers.sum)
-  first {Integer} (calculation.first)
-  result {Integer} (first - rest_total)
+  first_number {Integer} (calculation.first)
+  fits {Needs} (first_number >= rest_total)
+  first {Push_Number} (calculation.first)
+  steps {Step_Code...} (Subtract, calculation.rest...)
+  rest {Instruction...} (steps.result)
+  result {Instruction...} (first, rest...)
+
+# A product as code: the first number, then each other number and "multiply".
+# Example: "2 * 3" gives "push 2", "push 3", "multiply".
+Multiplication_Code {}
+  calculation* {Product}
+  first {Push_Number} (calculation.first)
+  steps {Step_Code...} (Multiply, calculation.rest...)
+  rest {Instruction...} (steps.result)
+  result {Instruction...} (first, rest...)
 
 # A calculation makes the one of these that takes it.
-Calculation_Value {Literal_Value | Addition_Value | Subtraction_Value}
+Calculation_Code {Literal_Code | Addition_Code | Subtraction_Code | Multiplication_Code}
 
-# The number in a constant's parentheses, as a program whose main gives it.
-# Example: " (1 + 1)" gives main, which pushes 2 and gives it. " (0..5)" is refused.
+# The calculation in a constant's parentheses, as a program whose main gives its value.
+# Example: " (1 + 1)" gives main, which pushes 1 and 1, adds them and gives 2.
 Parens_To_Main {}
   parens* {Parens}
-  number {Calculation_Value} (parens.content)
-  result {Number_To_Main} (number)
+  code {Calculation_Code} (parens.content)
+  result {Code_To_Main} (code)
 
 # A constant as a program whose main gives its value.
 # Example: "Group_Width {Integer} (7)" gives main, which pushes 7 and gives it.
