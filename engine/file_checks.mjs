@@ -493,8 +493,17 @@ export function file_errors(loaded) {
       if (methods.includes(step)) return item_methods.includes(step) ? field?.items : [{ type: 'Integer' }];
       field = field_of(given_record(field?.items?.[0]?.type), step);
     }
-    return field?.items;
+    return field?.role === 'made' ? result_items(field.items) : field?.items;
   }
+  // A made record gives its result: for a union of records, the result that every member gives.
+  const result_items = (items) => {
+    const type = items?.length === 1 ? items[0].type : undefined;
+    const members = type && members_of(by_name, type);
+    const results = (members ?? [record_of(type)]).map((member) => member && field_of(member, 'result'));
+    if (!results.length || results.some((result) => !result)) return items;
+    const texts = new Set(results.map((result) => items_text(result.items)));
+    return texts.size === 1 && !record_of(results[0].items?.[0]?.type) ? results[0].items : items;
+  };
   const items_text = (items) => (items ?? []).map(item_text).join(' | ');
   // a union whose every value is a value of another, as Compiled_Word is of Kernel_Word
   const within = (one, two) => {
@@ -526,6 +535,8 @@ export function file_errors(loaded) {
     const through = (path, seen = []) => {
       const view = path.length > 1 && views.get(path[0]);
       if (!view || seen.includes(view)) return path;
+      // a collected list of numbers is read as its own numbers: the call refuses any other value
+      if (view.role === 'collected' && numeric(by_name, view.items) && path.length === 2 && methods.includes(path[1])) return path;
       const source = view.role === 'kept' ? [(view.condition.all ?? view.condition.any)[0].path[0]] : view.value.path;
       return through([...source, ...path.slice(1)], [...seen, view]);
     };
@@ -672,6 +683,9 @@ export function file_errors(loaded) {
       }
       return;
     }
+    const numbers = declaration.fields.find((each) => each.name === head && each.role === 'collected');
+    const before = (one) => declaration.fields.indexOf(one) < declaration.fields.indexOf(field);
+    if (numbers && numeric(by_name, numbers.items) && path.length === 2 && methods.includes(step) && before(numbers)) return;
     if (!field_of(declaration, head)) return error(declaration, field.line, "unknown field '" + head + "'", where);
     if (head === field.name) return error(declaration, field.line, "field '" + head + "' cannot refer to itself", where);
     if (!above.includes(head)) {
@@ -687,7 +701,9 @@ export function file_errors(loaded) {
     for (let index = 0; index < path.length; index++) {
       const step = path[index];
       const so_far = path.slice(0, index).join('.');
-      if (index > 0 && methods.includes(step)) {
+      // a record's own field may have a method's name, as Sum's first does
+      const own_field = state === 'one' && at && record_of(at.name) && field_of(record_of(at.name), step);
+      if (index > 0 && methods.includes(step) && !own_field) {
         if (state === 'one') error(declaration, line, "'." + step + "' reads a list, but " + so_far + ' is not one', where);
         if (index !== path.length - 1) error(declaration, line, "a method ends the path ('." + step + "')", where);
         if (step !== 'count' && !item_methods.includes(step) && last_field && !numeric(by_name, last_field.items)) {

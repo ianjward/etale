@@ -247,7 +247,9 @@ export function rules_of(declarations, scope = declarations, heads_made_before =
           if (members) {
             // a call to a union of records: the member whose starred fields take the values
             const choices = members.map((member) => ({ make: member.name,
-              accepts: member.fields.filter((each) => each.required).map((each) => accepted(each.items)) }));
+              accepts: member.fields.filter((each) => each.required).map((each) => accepted(each.items)),
+              types: member.fields.filter((each) => each.required)
+                .map((each) => each.items.map((item) => written_as[item.type] ?? item.type)) }));
             const stored = members[0].fields.filter((each) => each.required).map((each) => each.name);
             fields.push({ name, make_one_of: choices, fields: stored, values: field.positions.map((slot) => resolve(slot.value ?? { path: slot.path })) });
             continue;

@@ -326,7 +326,8 @@ export function evaluator(text, numeric, rules_by_head = new Map()) {
     const stopped = values.find(stop);
     if (stopped) return stopped;
     const text = (value) => (value instanceof Exact ? decimal_text(value) : String(value));
-    const takes = (choice) => choice.accepts.every((taken, at) => taken === null || taken.includes(text(values[at])));
+    const takes = (choice) => choice.accepts.every((taken, at) => taken === null || taken.includes(text(values[at])))
+      && (choice.types ?? []).every((types, at) => types.some((type) => fits(values[at], type)));
     const chosen = line.make_one_of.filter(takes);
     if (chosen.length !== 1) return INVALID;
     return make(node, { make: chosen[0].make, fields: line.fields, values: line.values }, outside);
