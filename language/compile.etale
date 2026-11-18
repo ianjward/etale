@@ -3,101 +3,131 @@
 Main_Number {Integer} (0)                # main is function 0
 Main_Name {"main"}
 No_Inputs {Integer} (0)                  # main takes nothing
-Add {"add"}
-Subtract {"subtract"}
-Multiply {"multiply"}
-Most_U32 {Integer} (4294967295)          # the most a kernel number holds
+One {Integer} (1)
 
-# The instruction that puts one number on the stack.
-# Example: 7 gives "push 7".
-Push_Number {}
+# A program whose main gives one number.
+# Example: 7 gives "function 0 main takes 0", then "push 7" and "return".
+Number_To_Main {}
   number* {U32}
   argument {Number_Argument} (number)
   arguments {Number_Argument...} (argument)
-  result {Instruction} (Push_Word, arguments, Empty_String)
-
-# A program whose main runs some code, then gives the value on the stack.
-# Example: "push 7" gives "function 0 main takes 0", then "push 7" and "return".
-Code_To_Main {}
-  code* {Instruction...} count: 1..
+  push {Instruction} (Push_Word, arguments, Empty_String)
   give {Instruction} (Return_Word, Empty_String, Empty_String)
-  instructions {Instruction...} (code..., give)
+  instructions {Instruction...} (push, give)
   head {Function_Head} (Main_Number, Main_Name, No_Inputs)
   main {Function} (head, instructions)
   functions {Function...} (main)
   result {Program} (functions)
 
-Operator_Tail {Sum_Tail | Difference_Tail | Product_Tail}
+# A constant worked out while compiling: its name and its value, which a kernel number holds.
+Known_Constant {}
+  name* {Type_Name}
+  number* {U32}
 
-# One number after an operator, as code: put the number on the stack, then do the operation.
-# Example: "add" and " + 3" give "push 3", then "add".
-Step_Code {}
-  word* {Arithmetic_Word}
-  tail* {Operator_Tail}
-  push {Push_Number} (tail.next)
-  operate {Instruction} (word, Empty_String, Empty_String)
-  result {Instruction...} (push, operate)
+# A whole number as it is written.
+# Example: "7" gives 7.
+Literal_Value {}
+  written* {Number_Literal}
+  known* {Known_Constant...}
+  result {Integer} (written)
 
-# A whole number as code.
-# Example: "7" gives "push 7".
-Literal_Code {}
-  calculation* {Number_Literal}
-  push {Push_Number} (calculation)
-  result {Instruction...} (push)
+# A constant's name: the value of the constant of that name, above it.
+# Example: "Group_Width", after "Group_Width {Integer} (7)", gives 7.
+Name_Value {}
+  written* {Path}
+  known* {Known_Constant...}
+  found {Known_Constant...} (known.name = written)
+  constant {Known_Constant} (found.first)
+  result {Integer} (constant.number)
 
-# A sum as code: the first number, then each other number and "add". The sum must fit in U32.
-# Example: "1 + 2" gives "push 1", "push 2", "add". "4294967295 + 1" is refused.
-Addition_Code {}
-  calculation* {Sum}
-  tails {Sum_Tail...} (calculation.rest)
-  numbers {Integer...} (tails.next)
-  rest_total {Integer} (numbers.sum)
-  first_number {Integer} (calculation.first)
-  total {Integer} (first_number + rest_total)
-  fits {Needs} (total <= Most_U32)
-  first {Push_Number} (calculation.first)
-  steps {Step_Code...} (Add, calculation.rest...)
-  rest {Instruction...} (steps.result)
-  result {Instruction...} (first, rest...)
+# A term is a number or a name.
+Term_Value {Literal_Value | Name_Value}
 
-# A difference as code: the first number, then each other number and "subtract". The difference
-# must not go below 0.
-# Example: "10 - 2" gives "push 10", "push 2", "subtract". "1 - 2" is refused.
-Subtraction_Code {}
-  calculation* {Difference}
-  tails {Difference_Tail...} (calculation.rest)
-  numbers {Integer...} (tails.next)
-  rest_total {Integer} (numbers.sum)
-  first_number {Integer} (calculation.first)
-  fits {Needs} (first_number >= rest_total)
-  first {Push_Number} (calculation.first)
-  steps {Step_Code...} (Subtract, calculation.rest...)
-  rest {Instruction...} (steps.result)
-  result {Instruction...} (first, rest...)
+# A product of whole numbers: each number times the product so far.
+# Example: 2, 3 and 4 with 1 so far give 24.
+Product_Of {}
+  numbers* {Integer...}
+  so_far* {Integer} (0..)
+  number {Integer} (numbers.first)
+  product {Integer} (so_far * number)
+  result {Integer} (so_far)
+    while (numbers.count >= 1)
+    next (numbers.rest, product)
 
-# A product as code: the first number, then each other number and "multiply".
-# Example: "2 * 3" gives "push 2", "push 3", "multiply".
-Multiplication_Code {}
-  calculation* {Product}
-  first {Push_Number} (calculation.first)
-  steps {Step_Code...} (Multiply, calculation.rest...)
-  rest {Instruction...} (steps.result)
-  result {Instruction...} (first, rest...)
+# A sum, worked out while compiling.
+# Example: "1 + Group_Width" gives 8.
+Addition_Value {}
+  written* {Sum}
+  known* {Known_Constant...}
+  first {Term_Value} (written.first, known)
+  tails {Sum_Tail...} (written.rest)
+  terms {Term...} (tails.next)
+  others {Term_Value...} (terms..., known)
+  rest_total {Integer} (others.sum)
+  result {Integer} (first + rest_total)
+
+# A difference: the first term less each of the others.
+# Example: "10 - 2 - 3" gives 5.
+Subtraction_Value {}
+  written* {Difference}
+  known* {Known_Constant...}
+  first {Term_Value} (written.first, known)
+  tails {Difference_Tail...} (written.rest)
+  terms {Term...} (tails.next)
+  others {Term_Value...} (terms..., known)
+  rest_total {Integer} (others.sum)
+  result {Integer} (first - rest_total)
+
+# A product of terms.
+# Example: "2 * 3 * 4" gives 24.
+Multiplication_Value {}
+  written* {Product}
+  known* {Known_Constant...}
+  first {Term_Value} (written.first, known)
+  tails {Product_Tail...} (written.rest)
+  terms {Term...} (tails.next)
+  others {Term_Value...} (terms..., known)
+  product {Product_Of} (others, first)
+  result {Integer} (product)
 
 # A calculation makes the one of these that takes it.
-Calculation_Code {Literal_Code | Addition_Code | Subtraction_Code | Multiplication_Code}
+Operation_Value {Addition_Value | Subtraction_Value | Multiplication_Value}
+Calculation_Value {Term_Value | Operation_Value}
 
-# The calculation in a constant's parentheses, as a program whose main gives its value.
-# Example: " (1 + 1)" gives main, which pushes 1 and 1, adds them and gives 2.
-Parens_To_Main {}
+# The value of the calculation in parentheses.
+Parens_Value {}
   parens* {Parens}
-  code {Calculation_Code} (parens.content)
-  result {Code_To_Main} (code)
+  known* {Known_Constant...}
+  calculation {Calculation_Value} (parens.content, known)
+  result {Integer} (calculation)
 
-# A constant as a program whose main gives its value.
-# Example: "Group_Width {Integer} (7)" gives main, which pushes 7 and gives it.
-Compiled_Constant {}
-  line {Refinement_Line}
-  kernel {Parens_To_Main} (line.parens)
+# A constant's line: its name, and the value of its calculation.
+# Example: "Group_Values {Integer} (Group_Width + 121)" gives Group_Values, 128.
+Line_Constant {}
+  line* {Refinement_Line}
+  known* {Known_Constant...}
+  parens {Parens_Value} (line.parens, known)
+  result {Known_Constant} (line.name, parens)
+
+# The constants of a group of lines, worked out in order: each may name the ones above it.
+# Example: "A {Integer} (2)" then "B {Integer} (A * 3)" give A, 2 and B, 6.
+Group_Constants {}
+  lines* {Noted_Line...}
+  known* {Known_Constant...}
+  noted {Noted_Line} (lines.first)
+  constant {Line_Constant} (noted.line, known)
+  with_line {Known_Constant...} (known..., constant)
+  result {Known_Constant...} (known)
+    while (lines.count >= 1)
+    next (lines.rest, with_line)
+
+# A group of one-line constants as a program whose main gives the last one's value.
+# Example: "A {Integer} (2)" then "B {Integer} (A * 3)" give main, which pushes 6 and gives it.
+Compiled_Group {}
+  group {Line_Group}
+  lines {Noted_Line...} (group.first, group.rest...)
+  known {Group_Constants} (lines, Empty_String)
+  last {Known_Constant} (known.last)
+  kernel {Number_To_Main} (last.number)
   text {Text}
-    1. {line}
+    1. {group}
