@@ -205,7 +205,7 @@ Wasm_Instruction {}
     1. {head}
     2. {number}
 
-# A function as WebAssembly writes it: the size of its body, its four
+# A function as WebAssembly writes it: the size of its body, its eight
 # i32 locals, its code and its end.
 Wasm_Function {}
   body_length* {Wasm_Number}
@@ -213,7 +213,7 @@ Wasm_Function {}
   text {Binary_Digit}
     1. {body_length}
     2. {"00000001"}                      # one group of locals
-    3. {"00000100"}                      # of four locals
+    3. {"00001000"}                      # of eight locals
     4. {"01111111"}                      # each an i32
     5. {code}
     6. {"00001011"}                      # the end of the function

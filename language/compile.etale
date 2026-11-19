@@ -212,11 +212,15 @@ Compiled_File {}
 
 # A reading program keeps its input in memory, from Input_Place to the end at Input_End_Place,
 # and the place of the next byte at Position_Place. Each type is a function that reads it: it
-# gives 1 and moves the position on, or gives 0 and puts the position back. So a part that may
-# be missing is a call whose 0 is passed over, and a union tries each member in turn.
+# gives the place of its value and moves the position on, or gives 0 and puts the position back.
+# So a part that may be missing is a call whose 0 is passed over, and a union tries each member
+# in turn. A text's value is the place in the input where it starts. A number or a record is
+# kept after the input, from the place that Free_Place holds.
 
 Position_Place {Integer} (4)             # the place of the next byte
 Input_End_Place {Integer} (8)            # the place after the last byte
+Free_Place {Integer} (12)                # the place where the next value is kept
+Slot_Size {Integer} (4)                  # a number, or the place of a field's value, is 4 bytes
 Input_Place {Integer} (1024)             # where the input starts
 End_Of_Input {Integer} (4294967295)      # what 'read' and take give when no byte is left
 No_Most {Integer} (4294967295)           # the most count of a list with no most
@@ -243,6 +247,10 @@ Value_Local {Integer} (1)                # local 1 holds a number's value while 
 Try_Local {Integer} (1)                  # local 1 holds the position before a try
 Item_Local {Integer} (2)                 # local 2 counts the items of a list
 Start_Local {Integer} (3)                # local 3 holds the position where the function starts
+
+Free_Local {Integer} (4)                 # local 4 holds the free place where the function starts
+Record_Local {Integer} (5)               # local 5 holds the place of the record being read
+Part_Local {Integer} (6)                 # local 6 holds the value of the part just read
 
 Get {"get"}
 Set {"set"}
@@ -399,30 +407,73 @@ Most_Leave {}
   leave {Number_Instruction} (Break_If, One)
   result {Instruction...} (get, push, less, zero, equal, leave)
 
-# A type's function around its body: keep where it starts; when the body reads, give 1; when
-# the body leaves its block, put the position back and give 0.
+# Give the value in a local from the function: "get 3", "return".
+Local_Give {}
+  local* {U32}
+  get {Number_Instruction} (Get, local)
+  give {Bare_Instruction} (Return_Word)
+  result {Instruction...} (get, give)
+
+# Keep the free place in a local: "push 12", "load", "set 4".
+Keep_Free {}
+  local* {U32}
+  place {Number_Instruction} (Push_Word, Free_Place)
+  load {Bare_Instruction} (Load)
+  keep {Number_Instruction} (Set, local)
+  result {Instruction...} (place, load, keep)
+
+# Put the free place back from a local: "push 12", "get 4", "store".
+Put_Free_Back {}
+  local* {U32}
+  place {Number_Instruction} (Push_Word, Free_Place)
+  get {Number_Instruction} (Get, local)
+  store {Bare_Instruction} (Store)
+  result {Instruction...} (place, get, store)
+
+# Take room for a value: keep the free place in a local, and move the free place on by the size.
+# Example: 5 and 12 give "push 12", "load", "set 5", "push 12", "get 5", "push 12", "add", "store".
+Take_Room {}
+  local* {U32}
+  size* {U32}
+  keep {Keep_Free} (local)
+  place {Number_Instruction} (Push_Word, Free_Place)
+  get {Number_Instruction} (Get, local)
+  push {Number_Instruction} (Push_Word, size)
+  add {Bare_Instruction} (Add)
+  store {Bare_Instruction} (Store)
+  result {Instruction...} (keep..., place, get, push, add, store)
+
+# A type's function around its body: keep where it starts, and the free place. A body that
+# gives no value of its own gives the place where its text starts. When the body leaves its
+# block, put the position and the free place back, and give 0.
 Type_Frame {}
   body* {Instruction...}
   start {Keep_Position} (Start_Local)
+  free {Keep_Free} (Free_Local)
   open {Bare_Instruction} (Block)
-  read {Give_Code} (One)
+  read {Local_Give} (Start_Local)
   close {Bare_Instruction} (End)
   back {Put_Position_Back} (Start_Local)
+  free_back {Put_Free_Back} (Free_Local)
   refuse {Give_Code} (Zero)
-  result {Instruction...} (start..., open, body..., read..., close, back..., refuse...)
+  opening {Instruction...} (start..., free..., open)
+  result {Instruction...} (opening..., body..., read..., close, back..., free_back..., refuse...)
 
-# A part read by a function. When the function gives 0, the block around the code is left,
-# unless the least count is 0: "call 4", "push 0", "equal", "push 1", "multiply", "break_if 0".
+# A part read by a function, its value kept in local 6. When the function gives 0, the block
+# around the code is left, unless the least count is 0: "call 4", "set 6", "get 6", "push 0",
+# "equal", "push 1", "multiply", "break_if 0".
 Part_Call {}
   function* {U32}
   least* {U32}
   call {Call_Instruction} (function)
+  keep {Number_Instruction} (Set, Part_Local)
+  get {Number_Instruction} (Get, Part_Local)
   zero {Number_Instruction} (Push_Word, Zero)
   equal {Bare_Instruction} (Equal)
   push {Number_Instruction} (Push_Word, least)
   both {Bare_Instruction} (Multiply)
   leave {Number_Instruction} (Break_If, Zero)
-  result {Instruction...} (call, zero, equal, push, both, leave)
+  result {Instruction...} (call, keep, get, zero, equal, push, both, leave)
 
 # A list of parts read by a function, from its least count to its most.
 # Example: function 3 with 1 to no most gives the code that reads one or more digits.
@@ -463,16 +514,19 @@ Text_Try {}
   trying {Instruction...} (done, miss, start..., taking..., found, close)
   result {Instruction...} (trying..., back..., push, refuse, close)
 
-# Keep where the input ends, start the position at the first byte, and give 0.
+# Keep where the input ends, start the free place there, start the position at the first byte,
+# and give 0.
 Load_Input_End {}
   place* {U32}
   end_place {Number_Instruction} (Push_Word, Input_End_Place)
   at {Number_Instruction} (Get, Byte_Local)
   store {Bare_Instruction} (Store)
+  free {Number_Instruction} (Push_Word, Free_Place)
   position {Number_Instruction} (Push_Word, Position_Place)
   first {Number_Instruction} (Push_Word, place)
   give {Give_Code} (Zero)
-  result {Instruction...} (end_place, at, store, position, first, store, give...)
+  ends {Instruction...} (end_place, at, store, free, at, store)
+  result {Instruction...} (ends..., position, first, store, give...)
 
 # The rest of load_input: stop at the end of the input; otherwise keep the byte and go on.
 Load_Input_Store {}
@@ -951,12 +1005,26 @@ List_Line_Type {}
   compiled {Compiled_Type} (line.name, number, body)
   result {Compiled_Type...} (compiled)
 
-# Parentheses that hold a range from low to high, at least 0, make a number type.
+# Keep a number in a local after the input, and give its place.
+# Example: 1 gives "push 12", "load", "set 0", ..., "get 0", "get 1", "store", "get 0", "return".
+Number_Give {}
+  local* {U32}
+  room {Take_Room} (Byte_Local, Slot_Size)
+  place {Number_Instruction} (Get, Byte_Local)
+  number {Number_Instruction} (Get, local)
+  store {Bare_Instruction} (Store)
+  give {Local_Give} (Byte_Local)
+  result {Instruction...} (room..., place, number, store, give...)
+
+# Parentheses that hold a range from low to high, at least 0, make a number type. Its value is
+# the number.
 Range_Content_Type {}
   content* {Bounded_Range}
   line* {Refinement_Line}
   types* {Compiled_Type...}
-  body {Number_Body} (content.low, content.high)
+  reading {Number_Body} (content.low, content.high)
+  give {Number_Give} (Value_Local)
+  body {Instruction...} (reading..., give...)
   number {Integer} (First_Type_Number + types.count)
   compiled {Compiled_Type} (line.name, number, body)
   result {Compiled_Type...} (compiled)
@@ -1123,7 +1191,19 @@ Field_Box_Name {}
   box* {Field_Box}
   result {Field_Name} (box.field)
 
-# A shape position that names a field: the field's line, read as a part.
+# Keep the part just read in the record, at a place from its start: "get 5", "push 8", "add",
+# "get 6", "store".
+Slot_Store {}
+  offset* {U32}
+  record {Number_Instruction} (Get, Record_Local)
+  push {Number_Instruction} (Push_Word, offset)
+  add {Bare_Instruction} (Add)
+  part {Number_Instruction} (Get, Part_Local)
+  store {Bare_Instruction} (Store)
+  result {Instruction...} (record, push, add, part, store)
+
+# A shape position that names a field: the field's line, read as a part, and its value kept in
+# the record. Position 2 is kept 8 bytes from the record's start.
 # Example: '    2. {word}' reads the record's word.
 Field_Position_Part {}
   position* {Field_Position}
@@ -1132,7 +1212,11 @@ Field_Position_Part {}
   wanted {Field_Box_Name} (position.base)
   found {Known_Field...} (fields.name = wanted)
   field {Known_Field} (found.first)
-  result {Field_Line_Part} (field.line, types)
+  part {Field_Line_Part} (field.line, types)
+  slot {Digits_Value} (position.number, Zero)
+  offset {Integer} (slot * Slot_Size)
+  store {Slot_Store} (offset)
+  result {Instruction...} (part..., store...)
 
 # A shape position of a type or a quoted text, read as a layout position is.
 # Example: '    1. {"  "}' reads two spaces.
@@ -1145,6 +1229,214 @@ Type_Position_Part {}
   result {Box_Part} (position.base, types, times)
 
 Shape_Part {Field_Position_Part | Type_Position_Part}
+
+# ---------- Rules
+
+# A field's value in a record: its name, and how far from the record's start it is kept.
+Field_Slot {}
+  name* {Field_Name}
+  offset* {U32}
+
+# A shape position that names a field gives its field's slot: its number times the size.
+# Example: '    2. {word}' with 4 gives word, 8.
+Field_Position_Slot {}
+  position* {Field_Position}
+  size* {U32}
+  name {Field_Box_Name} (position.base)
+  slot {Digits_Value} (position.number, Zero)
+  offset {Integer} (slot * size)
+  kept {Field_Slot} (name, offset)
+  result {Field_Slot...} (kept)
+
+# A shape position of a type or a quoted text keeps no field.
+Type_Position_Slot {}
+  position* {Type_Position}
+  size* {U32}
+  result {Field_Slot...} (Empty_String)
+
+Position_Slot {Field_Position_Slot | Type_Position_Slot}
+
+Needs_Word {"Needs"}
+Claims_Word {"Claims"}
+
+Equal_Sign {"="}
+Less_Sign {"<"}
+More_Sign {">"}
+At_Most_Sign {"<="}
+At_Least_Sign {">="}
+
+# A field's number, for a test: the place kept in the record, then the number at that place.
+# Example: low, kept 4 bytes from the start, gives "get 5", "push 4", "add", "load", "load".
+Path_Code {}
+  written* {Path}
+  offsets* {Field_Slot...}
+  found {Field_Slot...} (offsets.name = written)
+  slot {Field_Slot} (found.first)
+  record {Number_Instruction} (Get, Record_Local)
+  push {Number_Instruction} (Push_Word, slot.offset)
+  add {Bare_Instruction} (Add)
+  load {Bare_Instruction} (Load)
+  result {Instruction...} (record, push, add, load, load)
+
+# A whole number, for a test.
+# Example: "10" gives "push 10".
+Literal_Code {}
+  written* {Number_Literal}
+  offsets* {Field_Slot...}
+  number {Literal_Value} (written, Empty_String)
+  push {Number_Instruction} (Push_Word, number)
+  result {Instruction...} (push)
+
+Value_Code {Path_Code | Literal_Code}
+
+# Leave the block around the code, as many blocks as depth and one more, when the top of the
+# stack is 0: "push 0", "equal", "break_if 0".
+Leave_Unless {}
+  depth* {U32}
+  zero {Number_Instruction} (Push_Word, Zero)
+  equal {Bare_Instruction} (Equal)
+  leave {Number_Instruction} (Break_If, depth)
+  result {Instruction...} (zero, equal, leave)
+
+# 'a = b' holds when they are equal.
+Equal_Test {}
+  symbol* {Equal_Sign}
+  left* {Instruction...}
+  right* {Instruction...}
+  equal {Bare_Instruction} (Equal)
+  unless {Leave_Unless} (Zero)
+  result {Instruction...} (left..., right..., equal, unless...)
+
+# 'a < b' holds when a is less.
+Less_Test {}
+  symbol* {Less_Sign}
+  left* {Instruction...}
+  right* {Instruction...}
+  less {Bare_Instruction} (Less)
+  unless {Leave_Unless} (Zero)
+  result {Instruction...} (left..., right..., less, unless...)
+
+# 'a > b' holds when b is less.
+More_Test {}
+  symbol* {More_Sign}
+  left* {Instruction...}
+  right* {Instruction...}
+  less {Bare_Instruction} (Less)
+  unless {Leave_Unless} (Zero)
+  result {Instruction...} (right..., left..., less, unless...)
+
+# 'a <= b' fails when b is less.
+At_Most_Test {}
+  symbol* {At_Most_Sign}
+  left* {Instruction...}
+  right* {Instruction...}
+  less {Bare_Instruction} (Less)
+  leave {Number_Instruction} (Break_If, Zero)
+  result {Instruction...} (right..., left..., less, leave)
+
+# 'a >= b' fails when a is less.
+At_Least_Test {}
+  symbol* {At_Least_Sign}
+  left* {Instruction...}
+  right* {Instruction...}
+  less {Bare_Instruction} (Less)
+  leave {Number_Instruction} (Break_If, Zero)
+  result {Instruction...} (left..., right..., less, leave)
+
+Symbol_Test {Equal_Test | Less_Test | More_Test | At_Most_Test | At_Least_Test}
+
+# A comparison by a symbol: the test of its symbol.
+Symbol_Code {}
+  comparison* {Symbol_Comparison}
+  left* {Instruction...}
+  right* {Instruction...}
+  result {Symbol_Test} (comparison.symbol, left, right)
+
+# One condition: its field, its value, and the test between them. When the test fails, the
+# function's block is left, and the record is refused.
+# Example: 'low <= high' gives the numbers of high and low, then "less", "break_if 0".
+Condition_Code {}
+  condition* {Condition}
+  offsets* {Field_Slot...}
+  left {Path_Code} (condition.field, offsets)
+  right {Value_Code} (condition.right, offsets)
+  result {Symbol_Code} (condition.comparison, left, right)
+
+# Conditions joined by '&': each one tested in turn.
+And_Code {}
+  conditions* {And_Conditions}
+  offsets* {Field_Slot...}
+  tails {And_Tail...} (conditions.rest)
+  others {Condition...} (tails.next)
+  all {Condition...} (conditions.first, others...)
+  tests {Condition_Code...} (all..., offsets)
+  result {Instruction...} (tests.result)
+
+# A {Needs} line is tested when the record is read.
+Needs_Rule {}
+  kind* {Needs_Word}
+  conditions* {And_Conditions}
+  offsets* {Field_Slot...}
+  result {And_Code} (conditions, offsets)
+
+# A {Claims} line is proven when the file is checked, so it is not tested when it runs.
+Claims_Rule {}
+  kind* {Claims_Word}
+  conditions* {And_Conditions}
+  offsets* {Field_Slot...}
+  result {Instruction...} (Empty_String)
+
+Named_Rule {Needs_Rule | Claims_Rule}
+
+# A line of one type with conditions is a rule: {Needs} or {Claims}.
+Item_Box_Rule {}
+  box* {Item_Box}
+  conditions* {And_Conditions}
+  offsets* {Field_Slot...}
+  result {Named_Rule} (box.item, conditions, offsets)
+
+# A list with conditions keeps the items that meet them: it is not a rule.
+List_Box_Rule {}
+  box* {List_Box}
+  conditions* {And_Conditions}
+  offsets* {Field_Slot...}
+  result {Instruction...} (Empty_String)
+
+Box_Rule {Item_Box_Rule | List_Box_Rule}
+
+# Parentheses that hold conditions joined by '&'. Conditions joined by '|' are not compiled yet.
+Conditions_Rule {}
+  content* {And_Conditions}
+  base* {Base_Box}
+  offsets* {Field_Slot...}
+  result {Box_Rule} (base, content, offsets)
+
+# Parentheses that hold anything else are not a rule.
+No_Rule {}
+  content* {Allowed_Choice | Range_Literal | Calculation | Call_Values}
+  base* {Base_Box}
+  offsets* {Field_Slot...}
+  result {Instruction...} (Empty_String)
+
+Content_Rule {Conditions_Rule | No_Rule}
+
+# A field line's test, when it is a rule.
+# Example: 'in_order {Needs} (low <= high)' gives the test of 'low <= high'.
+Field_Line_Rule {}
+  line* {Field_Line}
+  offsets* {Field_Slot...}
+  written_parens {Parens...} (line.parens)
+  contents {Paren_Content...} (written_parens.content)
+  found {Content_Rule...} (contents..., line.base, offsets)
+  result {Instruction...} (found.result)
+
+# A union field or a field worked out by cases is not a rule.
+Other_Line_Rule {}
+  line* {Union_Field_Line | Mapped_Field}
+  offsets* {Field_Slot...}
+  result {Instruction...} (Empty_String)
+
+Line_Rule {Field_Line_Rule | Other_Line_Rule}
 
 # The name a record's head gives.
 Record_Name {}
@@ -1161,9 +1453,18 @@ Shape_Positions {}
   item* {Shape_Item}
   result {Positions_Of_Shape} (item.line)
 
-# A record's text shape as a compiled type: the shape's positions in order.
+# Take room for a record: a place for the value of each position of its shape, from 1 on.
+# Example: 3 positions take 16 bytes, from the record's start.
+Record_Room {}
+  positions* {Shape_Position...}
+  places {Integer} (positions.count + One)
+  size {Integer} (places * Slot_Size)
+  result {Take_Room} (Record_Local, size)
+
+# A record's body: take its room, read the shape's positions in order, then test its rules.
+# Its value is the record's place.
 # Example: kernel.etale's Instruction reads "  push 5" and a newline.
-Shape_Type {}
+Record_Body {}
   shape* {Shape_Item}
   block* {Record_Block}
   types* {Compiled_Type...}
@@ -1172,8 +1473,22 @@ Shape_Type {}
   known {Field_Known...} (lines..., types)
   fields {Known_Field...} (known.result)
   positions {Shape_Positions} (shape)
+  room {Record_Room} (positions)
   parts {Shape_Part...} (positions..., fields, types)
-  body {Instruction...} (parts.result)
+  reading {Instruction...} (parts.result)
+  slots {Position_Slot...} (positions..., Slot_Size)
+  offsets {Field_Slot...} (slots.result)
+  rules {Line_Rule...} (lines..., offsets)
+  testing {Instruction...} (rules.result)
+  give {Local_Give} (Record_Local)
+  result {Instruction...} (room..., reading..., testing..., give...)
+
+# A record's text shape as a compiled type.
+Shape_Type {}
+  shape* {Shape_Item}
+  block* {Record_Block}
+  types* {Compiled_Type...}
+  body {Record_Body} (shape, block, types)
   name {Record_Name} (block.head)
   number {Integer} (First_Type_Number + types.count)
   compiled {Compiled_Type} (name, number, body)
