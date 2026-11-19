@@ -233,8 +233,13 @@ Two {Integer} (2)
 Three {Integer} (3)
 Zero_Code {Integer} (48)                 # the number of the character "0"
 Ten {Integer} (10)
+Nine {Integer} (9)
+Five {Integer} (5)
 
-Byte_Local {Integer} (0)                 # local 0 holds the byte taken
+Tenth_Of_Most {Integer} (429496729)      # the most a number may be before one more digit
+
+Byte_Local {Integer} (0)                 # local 0 holds the byte taken, or a digit's value
+Value_Local {Integer} (1)                # local 1 holds a number's value while it is read
 Try_Local {Integer} (1)                  # local 1 holds the position before a try
 Item_Local {Integer} (2)                 # local 2 counts the items of a list
 Start_Local {Integer} (3)                # local 3 holds the position where the function starts
@@ -244,6 +249,7 @@ Set {"set"}
 Less {"less"}
 Equal {"equal"}
 Add {"add"}
+Subtract {"subtract"}
 Multiply {"multiply"}
 
 Block {"block"}
@@ -483,6 +489,106 @@ Load_Input_Store {}
   done {Load_Input_End} (place)
   storing {Instruction...} (byte, ending, equal, leave, at, byte, store, next_place..., again)
   result {Instruction...} (storing..., close, close, done...)
+
+# Leave as many blocks as depth, and one more, at the end of the input: "push 4", "load",
+# "push 8", "load", "less", "push 0", "equal", "break_if 1".
+At_End_Leave {}
+  depth* {U32}
+  position {Number_Instruction} (Push_Word, Position_Place)
+  load {Bare_Instruction} (Load)
+  end_place {Number_Instruction} (Push_Word, Input_End_Place)
+  less {Bare_Instruction} (Less)
+  zero {Number_Instruction} (Push_Word, Zero)
+  equal {Bare_Instruction} (Equal)
+  leave {Number_Instruction} (Break_If, depth)
+  result {Instruction...} (position, load, end_place, load, less, zero, equal, leave)
+
+# Look at the byte at the position, without taking it, as a digit's value in local 0. Leave as
+# many blocks as depth, and one more, when it is not a digit: "push 4", "load", "load_byte",
+# "push 48", "subtract", "set 0", "push 9", "get 0", "less", "break_if 1".
+Digit_Look {}
+  depth* {U32}
+  position {Number_Instruction} (Push_Word, Position_Place)
+  load {Bare_Instruction} (Load)
+  byte {Bare_Instruction} (Load_Byte)
+  zero_code {Number_Instruction} (Push_Word, Zero_Code)
+  subtract {Bare_Instruction} (Subtract)
+  keep {Number_Instruction} (Set, Byte_Local)
+  nine {Number_Instruction} (Push_Word, Nine)
+  get {Number_Instruction} (Get, Byte_Local)
+  less {Bare_Instruction} (Less)
+  leave {Number_Instruction} (Break_If, depth)
+  looking {Instruction...} (position, load, byte, zero_code, subtract, keep)
+  result {Instruction...} (looking..., nine, get, less, leave)
+
+# Leave as many blocks as depth, and one more, when one more digit would make the value too big
+# for 32 bits: it fits when the value is below 429496729, or is 429496729 and the digit is at
+# most 5.
+Too_Big_Leave {}
+  depth* {U32}
+  number {Number_Instruction} (Get, Value_Local)
+  tenth {Number_Instruction} (Push_Word, Tenth_Of_Most)
+  less {Bare_Instruction} (Less)
+  equal {Bare_Instruction} (Equal)
+  five {Number_Instruction} (Push_Word, Five)
+  digit {Number_Instruction} (Get, Byte_Local)
+  zero {Number_Instruction} (Push_Word, Zero)
+  both {Bare_Instruction} (Multiply)
+  either {Bare_Instruction} (Add)
+  leave {Number_Instruction} (Break_If, depth)
+  below {Instruction...} (number, tenth, less)
+  at_most {Instruction...} (number, tenth, equal, five, digit, less, zero, equal, both)
+  result {Instruction...} (below..., at_most..., either, zero, equal, leave)
+
+# Add the digit in local 0 to the value, and move the position on: "get 1", "push 10",
+# "multiply", "get 0", "add", "set 1", then the position.
+Digit_Add {}
+  local* {U32}
+  so_far {Number_Instruction} (Get, local)
+  ten {Number_Instruction} (Push_Word, Ten)
+  times {Bare_Instruction} (Multiply)
+  digit {Number_Instruction} (Get, Byte_Local)
+  add {Bare_Instruction} (Add)
+  keep {Number_Instruction} (Set, local)
+  position {Number_Instruction} (Push_Word, Position_Place)
+  load {Bare_Instruction} (Load)
+  one {Number_Instruction} (Push_Word, One)
+  store {Bare_Instruction} (Store)
+  adding {Instruction...} (so_far, ten, times, digit, add, keep)
+  result {Instruction...} (adding..., position, position, load, one, add, store)
+
+# Leave the block around the code when the value is below low or above high.
+Value_Range_Leave {}
+  low* {U32}
+  high* {U32}
+  number {Number_Instruction} (Get, Value_Local)
+  push_low {Number_Instruction} (Push_Word, low)
+  less {Bare_Instruction} (Less)
+  leave {Number_Instruction} (Break_If, Zero)
+  push_high {Number_Instruction} (Push_Word, high)
+  result {Instruction...} (number, push_low, less, leave, push_high, number, less, leave)
+
+# A whole number from low to high, at least 0: its digits, one or more, then the range.
+# Example: 0 and 3 read "0" to "3"; 0 and 4294967295 read any number that fits in 32 bits.
+Number_Body {}
+  low* {U32}
+  high* {U32}
+  number {Local_Start} (Zero, Value_Local)
+  digits {Local_Start} (Zero, Item_Local)
+  open {Bare_Instruction} (Block)
+  loop {Bare_Instruction} (Loop)
+  at_end {At_End_Leave} (One)
+  look {Digit_Look} (One)
+  too_big {Too_Big_Leave} (Two)
+  add {Digit_Add} (Value_Local)
+  next_digit {Count_Up} (Item_Local)
+  again {Number_Instruction} (Break, Zero)
+  close {Bare_Instruction} (End)
+  some {Least_Leave} (One, Item_Local)
+  in_range {Value_Range_Leave} (low, high)
+  checks {Instruction...} (at_end..., look..., too_big...)
+  reading {Instruction...} (open, loop, checks..., add..., next_digit..., again)
+  result {Instruction...} (number..., digits..., reading..., close, close, some..., in_range...)
 
 # Function 1, load_input: read every byte into memory from Input_Place, then keep where the input
 # ends, and start the position at the first byte.
@@ -824,6 +930,25 @@ List_Line_Type {}
   compiled {Compiled_Type} (line.name, number, body)
   result {Compiled_Type...} (compiled)
 
+# Parentheses that hold a range from low to high, at least 0, make a number type.
+Range_Content_Type {}
+  content* {Bounded_Range}
+  line* {Refinement_Line}
+  types* {Compiled_Type...}
+  body {Number_Body} (content.low, content.high)
+  number {Integer} (First_Type_Number + types.count)
+  compiled {Compiled_Type} (line.name, number, body)
+  result {Compiled_Type...} (compiled)
+
+# Any other parentheses, such as a constant's calculation, make no type.
+Other_Content_Type {}
+  content* {Allowed_Choice | Lower_Range | Upper_Range | Calculation | Conditions | Call_Values}
+  line* {Refinement_Line}
+  types* {Compiled_Type...}
+  result {Compiled_Type...} (Empty_String)
+
+Content_Type {Range_Content_Type | Other_Content_Type}
+
 # A line of one quoted text is a type that reads the text.
 # Example: 'Push_Word {"push"}' reads "push".
 Text_Item_Type {}
@@ -836,14 +961,26 @@ Text_Item_Type {}
   compiled {Compiled_Type} (line.name, number, body)
   result {Compiled_Type...} (compiled)
 
-# A line of one type or number, such as a constant, is not read: it gives no type.
-Other_Item_Type {}
-  item* {Type_Name | Number_Literal}
+# A line of one type: a number range is a type that reads it; a constant or anything else
+# gives no type.
+# Example: 'U32 {Integer} (0..4294967295)' reads a whole number that fits in 32 bits.
+Named_Item_Type {}
+  item* {Type_Name}
+  line* {Refinement_Line}
+  types* {Compiled_Type...}
+  written_parens {Parens...} (line.parens)
+  contents {Paren_Content...} (written_parens.content)
+  found {Content_Type...} (contents..., line, types)
+  result {Compiled_Type...} (found.result)
+
+# A line of one number gives no type.
+Number_Item_Type {}
+  item* {Number_Literal}
   line* {Refinement_Line}
   types* {Compiled_Type...}
   result {Compiled_Type...} (Empty_String)
 
-Item_Kind_Type {Text_Item_Type | Other_Item_Type}
+Item_Kind_Type {Text_Item_Type | Named_Item_Type | Number_Item_Type}
 
 # A refinement line of one item.
 Item_Line_Type {}
