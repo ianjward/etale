@@ -170,6 +170,14 @@ export function file_errors(loaded) {
   }
 
   // A list from items: each item is one value of the list's item type, and an item marked
+  // a call to a union of records, every member of which gives these items
+  const all_give = (source, items) => {
+    const members = source?.length === 1 && members_of(by_name, source[0].type);
+    return Boolean(members?.length) && members.every((member) => {
+      const result = field_of(member, 'result');
+      return result && same_items(result.items, items);
+    });
+  };
   // '...' is a list of that type, whose items it adds.
   function check_listed(record, field) {
     const where = record.name + '.' + field.name;
@@ -183,7 +191,7 @@ export function file_errors(loaded) {
         : term.path?.length === 2 && head && !listed(head) && listed(field_of(given_record(head.items?.[0]?.type), term.path[1]));
       if (term.all && !is_list) error(record, field.line, name + "... adds the items of a list, but " + name + ' is not a list', where);
       else if (!term.all && is_list) error(record, field.line, name + " is a list: mark it " + name + '... to add its items', where);
-      else if (source && !same_items(source, field.items)) {
+      else if (source && !same_items(source, field.items) && !all_give(source, field.items)) {
         error(record, field.line, name + ' is ' + items_text(source) + ', but ' + field.name + ' holds ' + items_text(field.items), where);
       }
     }
