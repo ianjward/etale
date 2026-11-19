@@ -222,7 +222,8 @@ Input_End_Place {Integer} (8)            # the place after the last byte
 Free_Place {Integer} (12)                # the place where the next value is kept
 
 Slot_Size {Integer} (4)                  # a number, or the place of a field's value, is 4 bytes
-Field_Size {Integer} (8)                 # a field keeps its value's place, then where it ends
+Field_Size {Integer} (12)                # a field keeps its value's place, its end and its start
+Start_Offset {Integer} (8)               # where a field keeps the place its text starts
 Input_Place {Integer} (1024)             # where the input starts
 End_Of_Input {Integer} (4294967295)      # what 'read' and take give when no byte is left
 No_Most {Integer} (4294967295)           # the most count of a list with no most
@@ -253,6 +254,7 @@ Start_Local {Integer} (3)                # local 3 holds the position where the 
 Free_Local {Integer} (4)                 # local 4 holds the free place where the function starts
 Record_Local {Integer} (5)               # local 5 holds the place of the record being read
 Part_Local {Integer} (6)                 # local 6 holds the value of the part just read
+Look_Local {Integer} (7)                 # local 7 holds the place of a byte being looked at
 
 Get {"get"}
 Set {"set"}
@@ -1199,11 +1201,31 @@ Layout_Type {}
   compiled {Compiled_Type} (name, number, code)
   result {Compiled_Type...} (compiled)
 
+# A field line is starred when it has a '*': 1, or 0.
+Field_Line_Starred {}
+  line* {Field_Line}
+  marks {Required...} (line.required)
+  result {Integer} (marks.count)
+
+# A union field line is starred when it has a '*'.
+Union_Field_Starred {}
+  line* {Union_Field_Line}
+  marks {Required...} (line.required)
+  result {Integer} (marks.count)
+
+# A field worked out by cases is never starred.
+Mapped_Field_Starred {}
+  line* {Mapped_Field}
+  result {Integer} (Zero)
+
+Line_Starred {Field_Line_Starred | Union_Field_Starred | Mapped_Field_Starred}
+
 # A field of a record: its name, its line, and how far from the record's start it is kept.
 Known_Field {}
   name* {Field_Name}
   line* {Plain_Field}
   offset* {U32}
+  starred {Line_Starred} (line)
 
 # The name of a field line.
 Field_Line_Name {}
@@ -1227,8 +1249,8 @@ Mapped_Field_Name {}
 
 Line_Name {Field_Line_Name | Union_Field_Name | Mapped_Field_Name}
 
-# A record's fields, each kept 8 bytes after the one above it, from 8 on.
-# Example: the lines of word, number and function give word 8, number 16 and function 24.
+# A record's fields, each kept 12 bytes after the one above it, from 12 on.
+# Example: the lines of word, number and function give word 12, number 24 and function 36.
 Numbered_Fields {}
   lines* {Plain_Field...}
   known* {Known_Field...}
@@ -1282,20 +1304,6 @@ Slot_Store {}
   end {End_Store} (offset)
   result {Instruction...} (record, push, add, part, store, end...)
 
-# A shape position that names a field: the field's line, read as a part, and its value kept in
-# the record.
-# Example: '    2. {word}' reads the record's word.
-Field_Position_Part {}
-  position* {Field_Position}
-  fields* {Known_Field...}
-  types* {Compiled_Type...}
-  wanted {Field_Box_Name} (position.base)
-  found {Known_Field...} (fields.name = wanted)
-  field {Known_Field} (found.first)
-  part {Field_Line_Part} (field.line, types)
-  store {Slot_Store} (field.offset)
-  result {Instruction...} (part..., store...)
-
 # A shape position of a type or a quoted text, read as a layout position is.
 # Example: '    1. {"  "}' reads two spaces.
 Type_Position_Part {}
@@ -1306,17 +1314,76 @@ Type_Position_Part {}
   times {Count_Of} (written, Once)
   result {Box_Part} (position.base, types, times)
 
-Shape_Part {Field_Position_Part | Type_Position_Part}
-
 # ---------- Rules
 
-# A field's slot, with the steps that may come after its name.
+# A type named by an item: a type name gives itself; a quoted text or a number gives none.
+Type_Name_Item {}
+  item* {Type_Name}
+  result {Type_Name...} (item)
+
+# A quoted text or a number names no type.
+Literal_Item {}
+  item* {String_Literal | Number_Literal}
+  result {Type_Name...} (Empty_String)
+
+Item_Names {Type_Name_Item | Literal_Item}
+
+# The type a box of one item names.
+Item_Box_Names {}
+  box* {Item_Box}
+  result {Item_Names} (box.item)
+
+# A list box names no type whose fields may follow, yet.
+List_Box_Names {}
+  box* {List_Box}
+  result {Type_Name...} (Empty_String)
+
+Box_Names {Item_Box_Names | List_Box_Names}
+
+# The type a field line names, when it names one.
+Field_Line_Names {}
+  line* {Field_Line}
+  result {Box_Names} (line.base)
+
+# A union field or a field worked out by cases names no type whose fields may follow.
+Other_Line_Names {}
+  line* {Union_Field_Line | Mapped_Field}
+  result {Type_Name...} (Empty_String)
+
+Line_Names {Field_Line_Names | Other_Line_Names}
+
+# The slots of the compiled type of a name, or none when no type of that name is compiled.
+Type_Slots {}
+  wanted* {Type_Name}
+  types* {Compiled_Type...}
+  found {Compiled_Type...} (types.name = wanted)
+  codes {Type_Code...} (found.code)
+  result {Field_Slot...} (codes.slots)
+
+# A step into a field of the record a field holds: from the place where the field's value is
+# kept, the record's place, then the place of its field's value, then the number there.
+# Example: numbers, kept at 16, gives "load", "push 16", "add", "load", "load".
+Made_Step {}
+  slot* {Field_Slot}
+  load* {Memory_Word}
+  first {Bare_Instruction} (load)
+  push {Number_Instruction} (Push_Word, slot.offset)
+  add {Bare_Instruction} (Add)
+  code {Instruction...} (first, push, add, first, first)
+  result {Step_Code} (slot.name, code)
+
+# A field's slot, with the steps that may come after its name: count, and the fields of the
+# record it holds.
 # Example: number, kept at 16, gives number, 16, and the step count.
 Known_Slot {}
   field* {Known_Field}
   types* {Compiled_Type...}
+  names {Line_Names} (field.line)
+  held {Type_Slots...} (names..., types)
+  inner {Field_Slot...} (held.result)
+  made {Made_Step...} (inner..., Load)
   counting {Count_Step} (Count_Name)
-  steps {Step_Code...} (counting)
+  steps {Step_Code...} (counting, made...)
   slot {Field_Slot} (field.name, field.offset, steps)
   result {Field_Slot...} (slot)
 
@@ -1546,13 +1613,497 @@ Shape_Positions {}
   item* {Shape_Item}
   result {Positions_Of_Shape} (item.line)
 
-# Take room for a record: 8 bytes for each field, after 8 bytes at its start.
-# Example: 3 fields take 32 bytes.
+# Take room for a record: 12 bytes for each field, after 12 bytes at its start.
+# Example: 3 fields take 48 bytes.
 Record_Room {}
   fields* {Known_Field...}
   places {Integer} (fields.count + One)
   size {Integer} (places * Field_Size)
   result {Take_Room} (Record_Local, size)
+
+# ---------- Fields worked out, and made records
+
+# The place where a field's text starts: "get 5", "push 8", "add", "load".
+Start_Code {}
+  offset* {U32}
+  record {Number_Instruction} (Get, Record_Local)
+  push {Number_Instruction} (Push_Word, offset)
+  add {Bare_Instruction} (Add)
+  load {Bare_Instruction} (Load)
+  result {Instruction...} (record, push, add, load)
+
+# The place where a field's text ends: 4 bytes after its value's place.
+End_Code {}
+  offset* {U32}
+  end {Integer} (offset + Slot_Size)
+  result {Start_Code} (end)
+
+# What a case tests and gives: how far from the record's start its input is kept, and the
+# number the case gives.
+Case_Target {}
+  input* {U32}
+  number* {U32}
+
+# One choice of a case: its test, in a block of its own. When it holds, keep the case's number
+# in local 1 and leave the block of the cases.
+Choice_Try {}
+  test* {Instruction...}
+  number* {U32}
+  open {Bare_Instruction} (Block)
+  push {Number_Instruction} (Push_Word, number)
+  keep {Number_Instruction} (Set, Value_Local)
+  found {Number_Instruction} (Break, One)
+  close {Bare_Instruction} (End)
+  result {Instruction...} (open, test..., push, keep, found, close)
+
+# A choice of a type name: it holds when the input's text reads as the type, all of it. Read
+# it again with the type's function, from where it starts, and look where the reading ends.
+# Example: Push_Word on the word "push" reads to the word's end, so the choice holds.
+Name_Test {}
+  item* {Name}
+  target* {Case_Target}
+  types* {Compiled_Type...}
+  number {Type_Number} (item, types)
+  position {Number_Instruction} (Push_Word, Position_Place)
+  start {Start_Code} (target.input)
+  store {Bare_Instruction} (Store)
+  call {Call_Instruction} (number)
+  missed {Leave_Unless} (Zero)
+  load {Bare_Instruction} (Load)
+  end {End_Code} (target.input)
+  equal {Bare_Instruction} (Equal)
+  reading {Instruction...} (position, start..., store, call, missed...)
+  test {Instruction...} (reading..., position, load, end..., equal, missed...)
+  result {Choice_Try} (test, target.number)
+
+# Leave the block when the byte at the place in local 7 is not the code; then look at the next.
+# Example: 103 gives "get 7", "load_byte", "push 103", "equal", "push 0", "equal", "break_if 0".
+Byte_Test {}
+  code* {Integer}
+  local* {U32}
+  get {Number_Instruction} (Get, local)
+  load {Bare_Instruction} (Load_Byte)
+  push {Number_Instruction} (Push_Word, code)
+  equal {Bare_Instruction} (Equal)
+  missed {Leave_Unless} (Zero)
+  next_byte {Count_Up} (local)
+  result {Instruction...} (get, load, push, equal, missed..., next_byte...)
+
+# A choice of a quoted text: it holds when the input's text is the same, its length and then
+# each byte.
+# Example: '"get"' tests a length of 3, then the bytes 103, 101 and 116.
+Text_Test {}
+  item* {String_Literal}
+  target* {Case_Target}
+  types* {Compiled_Type...}
+  codes {Quoted_Codes} (item)
+  end {End_Code} (target.input)
+  start {Start_Code} (target.input)
+  subtract {Bare_Instruction} (Subtract)
+  length {Number_Instruction} (Push_Word, codes.count)
+  equal {Bare_Instruction} (Equal)
+  missed {Leave_Unless} (Zero)
+  look {Number_Instruction} (Set, Look_Local)
+  bytes {Byte_Test...} (codes..., Look_Local)
+  each_byte {Instruction...} (bytes.result)
+  sized {Instruction...} (end..., start..., subtract, length, equal, missed...)
+  test {Instruction...} (sized..., start..., look, each_byte...)
+  result {Choice_Try} (test, target.number)
+
+Value_Test {Name_Test | Text_Test}
+
+# The choices of a case written with '|'.
+# Example: '(Push_Word | Local_Word | Break_Word)' gives three choices.
+Several_Choices {}
+  when* {Multi_Value}
+  tails {Value_Tail...} (when.rest)
+  others {Value...} (tails.next)
+  result {Value...} (when.first, others...)
+
+# A case of one type name.
+Name_Choice {}
+  when* {Name}
+  result {Value...} (when)
+
+# A case of one quoted text.
+Text_Choice {}
+  when* {String_Literal}
+  result {Value...} (when)
+
+Case_Choices {Several_Choices | Name_Choice | Text_Choice}
+
+# The number a case gives.
+# Example: '{1}' gives 1.
+Case_Number {}
+  output* {Item_Box}
+  result {Literal_Value} (output.item, Empty_String)
+
+# One case of a table: a try for each of its choices.
+# Example: '{0} (Call_Word | Return_Word | Byte_Word)' gives three tries that keep 0.
+Case_Code {}
+  case* {Case_Line}
+  input* {U32}
+  types* {Compiled_Type...}
+  number {Case_Number} (case.output)
+  target {Case_Target} (input, number)
+  choices {Case_Choices} (case.when)
+  tries {Value_Test...} (choices..., target, types)
+  result {Instruction...} (tries.result)
+
+# The first input of a mapping. A mapping of two inputs is not compiled yet.
+Inputs_First {}
+  inputs* {Inputs}
+  second {Input_Tail...} (inputs.second)
+  one_input {Needs} (second.count = 0)
+  result {Field_Name} (inputs.first)
+
+# The input of a mapping's head line.
+Head_Input {}
+  head* {Mapping_Line}
+  result {Inputs_First} (head.inputs)
+
+# The input of a field worked out by cases.
+Mapped_Input {}
+  line* {Mapped_Field}
+  result {Head_Input} (line.head)
+
+# The field of this name.
+Named_Field {}
+  wanted* {Field_Name}
+  fields* {Known_Field...}
+  found {Known_Field...} (fields.name = wanted)
+  result {Known_Field} (found.first)
+
+# How far from the record's start a field of this name is kept.
+Field_Offset {}
+  wanted* {Field_Name}
+  fields* {Known_Field...}
+  found {Known_Field...} (fields.name = wanted)
+  field {Known_Field} (found.first)
+  result {U32} (field.offset)
+
+# Keep the number in local 1 after the input, and its place in the record at the offset.
+Number_Keep {}
+  offset* {U32}
+  room {Take_Room} (Byte_Local, Slot_Size)
+  place {Number_Instruction} (Get, Byte_Local)
+  number {Number_Instruction} (Get, Value_Local)
+  store {Bare_Instruction} (Store)
+  record {Number_Instruction} (Get, Record_Local)
+  push {Number_Instruction} (Push_Word, offset)
+  add {Bare_Instruction} (Add)
+  result {Instruction...} (room..., place, number, store, record, push, add, place, store)
+
+# A field worked out by cases: try each case's choices on the input in turn, and keep the number
+# of the first that holds. When none holds, the record is refused.
+# Example: Word_Arguments' numbers gives 1 for "push", "get", "set", "break" or "break_if".
+Mapped_Work {}
+  line* {Mapped_Field}
+  fields* {Known_Field...}
+  types* {Compiled_Type...}
+  input_name {Mapped_Input} (line)
+  input {Field_Offset} (input_name, fields)
+  name {Mapped_Field_Name} (line)
+  offset {Field_Offset} (name, fields)
+  cases {Case_Code...} (line.cases..., input, types)
+  tries {Instruction...} (cases.result)
+  open {Bare_Instruction} (Block)
+  none {Number_Instruction} (Break, One)
+  close {Bare_Instruction} (End)
+  keep {Number_Keep} (offset)
+  result {Instruction...} (open, tries..., none, close, keep...)
+
+# What a field line's work needs: the line, the record's fields, and the types compiled.
+Field_Context {}
+  line* {Field_Line}
+  fields* {Known_Field...}
+  types* {Compiled_Type...}
+
+# The type a field line names.
+Line_Type_Name {}
+  line* {Field_Line}
+  names {Field_Line_Names} (line)
+  result {Type_Name} (names.first)
+
+# A field made by a call with one field: call the type's function with the place where the
+# field is kept, and keep the record it gives. When it gives 0, the record is refused.
+# Example: 'arguments {Word_Arguments} (word)' calls Word_Arguments' function with word.
+Made_Call {}
+  content* {Name}
+  context* {Field_Context}
+  type_name {Line_Type_Name} (context.line)
+  number {Type_Number} (type_name, context.types)
+  input {Field_Offset} (content, context.fields)
+  name {Field_Line_Name} (context.line)
+  offset {Field_Offset} (name, context.fields)
+  record {Number_Instruction} (Get, Record_Local)
+  push {Number_Instruction} (Push_Word, input)
+  add {Bare_Instruction} (Add)
+  call {Call_Instruction} (number)
+  keep {Number_Instruction} (Set, Part_Local)
+  get {Number_Instruction} (Get, Part_Local)
+  missed {Leave_Unless} (Zero)
+  store {Slot_Store} (offset)
+  result {Instruction...} (record, push, add, call, keep, get, missed..., store...)
+
+# A rule's conditions are tested after the fields are worked out.
+Rule_Work {}
+  content* {And_Conditions}
+  context* {Field_Context}
+  result {Instruction...} (Empty_String)
+
+Content_Work {Made_Call | Rule_Work}
+
+# A field line's work. A field with no parentheses is read, or given, so it has none.
+# Any other parentheses are not compiled yet, and refuse the file.
+Field_Line_Work {}
+  line* {Field_Line}
+  fields* {Known_Field...}
+  types* {Compiled_Type...}
+  context {Field_Context} (line, fields, types)
+  written_parens {Parens...} (line.parens)
+  contents {Paren_Content...} (written_parens.content)
+  works {Content_Work...} (contents..., context)
+  result {Instruction...} (works.result)
+
+# A union field is read, or given: it has no work.
+Union_Field_Work {}
+  line* {Union_Field_Line}
+  fields* {Known_Field...}
+  types* {Compiled_Type...}
+  result {Instruction...} (Empty_String)
+
+Line_Work {Field_Line_Work | Union_Field_Work | Mapped_Work}
+
+# Keep a value given to a made record: the place where the caller keeps it, in a local, gives
+# its value's place and where it ends.
+# Example: word at 8, in local 0, gives "get 5", "push 8", "add", "get 0", "load", "store", ...
+Input_Copy {}
+  field* {Known_Field}
+  local* {U32}
+  end {Integer} (field.offset + Slot_Size)
+  record {Number_Instruction} (Get, Record_Local)
+  value_at {Number_Instruction} (Push_Word, field.offset)
+  end_at {Number_Instruction} (Push_Word, end)
+  add {Bare_Instruction} (Add)
+  given {Number_Instruction} (Get, local)
+  load {Bare_Instruction} (Load)
+  store {Bare_Instruction} (Store)
+  four {Number_Instruction} (Push_Word, Slot_Size)
+  starting {Instruction...} (record, value_at, add, given, load, store)
+  ending {Instruction...} (record, end_at, add, given, four, add, load, store)
+  result {Instruction...} (starting..., ending...)
+
+# Keep the values given, each from its local: the first from local 0, the next from local 1.
+Input_Copies {}
+  inputs* {Known_Field...}
+  copied* {Instruction...}
+  local* {U32}
+  input {Known_Field} (inputs.first)
+  copy {Input_Copy} (input, local)
+  with_copy {Instruction...} (copied..., copy...)
+  next_local {Integer} (local + One)
+  result {Instruction...} (copied)
+    while (inputs.count >= 1)
+    next (inputs.rest, with_copy, next_local)
+
+# A made record's body: take its room, keep the values given, work out its fields in order,
+# test its rules, put the position back, and give the record's place.
+# Example: Word_Arguments takes a word, and works out numbers and functions.
+Made_Body {}
+  block* {Record_Block}
+  types* {Compiled_Type...}
+  items {Field_Item...} (block.fields)
+  lines {Plain_Field...} (items.line)
+  fields {Numbered_Fields} (lines, Empty_String)
+  room {Record_Room} (fields)
+  inputs {Known_Field...} (fields.starred = 1)
+  copies {Input_Copies} (inputs, Empty_String, Zero)
+  works {Line_Work...} (lines..., fields, types)
+  slots {Known_Slot...} (fields..., types)
+  offsets {Field_Slot...} (slots.result)
+  rules {Line_Rule...} (lines..., offsets)
+  back {Put_Position_Back} (Start_Local)
+  give {Local_Give} (Record_Local)
+  worked {Instruction...} (works.result)
+  tested {Instruction...} (rules.result)
+  working {Instruction...} (room..., copies..., worked..., tested...)
+  code {Instruction...} (working..., back..., give...)
+  result {Type_Code} (code, inputs.count, offsets)
+
+# A record with a count of its text shapes: 0 or 1.
+Record_Shapes {}
+  block* {Record_Block}
+  shapes {Shape_Item...} (block.shape)
+  shape_count {Integer} (shapes.count)
+
+# The block of a record with no text shape.
+Shapeless_Block {}
+  record* {Record_Shapes}
+  result {Record_Block} (record.block)
+
+# A record with no text shape as a compiled type: a function that takes its starred fields.
+Made_Type {}
+  record* {Record_Shapes}
+  types* {Compiled_Type...}
+  block {Shapeless_Block} (record)
+  body {Made_Body} (block, types)
+  name {Record_Name} (block.head)
+  number {Integer} (First_Type_Number + types.count)
+  compiled {Compiled_Type} (name, number, body)
+  result {Compiled_Type...} (compiled)
+
+# ---------- A record's shape, read with a second try for each field that may be missing
+
+Some_Count {Integer} (1..4294967295)     # a least count of a part that must be there
+
+# The positions of a shape, last first.
+Reversed_Positions {}
+  positions* {Shape_Position...}
+  reversed* {Shape_Position...}
+  position {Shape_Position} (positions.first)
+  with_position {Shape_Position...} (position, reversed...)
+  result {Shape_Position...} (reversed)
+    while (positions.count >= 1)
+    next (positions.rest, with_position)
+
+# What a record's positions are read with: its fields, and the types compiled.
+Shape_Context {}
+  fields* {Known_Field...}
+  types* {Compiled_Type...}
+
+# A field to read: its line, the types compiled, and how far from the record's start it is kept.
+Field_Piece {}
+  line* {Field_Line}
+  types* {Compiled_Type...}
+  offset* {U32}
+  written {Properties...} (line.properties)
+  times {Count_Of} (written, Once)
+
+# The least count of a range.
+Least_Of {}
+  range* {Count_Range}
+  result {U32} (range.least)
+
+# The most count of a range.
+Most_Of {}
+  range* {Count_Range}
+  result {U32} (range.most)
+
+# The count of a field that must be there this time: at least 1, at most its own most.
+Present_Times {}
+  piece* {Field_Piece}
+  most {Most_Of} (piece.times)
+  result {Count_Range} (One, most)
+
+# A field's line read as a part, with a count.
+Field_Part_With {}
+  line* {Field_Line}
+  types* {Compiled_Type...}
+  times* {Count_Range}
+  result {Box_Part} (line.base, types, times)
+
+# Keep where a field's text starts: "get 5", "push 20", "add", "push 4", "load", "store".
+Start_Store {}
+  offset* {U32}
+  start {Integer} (offset + Start_Offset)
+  record {Number_Instruction} (Get, Record_Local)
+  push {Number_Instruction} (Push_Word, start)
+  add {Bare_Instruction} (Add)
+  position {Number_Instruction} (Push_Word, Position_Place)
+  load {Bare_Instruction} (Load)
+  store {Bare_Instruction} (Store)
+  result {Instruction...} (record, push, add, position, load, store)
+
+# Put the position back to where a field's text starts, and keep no value for the field.
+Field_Back {}
+  offset* {U32}
+  start {Integer} (offset + Start_Offset)
+  position {Number_Instruction} (Push_Word, Position_Place)
+  record {Number_Instruction} (Get, Record_Local)
+  push {Number_Instruction} (Push_Word, start)
+  at {Number_Instruction} (Push_Word, offset)
+  add {Bare_Instruction} (Add)
+  load {Bare_Instruction} (Load)
+  store {Bare_Instruction} (Store)
+  zero {Number_Instruction} (Push_Word, Zero)
+  back {Instruction...} (position, record, push, add, load, store)
+  result {Instruction...} (back..., record, at, add, zero, store)
+
+# A field that must be there: read it, keep it, then read the rest.
+Required_Field {}
+  least* {Some_Count}
+  piece* {Field_Piece}
+  rest* {Instruction...}
+  part {Field_Part_With} (piece.line, piece.types, piece.times)
+  store {Slot_Store} (piece.offset)
+  result {Instruction...} (part..., store..., rest...)
+
+# A field that may be missing: first read it and the rest, in a block. When that fails, put the
+# position back and read the rest with the field missing.
+# Example: in "  call 1", " 1" is first read as a number; the rule fails, so it is a function.
+Optional_Field {}
+  least* {Zero}
+  piece* {Field_Piece}
+  rest* {Instruction...}
+  open {Bare_Instruction} (Block)
+  start {Start_Store} (piece.offset)
+  times {Present_Times} (piece)
+  part {Field_Part_With} (piece.line, piece.types, times)
+  store {Slot_Store} (piece.offset)
+  close {Bare_Instruction} (End)
+  back {Field_Back} (piece.offset)
+  trying {Instruction...} (open, start..., part..., store..., rest..., close)
+  result {Instruction...} (trying..., back..., rest...)
+
+Field_Choice {Required_Field | Optional_Field}
+
+# A shape position that names a field, before the rest of the record.
+Field_Position_Step {}
+  position* {Field_Position}
+  rest* {Instruction...}
+  context* {Shape_Context}
+  wanted {Field_Box_Name} (position.base)
+  field {Named_Field} (wanted, context.fields)
+  piece {Field_Piece} (field.line, context.types, field.offset)
+  least {Least_Of} (piece.times)
+  result {Field_Choice} (least, piece, rest)
+
+# A shape position of a type or a quoted text, before the rest of the record.
+Type_Position_Step {}
+  position* {Type_Position}
+  rest* {Instruction...}
+  context* {Shape_Context}
+  part {Type_Position_Part} (position, context.fields, context.types)
+  result {Instruction...} (part..., rest...)
+
+Position_Step {Field_Position_Step | Type_Position_Step}
+
+# A record's shape read from its last position to its first, each before the code after it.
+Shape_Fold {}
+  positions* {Shape_Position...}
+  rest* {Instruction...}
+  context* {Shape_Context}
+  position {Shape_Position} (positions.first)
+  step {Position_Step} (position, rest, context)
+  result {Instruction...} (rest)
+    while (positions.count >= 1)
+    next (positions.rest, step, context)
+
+# What a record does after its shape is read: work out its fields, test its rules, and give
+# its place.
+Record_Tail {}
+  lines* {Plain_Field...}
+  fields* {Known_Field...}
+  types* {Compiled_Type...}
+  works {Line_Work...} (lines..., fields, types)
+  slots {Known_Slot...} (fields..., types)
+  offsets {Field_Slot...} (slots.result)
+  rules {Line_Rule...} (lines..., offsets)
+  give {Local_Give} (Record_Local)
+  worked {Instruction...} (works.result)
+  tested {Instruction...} (rules.result)
+  result {Instruction...} (worked..., tested..., give...)
 
 # A record's body: take its room, read the shape's positions in order, then test its rules.
 # Its value is the record's place.
@@ -1566,14 +2117,13 @@ Record_Body {}
   fields {Numbered_Fields} (lines, Empty_String)
   positions {Shape_Positions} (shape)
   room {Record_Room} (fields)
-  parts {Shape_Part...} (positions..., fields, types)
-  reading {Instruction...} (parts.result)
+  ending {Record_Tail} (lines, fields, types)
+  reversed {Reversed_Positions} (positions, Empty_String)
+  context {Shape_Context} (fields, types)
+  reading {Shape_Fold} (reversed, ending, context)
   slots {Known_Slot...} (fields..., types)
   offsets {Field_Slot...} (slots.result)
-  rules {Line_Rule...} (lines..., offsets)
-  testing {Instruction...} (rules.result)
-  give {Local_Give} (Record_Local)
-  code {Instruction...} (room..., reading..., testing..., give...)
+  code {Instruction...} (room..., reading...)
   result {Type_Code} (code, Zero, offsets)
 
 # A record's text shape as a compiled type.
@@ -1592,8 +2142,14 @@ Record_Type {}
   block* {Record_Block}
   types* {Compiled_Type...}
   shapes {Shape_Item...} (block.shape)
-  made {Shape_Type...} (shapes..., block, types)
-  result {Compiled_Type...} (made.result)
+  shaped {Shape_Type...} (shapes..., block, types)
+  record {Record_Shapes} (block)
+  records {Record_Shapes...} (record)
+  shapeless {Record_Shapes...} (records.shape_count = 0)
+  made {Made_Type...} (shapeless..., types)
+  from_shape {Compiled_Type...} (shaped.result)
+  from_fields {Compiled_Type...} (made.result)
+  result {Compiled_Type...} (from_shape..., from_fields...)
 
 # A repeating record is not compiled yet: it gives no type.
 Repeating_Type {}
