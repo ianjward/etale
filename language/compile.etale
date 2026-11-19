@@ -411,16 +411,17 @@ Range_Position_Code {}
   keep {Keep_Byte} (Items_Place)
   result {Instruction...} (take..., outside..., keep...)
 
-# One given character. When the next byte is another, it is given back, and the text is refused
-# unless the least count is 0.
-# Example: 45 and 0 give the code for an optional minus sign.
-Character_Position_Code {}
-  code* {U32}
+# One character from low to high. When the next byte is another, it is given back, and the text
+# is refused unless the least count is 0.
+# Example: 48, 57 and 0 give the code for an optional digit.
+One_Position_Code {}
+  low* {U32}
+  high* {U32}
   least* {U32}
   done {Bare_Instruction} (Block)
   absent {Bare_Instruction} (Block)
   take {Take_Byte} (Byte_Local)
-  other {Other_Leave} (code, Zero)
+  other {Range_Leave} (low, high, Zero)
   keep {Keep_Byte} (Items_Place)
   found {Number_Instruction} (Break, One)
   close {Bare_Instruction} (End)
@@ -441,6 +442,13 @@ Most_Leave {}
   equal {Bare_Instruction} (Equal)
   leave {Number_Instruction} (Break_If, One)
   result {Instruction...} (get, push, less, zero, equal, leave)
+
+# One given character, from it to itself.
+# Example: 45 and 0 give the code for an optional minus sign.
+Character_Position_Code {}
+  code* {U32}
+  least* {U32}
+  result {One_Position_Code} (code, code, least)
 
 # The loop of a list: stop at the most count; take a byte; keep and count it while it is from
 # low to high. The first byte that is not an item is given back, and the loop and its block are
@@ -812,17 +820,36 @@ List_Box_Code {}
   times* {Count_Range}
   result {Known_List_Code} (box.item, known, times)
 
-# The code that reads a box's quoted text, each character in turn. Only a text of one character
-# may be missing.
-# Example: '{"-"} count: 0..1' gives an optional minus sign; '{".."}' gives two dots.
+# The code that reads a quoted text, each character in turn. Only a text of one character may
+# be missing.
+# Example: '"-"' with 0 to 1 gives an optional minus sign; '".."' gives two dots.
+Quoted_Item_Code {}
+  item* {String_Literal}
+  known* {Known_Range...}
+  times* {Count_Range}
+  codes {Quoted_Codes} (item)
+  missing_one {Needs} (times.least = 1 | codes.count = 1)
+  each {Character_Position_Code...} (codes..., times.least)
+  result {Instruction...} (each.result)
+
+# The code that reads one character of a known range, by its type's name.
+# Example: 'Digit' with 0 to 1 gives an optional digit.
+Named_Item_Code {}
+  item* {Type_Name}
+  known* {Known_Range...}
+  times* {Count_Range}
+  found {Known_Range...} (known.name = item)
+  range {Known_Range} (found.first)
+  result {One_Position_Code} (range.low, range.high, times.least)
+
+Single_Item_Code {Quoted_Item_Code | Named_Item_Code}
+
+# The code that reads a box's one item: a quoted text, or a character of a known range.
 Item_Box_Code {}
   box* {Item_Box}
   known* {Known_Range...}
   times* {Count_Range}
-  codes {Quoted_Codes} (box.item)
-  missing_one {Needs} (times.least = 1 | codes.count = 1)
-  each {Character_Position_Code...} (codes..., times.least)
-  result {Instruction...} (each.result)
+  result {Single_Item_Code} (box.item, known, times)
 
 Box_Code {Item_Box_Code | List_Box_Code}
 
