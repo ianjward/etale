@@ -1232,10 +1232,30 @@ Shape_Part {Field_Position_Part | Type_Position_Part}
 
 # ---------- Rules
 
-# A field's value in a record: its name, and how far from the record's start it is kept.
+# A step after a field's name, as in 'number.count': its name, and the code that gives its number
+# from the place where the field's value is kept.
+Step_Code {}
+  name* {Field_Name}
+  code* {Instruction...}
+
+Count_Name {"count"}
+
+# A field's count: 1 when its value is kept, 0 when it is missing: "load", "push 0", "equal",
+# "push 0", "equal".
+Count_Step {}
+  name* {Field_Name}
+  load {Bare_Instruction} (Load)
+  zero {Number_Instruction} (Push_Word, Zero)
+  equal {Bare_Instruction} (Equal)
+  code {Instruction...} (load, zero, equal, zero, equal)
+  result {Step_Code} (name, code)
+
+# A field's value in a record: its name, how far from the record's start it is kept, and the
+# steps that may come after its name.
 Field_Slot {}
   name* {Field_Name}
   offset* {U32}
+  steps* {Step_Code...}
 
 # A shape position that names a field gives its field's slot: its number times the size.
 # Example: '    2. {word}' with 4 gives word, 8.
@@ -1245,7 +1265,9 @@ Field_Position_Slot {}
   name {Field_Box_Name} (position.base)
   slot {Digits_Value} (position.number, Zero)
   offset {Integer} (slot * size)
-  kept {Field_Slot} (name, offset)
+  counting {Count_Step} (Count_Name)
+  steps {Step_Code...} (counting)
+  kept {Field_Slot} (name, offset, steps)
   result {Field_Slot...} (kept)
 
 # A shape position of a type or a quoted text keeps no field.
@@ -1267,8 +1289,8 @@ At_Least_Sign {">="}
 
 # A field's number, for a test: the place kept in the record, then the number at that place.
 # Example: low, kept 4 bytes from the start, gives "get 5", "push 4", "add", "load", "load".
-Path_Code {}
-  written* {Path}
+Name_Code {}
+  written* {Name}
   offsets* {Field_Slot...}
   found {Field_Slot...} (offsets.name = written)
   slot {Field_Slot} (found.first)
@@ -1287,7 +1309,36 @@ Literal_Code {}
   push {Number_Instruction} (Push_Word, number)
   result {Instruction...} (push)
 
-Value_Code {Path_Code | Literal_Code}
+# The name a path starts with.
+Path_Name {}
+  path* {Stepped_Path}
+  result {Name} (path.first)
+
+# The name of a path's step.
+Step_Name {}
+  step* {Field_Step}
+  result {Field_Name} (step.name)
+
+# A field's name and a step, for a test: the place kept in the record, then the step's code.
+# Example: 'number.count', kept 8 bytes from the start, gives "get 5", "push 8", "add", then
+# the count.
+Stepped_Code {}
+  written* {Stepped_Path}
+  offsets* {Field_Slot...}
+  field {Path_Name} (written)
+  found {Field_Slot...} (offsets.name = field)
+  slot {Field_Slot} (found.first)
+  wanted {Step_Name} (written.step)
+  steps {Step_Code...} (slot.steps)
+  found_steps {Step_Code...} (steps.name = wanted)
+  step {Step_Code} (found_steps.first)
+  record {Number_Instruction} (Get, Record_Local)
+  push {Number_Instruction} (Push_Word, slot.offset)
+  add {Bare_Instruction} (Add)
+  result {Instruction...} (record, push, add, step.code...)
+
+Path_Code {Name_Code | Stepped_Code}
+Value_Code {Name_Code | Stepped_Code | Literal_Code}
 
 # Leave the block around the code, as many blocks as depth and one more, when the top of the
 # stack is 0: "push 0", "equal", "break_if 0".

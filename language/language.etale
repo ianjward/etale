@@ -115,15 +115,22 @@ Field_Name {Text}
 
 Name {Type_Name | Field_Name}
 
-Field_Step {Text}
-  1. {"."}
-  2. {Field_Name}
+Field_Step {}
+  name {Field_Name}
+  text {Text}
+    1. {"."}
+    2. {name}
 
 # After a list, the step may be .count, .sum, .min, .max, .first, .last, or .rest: the list
 # without its first item. A field of a record with one of these names is that field.
-Path {Text}                              # Example: 'due.minutes'
-  1. {Name}
-  2. {Field_Step} count: 0..1
+Stepped_Path {}                          # Example: 'due.minutes'
+  first {Name}
+  step {Field_Step}
+  text {Text}
+    1. {first}
+    2. {step}
+
+Path {Stepped_Path | Name}
 
 # ---------- Step 4: Layout ----------
 
