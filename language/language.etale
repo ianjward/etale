@@ -78,9 +78,11 @@ Plain_Symbol {Operator_Symbol | Other_Symbol}
 Plain_String_Character {Space | Underscore | Plain_Symbol | Uppercase | Lowercase | Digit}
 Escape_Code {Quote | Backslash | "n"}
 
-Escape {Text}
-  1. {Backslash}
-  2. {Escape_Code}
+Escape {}                                # Example: '\n', a newline
+  code {Escape_Code}
+  text {Text}
+    1. {Backslash}
+    2. {code}
 
 String_Character {Plain_String_Character | Escape}
 

@@ -143,7 +143,7 @@
 {"head":"Escape_Code","parts":[{"types":["Quote"]}]},
 {"head":"Escape_Code","parts":[{"types":["Backslash"]}]},
 {"head":"Escape_Code","parts":[{"literal":"n"}]},
-{"head":"Escape","parts":[{"types":["Backslash"]},{"types":["Escape_Code"]}]},
+{"head":"Escape","record":true,"parts":[{"types":["Backslash"]},{"name":"code","types":["Escape_Code"]}]},
 {"head":"String_Character","parts":[{"types":["Plain_String_Character"]}]},
 {"head":"String_Character","parts":[{"types":["Escape"]}]},
 {"head":"String_Literal","record":true,"parts":[{"types":["Quote"]},{"name":"characters","types":["String_Character"],"list":true,"least":0,"most":null},{"types":["Quote"]}]},
