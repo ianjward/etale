@@ -220,7 +220,9 @@ Compiled_File {}
 Position_Place {Integer} (4)             # the place of the next byte
 Input_End_Place {Integer} (8)            # the place after the last byte
 Free_Place {Integer} (12)                # the place where the next value is kept
+
 Slot_Size {Integer} (4)                  # a number, or the place of a field's value, is 4 bytes
+Field_Size {Integer} (8)                 # a field keeps its value's place, then where it ends
 Input_Place {Integer} (1024)             # where the input starts
 End_Of_Input {Integer} (4294967295)      # what 'read' and take give when no byte is left
 No_Most {Integer} (4294967295)           # the most count of a list with no most
@@ -742,11 +744,47 @@ Reading_Main {}
 
 # ---------- From Etale to reading code
 
+# A step after a field's name, as in 'number.count': its name, and the code that gives its number
+# from the place where the field's value is kept.
+Step_Code {}
+  name* {Field_Name}
+  code* {Instruction...}
+
+Count_Name {"count"}
+
+# A field's count: 1 when its value is kept, 0 when it is missing: "load", "push 0", "equal",
+# "push 0", "equal".
+Count_Step {}
+  name* {Field_Name}
+  load {Bare_Instruction} (Load)
+  zero {Number_Instruction} (Push_Word, Zero)
+  equal {Bare_Instruction} (Equal)
+  code {Instruction...} (load, zero, equal, zero, equal)
+  result {Step_Code} (name, code)
+
+# A field's value in a record: its name, how far from the record's start it is kept, and the
+# steps that may come after its name.
+Field_Slot {}
+  name* {Field_Name}
+  offset* {U32}
+  steps* {Step_Code...}
+
+# What a type's function holds: its code, how many values it takes, and the slots of its fields.
+Type_Code {}
+  instructions* {Instruction...}
+  inputs* {Input_Count}
+  slots* {Field_Slot...}
+
 # A type compiled to the body of its function: its name, its function's number, and its code.
 Compiled_Type {}
   name* {Type_Name}
   number* {U32}
-  code* {Instruction...}
+  code* {Type_Code}
+
+# The code of a type that is read from the text: it takes nothing, and keeps no fields.
+Reading_Code {}
+  instructions* {Instruction...}
+  result {Type_Code} (instructions, Zero, Empty_String)
 
 # The number of the function that reads a type of this name, among the types compiled above.
 # Example: "Digit", after Digit is compiled as function 3, gives 3.
@@ -980,7 +1018,8 @@ Union_Line_Type {}
   types* {Compiled_Type...}
   number {Integer} (First_Type_Number + types.count)
   body {Union_Box_Body} (line.base, types)
-  compiled {Compiled_Type} (line.name, number, body)
+  code {Reading_Code} (body)
+  compiled {Compiled_Type} (line.name, number, code)
   result {Compiled_Type...} (compiled)
 
 # A list box's body: the item type's function, called from the least count to the most.
@@ -1002,7 +1041,8 @@ List_Line_Type {}
   times {Count_Of} (written, Any_Count)
   number {Integer} (First_Type_Number + types.count)
   body {List_Box_Body} (box, types, times)
-  compiled {Compiled_Type} (line.name, number, body)
+  code {Reading_Code} (body)
+  compiled {Compiled_Type} (line.name, number, code)
   result {Compiled_Type...} (compiled)
 
 # Keep a number in a local after the input, and give its place.
@@ -1026,7 +1066,8 @@ Range_Content_Type {}
   give {Number_Give} (Value_Local)
   body {Instruction...} (reading..., give...)
   number {Integer} (First_Type_Number + types.count)
-  compiled {Compiled_Type} (line.name, number, body)
+  code {Reading_Code} (body)
+  compiled {Compiled_Type} (line.name, number, code)
   result {Compiled_Type...} (compiled)
 
 # Any other parentheses, such as a constant's calculation, make no type.
@@ -1047,7 +1088,8 @@ Text_Item_Type {}
   codes {Quoted_Codes} (item)
   body {Text_Try} (codes, One)
   number {Integer} (First_Type_Number + types.count)
-  compiled {Compiled_Type} (line.name, number, body)
+  code {Reading_Code} (body)
+  compiled {Compiled_Type} (line.name, number, code)
   result {Compiled_Type...} (compiled)
 
 # A line of one type: a number range is a type that reads it; a constant or anything else
@@ -1153,28 +1195,52 @@ Layout_Type {}
   parts {Position_Part...} (block.positions..., types)
   body {Instruction...} (parts.result)
   number {Integer} (First_Type_Number + types.count)
-  compiled {Compiled_Type} (name, number, body)
+  code {Reading_Code} (body)
+  compiled {Compiled_Type} (name, number, code)
   result {Compiled_Type...} (compiled)
 
-# A stored field of a record: its name, and its line.
+# A field of a record: its name, its line, and how far from the record's start it is kept.
 Known_Field {}
   name* {Field_Name}
-  line* {Field_Line}
+  line* {Plain_Field}
+  offset* {U32}
 
-# A field line adds its field.
-Field_Line_Known {}
+# The name of a field line.
+Field_Line_Name {}
   line* {Field_Line}
-  types* {Compiled_Type...}
-  known {Known_Field} (line.name, line)
+  result {Field_Name} (line.name)
+
+# The name of a union field line.
+Union_Field_Name {}
+  line* {Union_Field_Line}
+  result {Field_Name} (line.name)
+
+# The name of a field worked out by cases.
+Mapping_Name {}
+  head* {Mapping_Line}
+  result {Field_Name} (head.name)
+
+# The name of a field worked out by cases, from its head line.
+Mapped_Field_Name {}
+  line* {Mapped_Field}
+  result {Mapping_Name} (line.head)
+
+Line_Name {Field_Line_Name | Union_Field_Name | Mapped_Field_Name}
+
+# A record's fields, each kept 8 bytes after the one above it, from 8 on.
+# Example: the lines of word, number and function give word 8, number 16 and function 24.
+Numbered_Fields {}
+  lines* {Plain_Field...}
+  known* {Known_Field...}
+  line {Plain_Field} (lines.first)
+  name {Line_Name} (line)
+  place {Integer} (known.count + One)
+  offset {Integer} (place * Field_Size)
+  added {Known_Field} (name, line, offset)
+  with_line {Known_Field...} (known..., added)
   result {Known_Field...} (known)
-
-# A union field or a field worked out by cases adds no field that is read.
-Other_Field_Known {}
-  line* {Union_Field_Line | Mapped_Field}
-  types* {Compiled_Type...}
-  result {Known_Field...} (Empty_String)
-
-Field_Known {Field_Line_Known | Other_Field_Known}
+    while (lines.count >= 1)
+    next (lines.rest, with_line)
 
 # A field's line as a part: its type, with the field's count. With no count, the field is
 # there once.
@@ -1191,8 +1257,21 @@ Field_Box_Name {}
   box* {Field_Box}
   result {Field_Name} (box.field)
 
-# Keep the part just read in the record, at a place from its start: "get 5", "push 8", "add",
-# "get 6", "store".
+# Keep where the text just read ends, 4 bytes after the field's value: "get 5", "push 12",
+# "add", "push 4", "load", "store".
+End_Store {}
+  offset* {U32}
+  end {Integer} (offset + Slot_Size)
+  record {Number_Instruction} (Get, Record_Local)
+  push {Number_Instruction} (Push_Word, end)
+  add {Bare_Instruction} (Add)
+  position {Number_Instruction} (Push_Word, Position_Place)
+  load {Bare_Instruction} (Load)
+  store {Bare_Instruction} (Store)
+  result {Instruction...} (record, push, add, position, load, store)
+
+# Keep the part just read in the record, at a place from its start, and where it ends:
+# "get 5", "push 8", "add", "get 6", "store", then the end.
 Slot_Store {}
   offset* {U32}
   record {Number_Instruction} (Get, Record_Local)
@@ -1200,10 +1279,11 @@ Slot_Store {}
   add {Bare_Instruction} (Add)
   part {Number_Instruction} (Get, Part_Local)
   store {Bare_Instruction} (Store)
-  result {Instruction...} (record, push, add, part, store)
+  end {End_Store} (offset)
+  result {Instruction...} (record, push, add, part, store, end...)
 
 # A shape position that names a field: the field's line, read as a part, and its value kept in
-# the record. Position 2 is kept 8 bytes from the record's start.
+# the record.
 # Example: '    2. {word}' reads the record's word.
 Field_Position_Part {}
   position* {Field_Position}
@@ -1213,9 +1293,7 @@ Field_Position_Part {}
   found {Known_Field...} (fields.name = wanted)
   field {Known_Field} (found.first)
   part {Field_Line_Part} (field.line, types)
-  slot {Digits_Value} (position.number, Zero)
-  offset {Integer} (slot * Slot_Size)
-  store {Slot_Store} (offset)
+  store {Slot_Store} (field.offset)
   result {Instruction...} (part..., store...)
 
 # A shape position of a type or a quoted text, read as a layout position is.
@@ -1232,51 +1310,15 @@ Shape_Part {Field_Position_Part | Type_Position_Part}
 
 # ---------- Rules
 
-# A step after a field's name, as in 'number.count': its name, and the code that gives its number
-# from the place where the field's value is kept.
-Step_Code {}
-  name* {Field_Name}
-  code* {Instruction...}
-
-Count_Name {"count"}
-
-# A field's count: 1 when its value is kept, 0 when it is missing: "load", "push 0", "equal",
-# "push 0", "equal".
-Count_Step {}
-  name* {Field_Name}
-  load {Bare_Instruction} (Load)
-  zero {Number_Instruction} (Push_Word, Zero)
-  equal {Bare_Instruction} (Equal)
-  code {Instruction...} (load, zero, equal, zero, equal)
-  result {Step_Code} (name, code)
-
-# A field's value in a record: its name, how far from the record's start it is kept, and the
-# steps that may come after its name.
-Field_Slot {}
-  name* {Field_Name}
-  offset* {U32}
-  steps* {Step_Code...}
-
-# A shape position that names a field gives its field's slot: its number times the size.
-# Example: '    2. {word}' with 4 gives word, 8.
-Field_Position_Slot {}
-  position* {Field_Position}
-  size* {U32}
-  name {Field_Box_Name} (position.base)
-  slot {Digits_Value} (position.number, Zero)
-  offset {Integer} (slot * size)
+# A field's slot, with the steps that may come after its name.
+# Example: number, kept at 16, gives number, 16, and the step count.
+Known_Slot {}
+  field* {Known_Field}
+  types* {Compiled_Type...}
   counting {Count_Step} (Count_Name)
   steps {Step_Code...} (counting)
-  kept {Field_Slot} (name, offset, steps)
-  result {Field_Slot...} (kept)
-
-# A shape position of a type or a quoted text keeps no field.
-Type_Position_Slot {}
-  position* {Type_Position}
-  size* {U32}
-  result {Field_Slot...} (Empty_String)
-
-Position_Slot {Field_Position_Slot | Type_Position_Slot}
+  slot {Field_Slot} (field.name, field.offset, steps)
+  result {Field_Slot...} (slot)
 
 Needs_Word {"Needs"}
 Claims_Word {"Claims"}
@@ -1504,12 +1546,12 @@ Shape_Positions {}
   item* {Shape_Item}
   result {Positions_Of_Shape} (item.line)
 
-# Take room for a record: a place for the value of each position of its shape, from 1 on.
-# Example: 3 positions take 16 bytes, from the record's start.
+# Take room for a record: 8 bytes for each field, after 8 bytes at its start.
+# Example: 3 fields take 32 bytes.
 Record_Room {}
-  positions* {Shape_Position...}
-  places {Integer} (positions.count + One)
-  size {Integer} (places * Slot_Size)
+  fields* {Known_Field...}
+  places {Integer} (fields.count + One)
+  size {Integer} (places * Field_Size)
   result {Take_Room} (Record_Local, size)
 
 # A record's body: take its room, read the shape's positions in order, then test its rules.
@@ -1521,18 +1563,18 @@ Record_Body {}
   types* {Compiled_Type...}
   items {Field_Item...} (block.fields)
   lines {Plain_Field...} (items.line)
-  known {Field_Known...} (lines..., types)
-  fields {Known_Field...} (known.result)
+  fields {Numbered_Fields} (lines, Empty_String)
   positions {Shape_Positions} (shape)
-  room {Record_Room} (positions)
+  room {Record_Room} (fields)
   parts {Shape_Part...} (positions..., fields, types)
   reading {Instruction...} (parts.result)
-  slots {Position_Slot...} (positions..., Slot_Size)
+  slots {Known_Slot...} (fields..., types)
   offsets {Field_Slot...} (slots.result)
   rules {Line_Rule...} (lines..., offsets)
   testing {Instruction...} (rules.result)
   give {Local_Give} (Record_Local)
-  result {Instruction...} (room..., reading..., testing..., give...)
+  code {Instruction...} (room..., reading..., testing..., give...)
+  result {Type_Code} (code, Zero, offsets)
 
 # A record's text shape as a compiled type.
 Shape_Type {}
@@ -1618,12 +1660,24 @@ Fixed_Functions {}
   take {Function} (take_head, take_code)
   result {Function...} (main, load, take)
 
-# A compiled type's function: its body in the type's frame. It takes nothing.
+# The instructions of a type's code.
+Code_Instructions {}
+  code* {Type_Code}
+  result {Instruction...} (code.instructions)
+
+# How many values a type's code takes.
+Code_Inputs {}
+  code* {Type_Code}
+  result {Input_Count} (code.inputs)
+
+# A compiled type's function: its body in the type's frame, and how many values it takes.
 Type_Function {}
   type* {Compiled_Type}
-  inputs* {U32}
-  head {Function_Head} (type.number, Type_Name_Of_Function, inputs)
-  framed {Type_Frame} (type.code)
+  name* {Kernel_Name}
+  inputs {Code_Inputs} (type.code)
+  head {Function_Head} (type.number, name, inputs)
+  body {Code_Instructions} (type.code)
+  framed {Type_Frame} (body)
   result {Function} (head, framed)
 
 # A reading program: main, load_input, take, and a function for each type, from 3 on. Main reads
@@ -1635,7 +1689,7 @@ Reading_Program {}
   load_code {Load_Input_Code} (Input_Place)
   take_code {Take_Code} (End_Of_Input)
   fixed {Fixed_Functions} (main_code, load_code, take_code)
-  typed {Type_Function...} (types..., Zero)
+  typed {Type_Function...} (types..., Type_Name_Of_Function)
   functions {Function...} (fixed..., typed...)
   result {Program} (functions)
 
