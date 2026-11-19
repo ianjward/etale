@@ -210,39 +210,41 @@ Compiled_File {}
 
 # ---------- Reading input
 
-# Kernel code that reads text keeps what it reads as a text record: its count at its place, and
-# its characters, a byte each, after it. A record's place is never 0, so 0 means refused.
-# Function 2, take, gives the next byte. Function 3, give_back, keeps a byte for the next take,
-# so that a list can stop at a byte that is not one of its items.
+# A reading program keeps its input in memory, from Input_Place to the end at Input_End_Place,
+# and the place of the next byte at Position_Place. Each type is a function that reads it: it
+# gives 1 and moves the position on, or gives 0 and puts the position back. So a part that may
+# be missing is a call whose 0 is passed over, and a union tries each member in turn.
 
-Record_Place {Integer} (16)              # where the record read is kept
-Items_Place {Integer} (20)               # where its characters start
-Kept_Byte_Place {Integer} (4)            # a byte given back
-Kept_Flag_Place {Integer} (8)            # 1 while a byte is given back
-End_Of_Input {Integer} (4294967295)      # what 'read' gives when no byte is left
+Position_Place {Integer} (4)             # the place of the next byte
+Input_End_Place {Integer} (8)            # the place after the last byte
+Input_Place {Integer} (1024)             # where the input starts
+End_Of_Input {Integer} (4294967295)      # what 'read' and take give when no byte is left
 No_Most {Integer} (4294967295)           # the most count of a list with no most
 
-Zero_Code {Integer} (48)                 # the number of the character "0"
-Ten {Integer} (10)
-
-Reader_Number {Integer} (1)
+Load_Input_Number {Integer} (1)
 Take_Number {Integer} (2)
-Give_Back_Number {Integer} (3)
-Reader_Name {"reader"}
+First_Type_Number {Integer} (3)          # each type read is a function from 3 on
+Load_Input_Name {"load_input"}
 Take_Name {"take"}
-Give_Back_Name {"give_back"}
+Type_Name_Of_Function {"type"}
 
 Zero {Integer} (0)
 Two {Integer} (2)
-Byte_Local {Integer} (0)                 # local 0 holds the byte read
-Count_Local {Integer} (1)                # local 1 counts the characters of the text
+Three {Integer} (3)
+Zero_Code {Integer} (48)                 # the number of the character "0"
+Ten {Integer} (10)
+
+Byte_Local {Integer} (0)                 # local 0 holds the byte taken
+Try_Local {Integer} (1)                  # local 1 holds the position before a try
 Item_Local {Integer} (2)                 # local 2 counts the items of a list
+Start_Local {Integer} (3)                # local 3 holds the position where the function starts
 
 Get {"get"}
 Set {"set"}
 Less {"less"}
 Equal {"equal"}
 Add {"add"}
+Multiply {"multiply"}
 
 Block {"block"}
 Loop {"loop"}
@@ -257,13 +259,13 @@ Load {"load"}
 Store_Byte {"store_byte"}
 Load_Byte {"load_byte"}
 
-# How many times a position or a list's items may be there: from least to most.
+# How many times a part may be there: from least to most.
 Count_Range {}
   least* {U32}
   most* {U32}
 
 Any_Count {Count_Range} (Zero, No_Most)    # a list with no count
-Once {Count_Range} (One, One)              # a position with no count
+Once {Count_Range} (One, One)              # a part with no count
 
 # A kernel instruction written with no number: "add".
 Bare_Instruction {}
@@ -278,7 +280,7 @@ Number_Instruction {}
   arguments {Number_Argument...} (argument)
   result {Instruction} (word, arguments, Empty_String)
 
-# A call to a function by its number: "call 1".
+# A call to a function by its number: "call 3".
 Call_Instruction {}
   function* {U32}
   argument {Function_Argument} (function)
@@ -300,22 +302,7 @@ Give_Code {}
   give {Bare_Instruction} (Return_Word)
   result {Instruction...} (push, give)
 
-# Take the next byte into a local: "call 2", "set 0".
-Take_Byte {}
-  local* {U32}
-  take {Call_Instruction} (Take_Number)
-  keep {Number_Instruction} (Set, local)
-  result {Instruction...} (take, keep)
-
-# Give the byte in a local back, for the next take: "get 0", "call 3", "drop".
-Give_Back_Byte {}
-  local* {U32}
-  get {Number_Instruction} (Get, local)
-  give {Call_Instruction} (Give_Back_Number)
-  drop {Bare_Instruction} (Stack_Word)
-  result {Instruction...} (get, give, drop)
-
-# Add 1 to a local: "get 1", "push 1", "add", "set 1".
+# Add 1 to a local: "get 2", "push 1", "add", "set 2".
 Count_Up {}
   local* {U32}
   get {Number_Instruction} (Get, local)
@@ -324,20 +311,30 @@ Count_Up {}
   keep {Number_Instruction} (Set, local)
   result {Instruction...} (get, push, add, keep)
 
-# Keep the byte as the next character of the text, and count it: "push 20", "get 1", "add",
-# "get 0", "store_byte", then add 1 to local 1.
-Keep_Byte {}
-  place* {U32}
-  push {Number_Instruction} (Push_Word, place)
-  counted {Number_Instruction} (Get, Count_Local)
-  add {Bare_Instruction} (Add)
-  get {Number_Instruction} (Get, Byte_Local)
-  store {Bare_Instruction} (Store_Byte)
-  next_count {Count_Up} (Count_Local)
-  result {Instruction...} (push, counted, add, get, store, next_count...)
+# Keep the position in a local: "push 4", "load", "set 3".
+Keep_Position {}
+  local* {U32}
+  place {Number_Instruction} (Push_Word, Position_Place)
+  load {Bare_Instruction} (Load)
+  keep {Number_Instruction} (Set, local)
+  result {Instruction...} (place, load, keep)
+
+# Put the position back from a local: "push 4", "get 3", "store".
+Put_Position_Back {}
+  local* {U32}
+  place {Number_Instruction} (Push_Word, Position_Place)
+  get {Number_Instruction} (Get, local)
+  store {Bare_Instruction} (Store)
+  result {Instruction...} (place, get, store)
+
+# Take the next byte into local 0: "call 2", "set 0".
+Take_Byte {}
+  local* {U32}
+  take {Call_Instruction} (Take_Number)
+  keep {Number_Instruction} (Set, local)
+  result {Instruction...} (take, keep)
 
 # Leave as many blocks as depth, and one more, when local 0 is below a number.
-# Example: 48 and 0 give "get 0", "push 48", "less", "break_if 0".
 Below_Code {}
   low* {U32}
   depth* {U32}
@@ -348,7 +345,6 @@ Below_Code {}
   result {Instruction...} (get, push, less, leave)
 
 # Leave as many blocks as depth, and one more, when local 0 is above a number.
-# Example: 57 and 0 give "push 57", "get 0", "less", "break_if 0".
 Above_Code {}
   high* {U32}
   depth* {U32}
@@ -358,30 +354,25 @@ Above_Code {}
   leave {Number_Instruction} (Break_If, depth)
   result {Instruction...} (push, get, less, leave)
 
-# Leave as many blocks as depth, and one more, when local 0 is below low or above high.
-# Example: 48, 57 and 0 give the tests for a digit.
-Range_Leave {}
+# Take a byte, and leave as many blocks as depth, and one more, when it is not from low to high.
+# Example: 48, 57 and 0 give the code that takes one digit.
+Range_Take {}
   low* {U32}
   high* {U32}
   depth* {U32}
+  take {Take_Byte} (Byte_Local)
   below {Below_Code} (low, depth)
   above {Above_Code} (high, depth)
-  result {Instruction...} (below..., above...)
+  result {Instruction...} (take..., below..., above...)
 
-# Leave as many blocks as depth, and one more, when local 0 is not a character.
-# Example: 45 and 0 give "get 0", "push 45", "equal", "push 0", "equal", "break_if 0".
-Other_Leave {}
+# Take one given character, and leave as many blocks as depth, and one more, when the byte is
+# another.
+Character_Take {}
   code* {U32}
   depth* {U32}
-  get {Number_Instruction} (Get, Byte_Local)
-  push {Number_Instruction} (Push_Word, code)
-  equal {Bare_Instruction} (Equal)
-  zero {Number_Instruction} (Push_Word, Zero)
-  leave {Number_Instruction} (Break_If, depth)
-  result {Instruction...} (get, push, equal, zero, equal, leave)
+  result {Range_Take} (code, code, depth)
 
 # Leave the block around the code when a local counts fewer than the least.
-# Example: 1 and 2 give "get 2", "push 1", "less", "break_if 0".
 Least_Leave {}
   least* {U32}
   local* {U32}
@@ -391,48 +382,7 @@ Least_Leave {}
   leave {Number_Instruction} (Break_If, Zero)
   result {Instruction...} (get, push, less, leave)
 
-# Keep the count of the text as the first field of the record, and give its place.
-# Example: 16 gives "push 16", "get 1", "store", "push 16", "return".
-Hold_Count {}
-  place* {U32}
-  push {Number_Instruction} (Push_Word, place)
-  counted {Number_Instruction} (Get, Count_Local)
-  store {Bare_Instruction} (Store)
-  give {Bare_Instruction} (Return_Word)
-  result {Instruction...} (push, counted, store, push, give)
-
-# One character from low to high, which must be there.
-# Example: 48 and 57 give the code that reads one digit.
-Range_Position_Code {}
-  low* {U32}
-  high* {U32}
-  take {Take_Byte} (Byte_Local)
-  outside {Range_Leave} (low, high, Zero)
-  keep {Keep_Byte} (Items_Place)
-  result {Instruction...} (take..., outside..., keep...)
-
-# One character from low to high. When the next byte is another, it is given back, and the text
-# is refused unless the least count is 0.
-# Example: 48, 57 and 0 give the code for an optional digit.
-One_Position_Code {}
-  low* {U32}
-  high* {U32}
-  least* {U32}
-  done {Bare_Instruction} (Block)
-  absent {Bare_Instruction} (Block)
-  take {Take_Byte} (Byte_Local)
-  other {Range_Leave} (low, high, Zero)
-  keep {Keep_Byte} (Items_Place)
-  found {Number_Instruction} (Break, One)
-  close {Bare_Instruction} (End)
-  back {Give_Back_Byte} (Byte_Local)
-  push {Number_Instruction} (Push_Word, least)
-  refuse {Number_Instruction} (Break_If, One)
-  matching {Instruction...} (done, absent, take..., other..., keep..., found, close)
-  result {Instruction...} (matching..., back..., push, refuse, close)
-
-# Leave the loop and its block when a list has its most count: "get 2", "push 7", "less",
-# "push 0", "equal", "break_if 1".
+# Leave the loop and its block when a list has its most count.
 Most_Leave {}
   most* {U32}
   get {Number_Instruction} (Get, Item_Local)
@@ -443,192 +393,209 @@ Most_Leave {}
   leave {Number_Instruction} (Break_If, One)
   result {Instruction...} (get, push, less, zero, equal, leave)
 
-# One given character, from it to itself.
-# Example: 45 and 0 give the code for an optional minus sign.
-Character_Position_Code {}
-  code* {U32}
-  least* {U32}
-  result {One_Position_Code} (code, code, least)
-
-# The loop of a list: stop at the most count; take a byte; keep and count it while it is from
-# low to high. The first byte that is not an item is given back, and the loop and its block are
-# left.
-List_Loop {}
-  low* {U32}
-  high* {U32}
-  most* {U32}
-  open {Bare_Instruction} (Loop)
-  full {Most_Leave} (most)
-  take {Take_Byte} (Byte_Local)
-  item {Bare_Instruction} (Block)
-  outside {Range_Leave} (low, high, Zero)
-  keep {Keep_Byte} (Items_Place)
-  next_item {Count_Up} (Item_Local)
-  again {Number_Instruction} (Break, One)
+# A type's function around its body: keep where it starts; when the body reads, give 1; when
+# the body leaves its block, put the position back and give 0.
+Type_Frame {}
+  body* {Instruction...}
+  start {Keep_Position} (Start_Local)
+  open {Bare_Instruction} (Block)
+  read {Give_Code} (One)
   close {Bare_Instruction} (End)
-  back {Give_Back_Byte} (Byte_Local)
-  leave {Number_Instruction} (Break, One)
-  testing {Instruction...} (item, outside..., keep..., next_item..., again, close)
-  result {Instruction...} (open, full..., take..., testing..., back..., leave, close)
+  back {Put_Position_Back} (Start_Local)
+  refuse {Give_Code} (Zero)
+  result {Instruction...} (start..., open, body..., read..., close, back..., refuse...)
 
-# A list of characters from low to high, with a count from its least to its most.
-# Example: 48, 57 and 1 to no most give the code that reads a whole number.
-List_Position_Code {}
-  low* {U32}
-  high* {U32}
+# A part read by a function. When the function gives 0, the block around the code is left,
+# unless the least count is 0: "call 4", "push 0", "equal", "push 1", "multiply", "break_if 0".
+Part_Call {}
+  function* {U32}
+  least* {U32}
+  call {Call_Instruction} (function)
+  zero {Number_Instruction} (Push_Word, Zero)
+  equal {Bare_Instruction} (Equal)
+  push {Number_Instruction} (Push_Word, least)
+  both {Bare_Instruction} (Multiply)
+  leave {Number_Instruction} (Break_If, Zero)
+  result {Instruction...} (call, zero, equal, push, both, leave)
+
+# A list of parts read by a function, from its least count to its most.
+# Example: function 3 with 1 to no most gives the code that reads one or more digits.
+List_Call {}
+  function* {U32}
   times* {Count_Range}
   start {Local_Start} (Zero, Item_Local)
   open {Bare_Instruction} (Block)
-  items {List_Loop} (low, high, times.most)
-  close {Bare_Instruction} (End)
-  enough {Least_Leave} (times.least, Item_Local)
-  result {Instruction...} (start..., open, items..., close, enough...)
-
-# The reader's code: the code of each position in order, inside one block. A position that does
-# not read leaves the block, and the reader gives 0. Otherwise it gives the place of the text.
-Layout_Code {}
-  positions* {Instruction...} count: 1..
-  start {Local_Start} (Zero, Count_Local)
-  open {Bare_Instruction} (Block)
-  hold {Hold_Count} (Record_Place)
-  close {Bare_Instruction} (End)
-  refuse {Give_Code} (Zero)
-  result {Instruction...} (start..., open, positions..., hold..., close, refuse...)
-
-# Function 2, take: the byte given back, if there is one, otherwise the next byte read.
-Take_Code {}
-  flag* {U32}
-  byte* {U32}
-  open {Bare_Instruction} (Block)
-  flag_place {Number_Instruction} (Push_Word, flag)
-  load {Bare_Instruction} (Load)
+  loop {Bare_Instruction} (Loop)
+  full {Most_Leave} (times.most)
+  call {Call_Instruction} (function)
   zero {Number_Instruction} (Push_Word, Zero)
-  equal {Bare_Instruction} (Equal)
-  none {Number_Instruction} (Break_If, Zero)
-  store {Bare_Instruction} (Store)
-  byte_place {Number_Instruction} (Push_Word, byte)
-  give {Bare_Instruction} (Return_Word)
-  close {Bare_Instruction} (End)
-  read {Bare_Instruction} (Read)
-  kept {Instruction...} (open, flag_place, load, zero, equal, none, flag_place, zero, store)
-  result {Instruction...} (kept..., byte_place, load, give, close, read, give)
-
-# Function 3, give_back: keep the byte it takes for the next take, and give 0.
-Give_Back_Code {}
-  flag* {U32}
-  byte* {U32}
-  byte_place {Number_Instruction} (Push_Word, byte)
-  get {Number_Instruction} (Get, Byte_Local)
-  store {Bare_Instruction} (Store)
-  flag_place {Number_Instruction} (Push_Word, flag)
-  one {Number_Instruction} (Push_Word, One)
-  give {Give_Code} (Zero)
-  result {Instruction...} (byte_place, get, store, flag_place, one, store, give...)
-
-# Leave the block unless the input is used up: "call 2", "push 4294967295", "equal", "push 0",
-# "equal", "break_if 0".
-End_Check {}
-  end_value* {U32}
-  take {Call_Instruction} (Take_Number)
-  push {Number_Instruction} (Push_Word, end_value)
-  equal {Bare_Instruction} (Equal)
-  zero {Number_Instruction} (Push_Word, Zero)
-  leave {Number_Instruction} (Break_If, Zero)
-  result {Instruction...} (take, push, equal, zero, equal, leave)
-
-# Leave the block when local 0 holds 0, the refused place.
-Refused_Check {}
-  number* {U32}
-  get {Number_Instruction} (Get, Byte_Local)
-  push {Number_Instruction} (Push_Word, number)
-  equal {Bare_Instruction} (Equal)
-  leave {Number_Instruction} (Break_If, Zero)
-  result {Instruction...} (get, push, equal, leave)
-
-# Leave the loop and its block when every character is written.
-Characters_Left {}
-  number* {U32}
-  counted {Number_Instruction} (Get, Count_Local)
-  place {Number_Instruction} (Get, Byte_Local)
-  load {Bare_Instruction} (Load)
-  less {Bare_Instruction} (Less)
-  zero {Number_Instruction} (Push_Word, number)
   equal {Bare_Instruction} (Equal)
   leave {Number_Instruction} (Break_If, One)
-  result {Instruction...} (counted, place, load, less, zero, equal, leave)
-
-# Write the next character of the text: "push 20", "get 1", "add", "load_byte", "write".
-Write_Item {}
-  place* {U32}
-  push {Number_Instruction} (Push_Word, place)
-  counted {Number_Instruction} (Get, Count_Local)
-  add {Bare_Instruction} (Add)
-  load {Bare_Instruction} (Load_Byte)
-  write {Bare_Instruction} (Write)
-  result {Instruction...} (push, counted, add, load, write)
-
-# Write each character of the text at local 0, and give 0.
-Write_Text_Code {}
-  number* {U32}
-  start {Local_Start} (Zero, Count_Local)
-  open {Bare_Instruction} (Block)
-  loop {Bare_Instruction} (Loop)
-  left {Characters_Left} (Zero)
-  item {Write_Item} (Items_Place)
-  next_count {Count_Up} (Count_Local)
+  next_item {Count_Up} (Item_Local)
   again {Number_Instruction} (Break, Zero)
   close {Bare_Instruction} (End)
-  give {Give_Code} (number)
-  writing {Instruction...} (open, loop, left..., item..., next_count..., again, close, close)
-  result {Instruction...} (start..., writing..., give...)
+  enough {Least_Leave} (times.least, Item_Local)
+  looping {Instruction...} (open, loop, full..., call, zero, equal, leave, next_item..., again)
+  result {Instruction...} (start..., looping..., close, close, enough...)
 
-# Main: read the whole input as one text. Main writes it and gives 0, or gives 1 when the input
-# is refused, or when bytes are left after the text.
-# Example: "7" writes "7" and gives 0; "x" gives 1.
+# A quoted text as a part: its characters in turn. When one is another byte, the position goes
+# back to before the text, and the block around the code is left unless the least count is 0.
+# Example: 45 with 0 gives the code for an optional minus sign.
+Text_Try {}
+  codes* {Integer...}
+  least* {U32}
+  done {Bare_Instruction} (Block)
+  miss {Bare_Instruction} (Block)
+  start {Keep_Position} (Try_Local)
+  each {Character_Take...} (codes..., Zero)
+  taking {Instruction...} (each.result)
+  found {Number_Instruction} (Break, One)
+  close {Bare_Instruction} (End)
+  back {Put_Position_Back} (Try_Local)
+  push {Number_Instruction} (Push_Word, least)
+  refuse {Number_Instruction} (Break_If, One)
+  trying {Instruction...} (done, miss, start..., taking..., found, close)
+  result {Instruction...} (trying..., back..., push, refuse, close)
+
+# Keep where the input ends, start the position at the first byte, and give 0.
+Load_Input_End {}
+  place* {U32}
+  end_place {Number_Instruction} (Push_Word, Input_End_Place)
+  at {Number_Instruction} (Get, Byte_Local)
+  store {Bare_Instruction} (Store)
+  position {Number_Instruction} (Push_Word, Position_Place)
+  first {Number_Instruction} (Push_Word, place)
+  give {Give_Code} (Zero)
+  result {Instruction...} (end_place, at, store, position, first, store, give...)
+
+# The rest of load_input: stop at the end of the input; otherwise keep the byte and go on.
+Load_Input_Store {}
+  place* {U32}
+  byte {Number_Instruction} (Get, Try_Local)
+  ending {Number_Instruction} (Push_Word, End_Of_Input)
+  equal {Bare_Instruction} (Equal)
+  leave {Number_Instruction} (Break_If, One)
+  at {Number_Instruction} (Get, Byte_Local)
+  store {Bare_Instruction} (Store_Byte)
+  next_place {Count_Up} (Byte_Local)
+  again {Number_Instruction} (Break, Zero)
+  close {Bare_Instruction} (End)
+  done {Load_Input_End} (place)
+  storing {Instruction...} (byte, ending, equal, leave, at, byte, store, next_place..., again)
+  result {Instruction...} (storing..., close, close, done...)
+
+# Function 1, load_input: read every byte into memory from Input_Place, then keep where the input
+# ends, and start the position at the first byte.
+Load_Input_Code {}
+  place* {U32}
+  start {Local_Start} (place, Byte_Local)
+  open {Bare_Instruction} (Block)
+  loop {Bare_Instruction} (Loop)
+  take {Bare_Instruction} (Read)
+  keep {Number_Instruction} (Set, Try_Local)
+  reading {Instruction...} (open, loop, take, keep)
+  stored {Load_Input_Store} (place)
+  result {Instruction...} (start..., reading..., stored...)
+
+# The rest of take: move the position on by one, and give the byte.
+Take_Move {}
+  step* {U32}
+  position {Number_Instruction} (Push_Word, Position_Place)
+  load {Bare_Instruction} (Load)
+  push {Number_Instruction} (Push_Word, step)
+  add {Bare_Instruction} (Add)
+  store {Bare_Instruction} (Store)
+  give {Bare_Instruction} (Return_Word)
+  result {Instruction...} (position, position, load, push, add, store, give)
+
+# Function 2, take: the byte at the position, moving the position on; or 4294967295 at the end
+# of the input, leaving the position where it is.
+Take_Code {}
+  ending* {U32}
+  open {Bare_Instruction} (Block)
+  position {Number_Instruction} (Push_Word, Position_Place)
+  load {Bare_Instruction} (Load)
+  end_place {Number_Instruction} (Push_Word, Input_End_Place)
+  less {Bare_Instruction} (Less)
+  more {Number_Instruction} (Break_If, Zero)
+  push {Give_Code} (ending)
+  close {Bare_Instruction} (End)
+  byte {Bare_Instruction} (Load_Byte)
+  moved {Take_Move} (One)
+  testing {Instruction...} (open, position, load, end_place, load, less, more, push..., close)
+  result {Instruction...} (testing..., position, load, byte, moved...)
+
+# Leave the block unless the position is at the end of the input.
+At_End_Check {}
+  place* {U32}
+  position {Number_Instruction} (Push_Word, place)
+  load {Bare_Instruction} (Load)
+  end_place {Number_Instruction} (Push_Word, Input_End_Place)
+  equal {Bare_Instruction} (Equal)
+  zero {Number_Instruction} (Push_Word, Zero)
+  leave {Number_Instruction} (Break_If, Zero)
+  result {Instruction...} (position, load, end_place, load, equal, zero, equal, leave)
+
+# Write the input that was read, from Input_Place to the position, and give 0.
+Write_Input_Code {}
+  place* {U32}
+  start {Local_Start} (place, Try_Local)
+  open {Bare_Instruction} (Block)
+  loop {Bare_Instruction} (Loop)
+  at {Number_Instruction} (Get, Try_Local)
+  position {Number_Instruction} (Push_Word, Position_Place)
+  load {Bare_Instruction} (Load)
+  less {Bare_Instruction} (Less)
+  zero {Number_Instruction} (Push_Word, Zero)
+  equal {Bare_Instruction} (Equal)
+  leave {Number_Instruction} (Break_If, One)
+  byte {Bare_Instruction} (Load_Byte)
+  write {Bare_Instruction} (Write)
+  next_place {Count_Up} (Try_Local)
+  again {Number_Instruction} (Break, Zero)
+  close {Bare_Instruction} (End)
+  give {Give_Code} (Zero)
+  testing {Instruction...} (open, loop, at, position, load, less, zero, equal, leave)
+  writing {Instruction...} (at, byte, write, next_place..., again, close, close)
+  result {Instruction...} (start..., testing..., writing..., give...)
+
+# Main: load the input, and read it with the top type's function. When the type reads all of
+# it, main writes it and gives 0; otherwise main gives 1.
+# Example: Natural on "2026" writes "2026" and gives 0; on "12a" it gives 1.
 Reading_Main {}
-  show* {Instruction...}
-  call {Call_Instruction} (Reader_Number)
+  top* {U32}
+  load {Call_Instruction} (Load_Input_Number)
+  drop {Bare_Instruction} (Stack_Word)
+  call {Call_Instruction} (top)
   keep {Number_Instruction} (Set, Byte_Local)
   open {Bare_Instruction} (Block)
-  refused {Refused_Check} (Zero)
-  whole {End_Check} (End_Of_Input)
+  read {Number_Instruction} (Get, Byte_Local)
+  zero {Number_Instruction} (Push_Word, Zero)
+  equal {Bare_Instruction} (Equal)
+  refused {Number_Instruction} (Break_If, Zero)
+  whole {At_End_Check} (Position_Place)
+  write {Write_Input_Code} (Input_Place)
   close {Bare_Instruction} (End)
   refuse {Give_Code} (One)
-  result {Instruction...} (call, keep, open, refused..., whole..., show..., close, refuse...)
-
-# Main, the reader and take, functions 0 to 2, which take nothing.
-Reading_Functions {}
-  main_code* {Instruction...}
-  reader_code* {Instruction...}
-  take_code* {Instruction...}
-  main_head {Function_Head} (Main_Number, Main_Name, No_Inputs)
-  main {Function} (main_head, main_code)
-  reader_head {Function_Head} (Reader_Number, Reader_Name, No_Inputs)
-  reader {Function} (reader_head, reader_code)
-  take_head {Function_Head} (Take_Number, Take_Name, No_Inputs)
-  take {Function} (take_head, take_code)
-  result {Function...} (main, reader, take)
-
-# Function 3, give_back, which takes the byte.
-Give_Back_Function {}
-  code* {Instruction...}
-  head {Function_Head} (Give_Back_Number, Give_Back_Name, One)
-  result {Function} (head, code)
-
-# A program that reads its input with the reader's code, then writes what it read.
-Reading_Program {}
-  code* {Instruction...} count: 1..
-  reader_code {Layout_Code} (code)
-  show {Write_Text_Code} (Zero)
-  main_code {Reading_Main} (show)
-  take_code {Take_Code} (Kept_Flag_Place, Kept_Byte_Place)
-  back_code {Give_Back_Code} (Kept_Flag_Place, Kept_Byte_Place)
-  functions {Reading_Functions} (main_code, reader_code, take_code)
-  with_back {Give_Back_Function} (back_code)
-  all {Function...} (functions..., with_back)
-  result {Program} (all)
+  checking {Instruction...} (load, drop, call, keep, open, read, zero, equal, refused, whole...)
+  result {Instruction...} (checking..., write..., close, refuse...)
 
 # ---------- From Etale to reading code
+
+# A type compiled to the body of its function: its name, its function's number, and its code.
+Compiled_Type {}
+  name* {Type_Name}
+  number* {U32}
+  code* {Instruction...}
+
+# The number of the function that reads a type of this name, among the types compiled above.
+# Example: "Digit", after Digit is compiled as function 3, gives 3.
+Type_Number {}
+  wanted* {Type_Name}
+  types* {Compiled_Type...}
+  found {Compiled_Type...} (types.name = wanted)
+  type {Compiled_Type} (found.first)
+  result {Integer} (type.number)
 
 # A printable character's number.
 # Example: "0" gives 48.
@@ -636,16 +603,6 @@ Character_Code {}
   character* {Line_Character}
   result {Integer} (character)
     {32..126} (" ".."~")
-
-# The number of the one character in quotes.
-# Example: '"0"' gives 48.
-Quoted_Code {}
-  quoted* {String_Literal}
-  characters {String_Character...} (quoted.characters)
-  one_character {Needs} (characters.count = 1)
-  character {String_Character} (characters.first)
-  code {Character_Code} (character)
-  result {Integer} (code)
 
 # The numbers of characters, each after the numbers so far.
 # Example: "." and "." with none so far give 46, 46.
@@ -667,81 +624,13 @@ Quoted_Codes {}
   codes {Characters_To_Codes} (characters, Empty_String)
   result {Integer...} (codes)
 
-# The code that reads a character of a range.
-# Example: '"0".."9"' gives the program that reads one digit.
-Range_Reader {}
-  range* {Character_Range}
-  low {Quoted_Code} (range.low)
-  high {Quoted_Code} (range.high)
-  code {Range_Position_Code} (low, high)
-  result {Reading_Program} (code)
-
-# The code that reads a union line's one character range.
-Box_Reader {}
-  box* {Union_Box}
-  result {Range_Reader} (box.items)
-
-# A type of one character range as a program that reads it from its input.
-# Example: 'Digit {"0".."9"}' gives a program that reads one digit, writes it and gives 0.
-Compiled_Range {}
-  line {Union_Line}
-  reader {Box_Reader} (line.base)
-  text {Text}
-    1. {line}
-
-# A character range's type: its name, and the numbers of its ends.
-Known_Range {}
-  name* {Type_Name}
-  low* {U32}
-  high* {U32}
-
-# A base of one character range adds its range, for the line's name.
-# Example: '"0".."9"' on Digit adds Digit, 48, 57.
-Range_Known {}
-  items* {Character_Range}
-  name* {Type_Name}
-  low {Quoted_Code} (items.low)
-  high {Quoted_Code} (items.high)
-  known {Known_Range} (name, low, high)
-  result {Known_Range...} (known)
-
-# A union of several items adds no range.
-Union_No_Range {}
-  items* {Union_List}
-  name* {Type_Name}
-  result {Known_Range...} (Empty_String)
-
-Box_Ranges {Range_Known | Union_No_Range}
-
-# The range a union box adds, for the line's name.
-Box_Items_Ranges {}
-  box* {Union_Box}
-  name* {Type_Name}
-  result {Box_Ranges} (box.items, name)
-
-# A union line adds its range when its base is one character range.
-Union_Line_Ranges {}
-  line* {Union_Line}
-  result {Box_Items_Ranges} (line.base, line.name)
-
-# A refinement line or an intersection line adds no range.
-Other_Line_Ranges {}
-  line* {Refinement_Line | Intersection_Line}
-  result {Known_Range...} (Empty_String)
-
-Line_Ranges {Union_Line_Ranges | Other_Line_Ranges}
-
-# The ranges of a group of lines, in order.
-# Example: 'Digit {"0".."9"}' then 'Natural {Digit...} count: 1..' give Digit, 48, 57.
-Group_Ranges {}
-  lines* {Noted_Line...}
-  known* {Known_Range...}
-  noted {Noted_Line} (lines.first)
-  added {Line_Ranges} (noted.line)
-  with_line {Known_Range...} (known..., added...)
-  result {Known_Range...} (known)
-    while (lines.count >= 1)
-    next (lines.rest, with_line)
+# The number of the one character in quotes.
+# Example: '"0"' gives 48.
+Quoted_Code {}
+  quoted* {String_Literal}
+  codes {Quoted_Codes} (quoted)
+  one_character {Needs} (codes.count = 1)
+  result {Integer} (codes.first)
 
 # The number that digits write, each digit after the number so far.
 # Example: "12" with 0 so far gives 1, then 12.
@@ -803,144 +692,345 @@ Count_Of {}
   with_otherwise {Count_Range...} (found..., otherwise)
   result {Count_Range} (with_otherwise.first)
 
-# The code that reads a list of a known range, with its least count.
-# Example: Digit, Digit's range and 1 give the code that reads a whole number.
-Known_List_Code {}
+# Keep the position as the best so far, when it is further than the best: "get 2", "push 4",
+# "load", "less", "push 0", "equal", "break_if 0", "push 4", "load", "set 2".
+Keep_Best {}
+  local* {U32}
+  best {Number_Instruction} (Get, local)
+  position {Number_Instruction} (Push_Word, Position_Place)
+  load {Bare_Instruction} (Load)
+  less {Bare_Instruction} (Less)
+  zero {Number_Instruction} (Push_Word, Zero)
+  equal {Bare_Instruction} (Equal)
+  leave {Number_Instruction} (Break_If, Zero)
+  keep {Number_Instruction} (Set, local)
+  result {Instruction...} (best, position, load, less, zero, equal, leave, position, load, keep)
+
+# A union member that is a type: call its function; when it reads, keep where it got to.
+# Then go back to where the union started, for the next member.
+# Example: Digit, function 3, gives "block", "call 3", "push 0", "equal", "break_if 0", ...
+Union_Name_Try {}
   item* {Type_Name}
-  known* {Known_Range...}
-  times* {Count_Range}
-  found {Known_Range...} (known.name = item)
-  range {Known_Range} (found.first)
-  result {List_Position_Code} (range.low, range.high, times)
+  types* {Compiled_Type...}
+  number {Type_Number} (item, types)
+  open {Bare_Instruction} (Block)
+  call {Call_Instruction} (number)
+  zero {Number_Instruction} (Push_Word, Zero)
+  equal {Bare_Instruction} (Equal)
+  miss {Number_Instruction} (Break_If, Zero)
+  best {Keep_Best} (Item_Local)
+  close {Bare_Instruction} (End)
+  back {Put_Position_Back} (Start_Local)
+  result {Instruction...} (open, call, zero, equal, miss, best..., close, back...)
 
-# The code that reads a list box's items, with their count.
-List_Box_Code {}
-  box* {List_Box}
-  known* {Known_Range...}
-  times* {Count_Range}
-  result {Known_List_Code} (box.item, known, times)
-
-# The code that reads a quoted text, each character in turn. Only a text of one character may
-# be missing.
-# Example: '"-"' with 0 to 1 gives an optional minus sign; '".."' gives two dots.
-Quoted_Item_Code {}
+# A union member that is a quoted text: take its characters; when they all read, keep where it
+# got to. Then go back to where the union started.
+Union_Text_Try {}
   item* {String_Literal}
-  known* {Known_Range...}
-  times* {Count_Range}
+  types* {Compiled_Type...}
   codes {Quoted_Codes} (item)
-  missing_one {Needs} (times.least = 1 | codes.count = 1)
-  each {Character_Position_Code...} (codes..., times.least)
-  result {Instruction...} (each.result)
+  open {Bare_Instruction} (Block)
+  each {Character_Take...} (codes..., Zero)
+  taking {Instruction...} (each.result)
+  best {Keep_Best} (Item_Local)
+  close {Bare_Instruction} (End)
+  back {Put_Position_Back} (Start_Local)
+  result {Instruction...} (open, taking..., best..., close, back...)
 
-# The code that reads one character of a known range, by its type's name.
-# Example: 'Digit' with 0 to 1 gives an optional digit.
-Named_Item_Code {}
-  item* {Type_Name}
-  known* {Known_Range...}
+# A union member that is a character range: take one character of it, as Union_Text_Try does.
+Union_Range_Try {}
+  item* {Character_Range}
+  types* {Compiled_Type...}
+  low {Quoted_Code} (item.low)
+  high {Quoted_Code} (item.high)
+  open {Bare_Instruction} (Block)
+  take {Range_Take} (low, high, Zero)
+  best {Keep_Best} (Item_Local)
+  close {Bare_Instruction} (End)
+  back {Put_Position_Back} (Start_Local)
+  result {Instruction...} (open, take..., best..., close, back...)
+
+Union_Try {Union_Name_Try | Union_Text_Try | Union_Range_Try}
+
+# Move the position to the best: "push 4", "get 2", "store".
+Best_Position {}
+  local* {U32}
+  result {Put_Position_Back} (local)
+
+# A union's body: try each member from where the union starts, and keep the furthest any of
+# them reads to. The union reads to there. When none reads, the function's block is left.
+# Example: '"break" | "break_if"' reads "break_if" whole.
+Union_Body {}
+  items* {Union_List}
+  types* {Compiled_Type...}
+  rest {Union_Tail...} (items.rest)
+  others {Union_Item...} (rest.next)
+  members {Union_Item...} (items.first, others...)
+  start {Local_Start} (Zero, Item_Local)
+  tries {Union_Try...} (members..., types)
+  trying {Instruction...} (tries.result)
+  best {Number_Instruction} (Get, Item_Local)
+  zero {Number_Instruction} (Push_Word, Zero)
+  equal {Bare_Instruction} (Equal)
+  none {Number_Instruction} (Break_If, Zero)
+  moved {Best_Position} (Item_Local)
+  result {Instruction...} (start..., trying..., best, zero, equal, none, moved...)
+
+# A character range's body: one character of it.
+# Example: '"0".."9"' reads one digit.
+Range_Body {}
+  items* {Character_Range}
+  types* {Compiled_Type...}
+  low {Quoted_Code} (items.low)
+  high {Quoted_Code} (items.high)
+  result {Range_Take} (low, high, Zero)
+
+Union_Base_Body {Union_Body | Range_Body}
+
+# The body of a union box.
+Union_Box_Body {}
+  box* {Union_Box}
+  types* {Compiled_Type...}
+  result {Union_Base_Body} (box.items, types)
+
+# A union line as a compiled type, numbered after the types above it.
+Union_Line_Type {}
+  line* {Union_Line}
+  types* {Compiled_Type...}
+  number {Integer} (First_Type_Number + types.count)
+  body {Union_Box_Body} (line.base, types)
+  compiled {Compiled_Type} (line.name, number, body)
+  result {Compiled_Type...} (compiled)
+
+# A list box's body: the item type's function, called from the least count to the most.
+# Example: 'Digit...' with 1 to no most reads one or more digits.
+List_Box_Body {}
+  box* {List_Box}
+  types* {Compiled_Type...}
   times* {Count_Range}
-  found {Known_Range...} (known.name = item)
-  range {Known_Range} (found.first)
-  result {One_Position_Code} (range.low, range.high, times.least)
+  number {Type_Number} (box.item, types)
+  result {List_Call} (number, times)
 
-Single_Item_Code {Quoted_Item_Code | Named_Item_Code}
-
-# The code that reads a box's one item: a quoted text, or a character of a known range.
-Item_Box_Code {}
-  box* {Item_Box}
-  known* {Known_Range...}
-  times* {Count_Range}
-  result {Single_Item_Code} (box.item, known, times)
-
-Box_Code {Item_Box_Code | List_Box_Code}
-
-# A list on a refinement line: with no count, any count.
-# Example: 'Natural {Digit...} count: 1..' gives the code that reads a whole number.
-List_Line_Code {}
+# A list line as a compiled type.
+# Example: 'Natural {Digit...} count: 1..' gives Natural's function.
+List_Line_Type {}
+  box* {List_Box}
   line* {Refinement_Line}
-  known* {Known_Range...}
+  types* {Compiled_Type...}
   written {Properties...} (line.properties)
   times {Count_Of} (written, Any_Count)
-  code {List_Box_Code} (line.base, known, times)
-  result {Reading_Program} (code)
+  number {Integer} (First_Type_Number + types.count)
+  body {List_Box_Body} (box, types, times)
+  compiled {Compiled_Type} (line.name, number, body)
+  result {Compiled_Type...} (compiled)
 
-# A group of lines whose last line is a list of a character range, as a program that reads it.
-# Example: 'Digit {"0".."9"}' then 'Natural {Digit...} count: 1..' give a program that reads a
-# whole number, writes it and gives 0.
-Compiled_List {}
-  group {Line_Group}
-  lines {Noted_Line...} (group.first, group.rest...)
-  known {Group_Ranges} (lines, Empty_String)
-  last {Noted_Line} (lines.last)
-  reader {List_Line_Code} (last.line, known)
-  text {Text}
-    1. {group}
+# A line of one quoted text is a type that reads the text.
+# Example: 'Push_Word {"push"}' reads "push".
+Text_Item_Type {}
+  item* {String_Literal}
+  line* {Refinement_Line}
+  types* {Compiled_Type...}
+  codes {Quoted_Codes} (item)
+  body {Text_Try} (codes, One)
+  number {Integer} (First_Type_Number + types.count)
+  compiled {Compiled_Type} (line.name, number, body)
+  result {Compiled_Type...} (compiled)
 
-# A group of one-line declarations adds its ranges.
-Line_Group_Ranges {}
+# A line of one type or number, such as a constant, is not read: it gives no type.
+Other_Item_Type {}
+  item* {Type_Name | Number_Literal}
+  line* {Refinement_Line}
+  types* {Compiled_Type...}
+  result {Compiled_Type...} (Empty_String)
+
+Item_Kind_Type {Text_Item_Type | Other_Item_Type}
+
+# A refinement line of one item.
+Item_Line_Type {}
+  box* {Item_Box}
+  line* {Refinement_Line}
+  types* {Compiled_Type...}
+  result {Item_Kind_Type} (box.item, line, types)
+
+Refinement_Base_Type {List_Line_Type | Item_Line_Type}
+
+# A refinement line: a list gives its type; one item gives none.
+Refinement_Line_Type {}
+  line* {Refinement_Line}
+  types* {Compiled_Type...}
+  result {Refinement_Base_Type} (line.base, line, types)
+
+# An intersection line is not compiled yet: it gives no type.
+Intersection_Line_Type {}
+  line* {Intersection_Line}
+  types* {Compiled_Type...}
+  result {Compiled_Type...} (Empty_String)
+
+Line_Type {Union_Line_Type | Refinement_Line_Type | Intersection_Line_Type}
+
+# A quoted text in a layout.
+# Example: '"-"' with 0 to 1 gives an optional minus sign.
+Quoted_Part {}
+  item* {String_Literal}
+  types* {Compiled_Type...}
+  times* {Count_Range}
+  codes {Quoted_Codes} (item)
+  result {Text_Try} (codes, times.least)
+
+# A type in a layout, by its name.
+# Example: 'Digit' with 0 to 1 gives an optional digit.
+Named_Part {}
+  item* {Type_Name}
+  types* {Compiled_Type...}
+  times* {Count_Range}
+  number {Type_Number} (item, types)
+  result {Part_Call} (number, times.least)
+
+Single_Part {Quoted_Part | Named_Part}
+
+# A box of one item in a layout.
+Item_Box_Part {}
+  box* {Item_Box}
+  types* {Compiled_Type...}
+  times* {Count_Range}
+  result {Single_Part} (box.item, types, times)
+
+# A list in a layout.
+List_Box_Part {}
+  box* {List_Box}
+  types* {Compiled_Type...}
+  times* {Count_Range}
+  result {List_Box_Body} (box, types, times)
+
+Box_Part {Item_Box_Part | List_Box_Part}
+
+# One position of a layout. With no count, the position must be there once.
+# Example: '  1. {"-"} count: 0..1' gives the code for an optional minus sign.
+Position_Part {}
+  line* {Position_Line}
+  types* {Compiled_Type...}
+  written {Properties...} (line.properties)
+  times {Count_Of} (written, Once)
+  result {Box_Part} (line.base, types, times)
+
+# The name a layout's head line gives.
+Head_Name {}
+  head* {Refinement_Line}
+  result {Type_Name} (head.name)
+
+# A layout as a compiled type: its positions in order.
+# Example: Integer_Literal gives a function that reads an optional minus sign, then digits.
+Layout_Type {}
+  block* {Layout_Block}
+  types* {Compiled_Type...}
+  name {Head_Name} (block.head)
+  parts {Position_Part...} (block.positions..., types)
+  body {Instruction...} (parts.result)
+  number {Integer} (First_Type_Number + types.count)
+  compiled {Compiled_Type} (name, number, body)
+  result {Compiled_Type...} (compiled)
+
+# A record of fields is not compiled yet: it gives no type.
+Record_Type {}
+  block* {Record_Block}
+  types* {Compiled_Type...}
+  result {Compiled_Type...} (Empty_String)
+
+# A repeating record is not compiled yet: it gives no type.
+Repeating_Type {}
+  block* {Repeating_Block}
+  types* {Compiled_Type...}
+  result {Compiled_Type...} (Empty_String)
+
+Long_Type {Layout_Type | Record_Type | Repeating_Type}
+
+# The types of a group of lines, compiled in order, each after the types above it.
+Lines_Types {}
+  lines* {Noted_Line...}
+  types* {Compiled_Type...}
+  noted {Noted_Line} (lines.first)
+  added {Line_Type} (noted.line, types)
+  with_line {Compiled_Type...} (types..., added...)
+  result {Compiled_Type...} (types)
+    while (lines.count >= 1)
+    next (lines.rest, with_line)
+
+# A group of one-line declarations adds its types.
+Line_Group_Types {}
   group* {Line_Group}
-  known* {Known_Range...}
+  types* {Compiled_Type...}
   lines {Noted_Line...} (group.first, group.rest...)
-  with_group {Group_Ranges} (lines, known)
-  result {Known_Range...} (with_group)
+  with_group {Lines_Types} (lines, types)
+  result {Compiled_Type...} (with_group)
 
-# A type of more than one line adds no range.
-Type_Group_Ranges {}
+# A type of more than one line adds its type, when it is compiled.
+Type_Group_Types {}
   group* {Type_Group}
-  known* {Known_Range...}
-  result {Known_Range...} (known)
+  types* {Compiled_Type...}
+  added {Long_Type} (group.type, types)
+  result {Compiled_Type...} (types..., added...)
 
-# Comment lines add no range.
-Comment_Group_Ranges {}
+# Comment lines add no type.
+Comment_Group_Types {}
   group* {Comment_Group}
-  known* {Known_Range...}
-  result {Known_Range...} (known)
+  types* {Compiled_Type...}
+  result {Compiled_Type...} (types)
 
-Group_Ranges_Value {Line_Group_Ranges | Type_Group_Ranges | Comment_Group_Ranges}
+Group_Types {Line_Group_Types | Type_Group_Types | Comment_Group_Types}
 
-# The ranges of a file's groups, in order.
-File_Ranges {}
+# The types of a file's groups, in order.
+File_Types {}
   groups* {Group...}
-  known* {Known_Range...}
+  types* {Compiled_Type...}
   group {Group} (groups.first)
-  with_group {Group_Ranges_Value} (group, known)
-  result {Known_Range...} (known)
+  with_group {Group_Types} (group, types)
+  result {Compiled_Type...} (types)
     while (groups.count >= 1)
     next (groups.rest, with_group)
 
-# The code of one position of a layout. With no count, the position must be there once.
-# Example: '  1. {"-"} count: 0..1' gives the code for an optional minus sign.
-Position_Line_Code {}
-  line* {Position_Line}
-  known* {Known_Range...}
-  written {Properties...} (line.properties)
-  times {Count_Of} (written, Once)
-  result {Box_Code} (line.base, known, times)
+# Main, load_input and take: functions 0, 1 and 2, which take nothing.
+Fixed_Functions {}
+  main_code* {Instruction...}
+  load_code* {Instruction...}
+  take_code* {Instruction...}
+  main_head {Function_Head} (Main_Number, Main_Name, No_Inputs)
+  main {Function} (main_head, main_code)
+  load_head {Function_Head} (Load_Input_Number, Load_Input_Name, No_Inputs)
+  load {Function} (load_head, load_code)
+  take_head {Function_Head} (Take_Number, Take_Name, No_Inputs)
+  take {Function} (take_head, take_code)
+  result {Function...} (main, load, take)
 
-# A layout as a program that reads it: the code of each position, in order.
-# Example: Integer_Literal gives a program that reads an optional minus sign, then digits.
-Layout_Block_Code {}
-  block* {Layout_Block}
-  known* {Known_Range...}
-  codes {Position_Line_Code...} (block.positions..., known)
-  steps {Instruction...} (codes.result)
-  result {Reading_Program} (steps)
+# A compiled type's function: its body in the type's frame. It takes nothing.
+Type_Function {}
+  type* {Compiled_Type}
+  inputs* {U32}
+  head {Function_Head} (type.number, Type_Name_Of_Function, inputs)
+  framed {Type_Frame} (type.code)
+  result {Function} (head, framed)
 
-# A type group that holds a layout.
-Layout_Group_Code {}
-  group* {Type_Group}
-  known* {Known_Range...}
-  result {Layout_Block_Code} (group.type, known)
+# A reading program: main, load_input, take, and a function for each type, from 3 on. Main reads
+# with the last type.
+Reading_Program {}
+  types* {Compiled_Type...} count: 1..
+  top {Compiled_Type} (types.last)
+  main_code {Reading_Main} (top.number)
+  load_code {Load_Input_Code} (Input_Place)
+  take_code {Take_Code} (End_Of_Input)
+  fixed {Fixed_Functions} (main_code, load_code, take_code)
+  typed {Type_Function...} (types..., Zero)
+  functions {Function...} (fixed..., typed...)
+  result {Program} (functions)
 
-# A file whose last group is a layout of character ranges and quoted characters, as a program
-# that reads the layout.
-# Example: Digit, then Integer_Literal, give a program that reads "-42", writes it and gives 0.
-Compiled_Layout {}
+# A file as a program that reads its last type from the input.
+# Example: Digit, Natural and Integer_Literal give a program that reads "-42", writes it and
+# gives 0.
+Compiled_Reader {}
   file {File}
   spaced {Spaced_Group...} (file.rest)
   later_groups {Group...} (spaced.group)
   groups {Group...} (file.first, later_groups...)
-  known {File_Ranges} (groups, Empty_String)
-  last {Group} (groups.last)
-  reader {Layout_Group_Code} (last, known)
+  types {File_Types} (groups, Empty_String)
+  reader {Reading_Program} (types)
   text {Text}
     1. {file}
