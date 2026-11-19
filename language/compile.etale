@@ -213,9 +213,9 @@ Compiled_File {}
 # A reading program keeps its input in memory, from Input_Place to the end at Input_End_Place,
 # and the place of the next byte at Position_Place. Each type is a function that reads it: it
 # gives the place of its value and moves the position on, or gives 0 and puts the position back.
-# So a part that may be missing is a call whose 0 is passed over, and a union tries each member
-# in turn. A text's value is the place in the input where it starts. A number or a record is
-# kept after the input, from the place that Free_Place holds.
+# So a part that may be missing is a call whose 0 is passed over. A text's value is the place in
+# the input where it starts. A number or a record is kept after the input, from the place that
+# Free_Place holds.
 
 Position_Place {Integer} (4)             # the place of the next byte
 Input_End_Place {Integer} (8)            # the place after the last byte
@@ -248,7 +248,7 @@ Tenth_Of_Most {Integer} (429496729)      # the most a number may be before one m
 Byte_Local {Integer} (0)                 # local 0 holds the byte taken, or a digit's value
 Value_Local {Integer} (1)                # local 1 holds a number's value while it is read
 Try_Local {Integer} (1)                  # local 1 holds the position before a try
-Item_Local {Integer} (2)                 # local 2 counts the items of a list
+Item_Local {Integer} (2)                 # local 2 counts a list's items, or the cases that hold
 Start_Local {Integer} (3)                # local 3 holds the position where the function starts
 
 Free_Local {Integer} (4)                 # local 4 holds the free place where the function starts
@@ -913,90 +913,6 @@ Count_Of {}
   with_otherwise {Count_Range...} (found..., otherwise)
   result {Count_Range} (with_otherwise.first)
 
-# Keep the position as the best so far, when it is further than the best: "get 2", "push 4",
-# "load", "less", "push 0", "equal", "break_if 0", "push 4", "load", "set 2".
-Keep_Best {}
-  local* {U32}
-  best {Number_Instruction} (Get, local)
-  position {Number_Instruction} (Push_Word, Position_Place)
-  load {Bare_Instruction} (Load)
-  less {Bare_Instruction} (Less)
-  zero {Number_Instruction} (Push_Word, Zero)
-  equal {Bare_Instruction} (Equal)
-  leave {Number_Instruction} (Break_If, Zero)
-  keep {Number_Instruction} (Set, local)
-  result {Instruction...} (best, position, load, less, zero, equal, leave, position, load, keep)
-
-# A union member that is a type: call its function; when it reads, keep where it got to.
-# Then go back to where the union started, for the next member.
-# Example: Digit, function 3, gives "block", "call 3", "push 0", "equal", "break_if 0", ...
-Union_Name_Try {}
-  item* {Type_Name}
-  types* {Compiled_Type...}
-  number {Type_Number} (item, types)
-  open {Bare_Instruction} (Block)
-  call {Call_Instruction} (number)
-  zero {Number_Instruction} (Push_Word, Zero)
-  equal {Bare_Instruction} (Equal)
-  miss {Number_Instruction} (Break_If, Zero)
-  best {Keep_Best} (Item_Local)
-  close {Bare_Instruction} (End)
-  back {Put_Position_Back} (Start_Local)
-  result {Instruction...} (open, call, zero, equal, miss, best..., close, back...)
-
-# A union member that is a quoted text: take its characters; when they all read, keep where it
-# got to. Then go back to where the union started.
-Union_Text_Try {}
-  item* {String_Literal}
-  types* {Compiled_Type...}
-  codes {Quoted_Codes} (item)
-  open {Bare_Instruction} (Block)
-  each {Character_Take...} (codes..., Zero)
-  taking {Instruction...} (each.result)
-  best {Keep_Best} (Item_Local)
-  close {Bare_Instruction} (End)
-  back {Put_Position_Back} (Start_Local)
-  result {Instruction...} (open, taking..., best..., close, back...)
-
-# A union member that is a character range: take one character of it, as Union_Text_Try does.
-Union_Range_Try {}
-  item* {Character_Range}
-  types* {Compiled_Type...}
-  low {Quoted_Code} (item.low)
-  high {Quoted_Code} (item.high)
-  open {Bare_Instruction} (Block)
-  take {Range_Take} (low, high, Zero)
-  best {Keep_Best} (Item_Local)
-  close {Bare_Instruction} (End)
-  back {Put_Position_Back} (Start_Local)
-  result {Instruction...} (open, take..., best..., close, back...)
-
-Union_Try {Union_Name_Try | Union_Text_Try | Union_Range_Try}
-
-# Move the position to the best: "push 4", "get 2", "store".
-Best_Position {}
-  local* {U32}
-  result {Put_Position_Back} (local)
-
-# A union's body: try each member from where the union starts, and keep the furthest any of
-# them reads to. The union reads to there. When none reads, the function's block is left.
-# Example: '"break" | "break_if"' reads "break_if" whole.
-Union_Body {}
-  items* {Union_List}
-  types* {Compiled_Type...}
-  rest {Union_Tail...} (items.rest)
-  others {Union_Item...} (rest.next)
-  members {Union_Item...} (items.first, others...)
-  start {Local_Start} (Zero, Item_Local)
-  tries {Union_Try...} (members..., types)
-  trying {Instruction...} (tries.result)
-  best {Number_Instruction} (Get, Item_Local)
-  zero {Number_Instruction} (Push_Word, Zero)
-  equal {Bare_Instruction} (Equal)
-  none {Number_Instruction} (Break_If, Zero)
-  moved {Best_Position} (Item_Local)
-  result {Instruction...} (start..., trying..., best, zero, equal, none, moved...)
-
 # A character range's body: one character of it.
 # Example: '"0".."9"' reads one digit.
 Range_Body {}
@@ -1006,13 +922,12 @@ Range_Body {}
   high {Quoted_Code} (items.high)
   result {Range_Take} (low, high, Zero)
 
-Union_Base_Body {Union_Body | Range_Body}
-
-# The body of a union box.
+# The body of a union box. A union of more than one member is not compiled yet, and refuses
+# the file.
 Union_Box_Body {}
   box* {Union_Box}
   types* {Compiled_Type...}
-  result {Union_Base_Body} (box.items, types)
+  result {Range_Body} (box.items, types)
 
 # A union line as a compiled type, numbered after the types above it.
 Union_Line_Type {}
@@ -1645,7 +1560,7 @@ Case_Target {}
   number* {U32}
 
 # One choice of a case: its test, in a block of its own. When it holds, keep the case's number
-# in local 1 and leave the block of the cases.
+# in local 1 and leave the block of the case.
 Choice_Try {}
   test* {Instruction...}
   number* {U32}
@@ -1738,7 +1653,7 @@ Case_Number {}
   output* {Item_Box}
   result {Literal_Value} (output.item, Empty_String)
 
-# One case of a table: a try for each of its choices.
+# One case of a table: a try for each of its choices. When one holds, count the case in local 2.
 # Example: '{0} (Call_Word | Return_Word | Byte_Word)' gives three tries that keep 0.
 Case_Code {}
   case* {Case_Line}
@@ -1748,7 +1663,12 @@ Case_Code {}
   target {Case_Target} (input, number)
   choices {Case_Choices} (case.when)
   tries {Value_Test...} (choices..., target, types)
-  result {Instruction...} (tries.result)
+  trying {Instruction...} (tries.result)
+  open {Bare_Instruction} (Block)
+  none {Number_Instruction} (Break, One)
+  close {Bare_Instruction} (End)
+  held {Count_Up} (Item_Local)
+  result {Instruction...} (open, open, trying..., none, close, held..., close)
 
 # The first input of a mapping. A mapping of two inputs is not compiled yet.
 Inputs_First {}
@@ -1794,8 +1714,8 @@ Number_Keep {}
   add {Bare_Instruction} (Add)
   result {Instruction...} (room..., place, number, store, record, push, add, place, store)
 
-# A field worked out by cases: try each case's choices on the input in turn, and keep the number
-# of the first that holds. When none holds, the record is refused.
+# A field worked out by cases: try every case on the input, and count the cases that hold.
+# Exactly one case must hold; when none or more than one holds, the record is refused.
 # Example: Word_Arguments' numbers gives 1 for "push", "get", "set", "break" or "break_if".
 Mapped_Work {}
   line* {Mapped_Field}
@@ -1805,13 +1725,15 @@ Mapped_Work {}
   input {Field_Offset} (input_name, fields)
   name {Mapped_Field_Name} (line)
   offset {Field_Offset} (name, fields)
+  start {Local_Start} (Zero, Item_Local)
   cases {Case_Code...} (line.cases..., input, types)
   tries {Instruction...} (cases.result)
-  open {Bare_Instruction} (Block)
-  none {Number_Instruction} (Break, One)
-  close {Bare_Instruction} (End)
+  held {Number_Instruction} (Get, Item_Local)
+  once {Number_Instruction} (Push_Word, One)
+  equal {Bare_Instruction} (Equal)
+  one_case {Leave_Unless} (Zero)
   keep {Number_Keep} (offset)
-  result {Instruction...} (open, tries..., none, close, keep...)
+  result {Instruction...} (start..., tries..., held, once, equal, one_case..., keep...)
 
 # What a field line's work needs: the line, the record's fields, and the types compiled.
 Field_Context {}
@@ -1953,7 +1875,7 @@ Made_Type {}
   compiled {Compiled_Type} (name, number, body)
   result {Compiled_Type...} (compiled)
 
-# ---------- A record's shape, read with a second try for each field that may be missing
+# ---------- A record's shape
 
 Some_Count {Integer} (1..4294967295)     # a least count of a part that must be there
 
@@ -1985,17 +1907,6 @@ Least_Of {}
   range* {Count_Range}
   result {U32} (range.least)
 
-# The most count of a range.
-Most_Of {}
-  range* {Count_Range}
-  result {U32} (range.most)
-
-# The count of a field that must be there this time: at least 1, at most its own most.
-Present_Times {}
-  piece* {Field_Piece}
-  most {Most_Of} (piece.times)
-  result {Count_Range} (One, most)
-
 # A field's line read as a part, with a count.
 Field_Part_With {}
   line* {Field_Line}
@@ -2003,34 +1914,8 @@ Field_Part_With {}
   times* {Count_Range}
   result {Box_Part} (line.base, types, times)
 
-# Keep where a field's text starts: "get 5", "push 20", "add", "push 4", "load", "store".
-Start_Store {}
-  offset* {U32}
-  start {Integer} (offset + Start_Offset)
-  record {Number_Instruction} (Get, Record_Local)
-  push {Number_Instruction} (Push_Word, start)
-  add {Bare_Instruction} (Add)
-  position {Number_Instruction} (Push_Word, Position_Place)
-  load {Bare_Instruction} (Load)
-  store {Bare_Instruction} (Store)
-  result {Instruction...} (record, push, add, position, load, store)
-
-# Put the position back to where a field's text starts, and keep no value for the field.
-Field_Back {}
-  offset* {U32}
-  start {Integer} (offset + Start_Offset)
-  position {Number_Instruction} (Push_Word, Position_Place)
-  record {Number_Instruction} (Get, Record_Local)
-  push {Number_Instruction} (Push_Word, start)
-  at {Number_Instruction} (Push_Word, offset)
-  add {Bare_Instruction} (Add)
-  load {Bare_Instruction} (Load)
-  store {Bare_Instruction} (Store)
-  zero {Number_Instruction} (Push_Word, Zero)
-  back {Instruction...} (position, record, push, add, load, store)
-  result {Instruction...} (back..., record, at, add, zero, store)
-
-# A field that must be there: read it, keep it, then read the rest.
+# A field that must be there: read it, keep it, then read the rest. A field that may be missing
+# is not compiled yet, and refuses the file.
 Required_Field {}
   least* {Some_Count}
   piece* {Field_Piece}
@@ -2038,25 +1923,6 @@ Required_Field {}
   part {Field_Part_With} (piece.line, piece.types, piece.times)
   store {Slot_Store} (piece.offset)
   result {Instruction...} (part..., store..., rest...)
-
-# A field that may be missing: first read it and the rest, in a block. When that fails, put the
-# position back and read the rest with the field missing.
-# Example: in "  call 1", " 1" is first read as a number; the rule fails, so it is a function.
-Optional_Field {}
-  least* {Zero}
-  piece* {Field_Piece}
-  rest* {Instruction...}
-  open {Bare_Instruction} (Block)
-  start {Start_Store} (piece.offset)
-  times {Present_Times} (piece)
-  part {Field_Part_With} (piece.line, piece.types, times)
-  store {Slot_Store} (piece.offset)
-  close {Bare_Instruction} (End)
-  back {Field_Back} (piece.offset)
-  trying {Instruction...} (open, start..., part..., store..., rest..., close)
-  result {Instruction...} (trying..., back..., rest...)
-
-Field_Choice {Required_Field | Optional_Field}
 
 # A shape position that names a field, before the rest of the record.
 Field_Position_Step {}
@@ -2067,7 +1933,7 @@ Field_Position_Step {}
   field {Named_Field} (wanted, context.fields)
   piece {Field_Piece} (field.line, context.types, field.offset)
   least {Least_Of} (piece.times)
-  result {Field_Choice} (least, piece, rest)
+  result {Required_Field} (least, piece, rest)
 
 # A shape position of a type or a quoted text, before the rest of the record.
 Type_Position_Step {}
