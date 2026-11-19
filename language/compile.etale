@@ -710,13 +710,34 @@ Character_Code {}
   result {Integer} (character)
     {32..126} (" ".."~")
 
+# An escape's number: a newline, a quote or a backslash.
+# Example: '\n' gives 10.
+Escape_Number {}
+  code* {Escape_Code}
+  result {Integer} (code)
+    {10} ("n")
+    {34} (Quote)
+    {92} (Backslash)
+
+# A character in quotes: its number, as written or as an escape.
+Plain_Number {}
+  character* {Plain_String_Character}
+  result {Character_Code} (character)
+
+# An escape in quotes: its number.
+Escaped_Number {}
+  character* {Escape}
+  result {Escape_Number} (character.code)
+
+Character_Number {Plain_Number | Escaped_Number}
+
 # The numbers of characters, each after the numbers so far.
 # Example: "." and "." with none so far give 46, 46.
 Characters_To_Codes {}
   characters* {String_Character...}
   codes_so_far* {Integer...}
   character {String_Character} (characters.first)
-  code {Character_Code} (character)
+  code {Character_Number} (character)
   with_code {Integer...} (codes_so_far..., code)
   result {Integer...} (codes_so_far)
     while (characters.count >= 1)
@@ -1067,11 +1088,104 @@ Layout_Type {}
   compiled {Compiled_Type} (name, number, body)
   result {Compiled_Type...} (compiled)
 
-# A record of fields is not compiled yet: it gives no type.
+# A stored field of a record: its name, and its line.
+Known_Field {}
+  name* {Field_Name}
+  line* {Field_Line}
+
+# A field line adds its field.
+Field_Line_Known {}
+  line* {Field_Line}
+  types* {Compiled_Type...}
+  known {Known_Field} (line.name, line)
+  result {Known_Field...} (known)
+
+# A union field or a field worked out by cases adds no field that is read.
+Other_Field_Known {}
+  line* {Union_Field_Line | Mapped_Field}
+  types* {Compiled_Type...}
+  result {Known_Field...} (Empty_String)
+
+Field_Known {Field_Line_Known | Other_Field_Known}
+
+# A field's line as a part: its type, with the field's count. With no count, the field is
+# there once.
+# Example: 'number* {Number_Argument} count: 0..1' gives an optional " 5".
+Field_Line_Part {}
+  line* {Field_Line}
+  types* {Compiled_Type...}
+  written {Properties...} (line.properties)
+  times {Count_Of} (written, Once)
+  result {Box_Part} (line.base, types, times)
+
+# The name a field box gives.
+Field_Box_Name {}
+  box* {Field_Box}
+  result {Field_Name} (box.field)
+
+# A shape position that names a field: the field's line, read as a part.
+# Example: '    2. {word}' reads the record's word.
+Field_Position_Part {}
+  position* {Field_Position}
+  fields* {Known_Field...}
+  types* {Compiled_Type...}
+  wanted {Field_Box_Name} (position.base)
+  found {Known_Field...} (fields.name = wanted)
+  field {Known_Field} (found.first)
+  result {Field_Line_Part} (field.line, types)
+
+# A shape position of a type or a quoted text, read as a layout position is.
+# Example: '    1. {"  "}' reads two spaces.
+Type_Position_Part {}
+  position* {Type_Position}
+  fields* {Known_Field...}
+  types* {Compiled_Type...}
+  written {Properties...} (position.properties)
+  times {Count_Of} (written, Once)
+  result {Box_Part} (position.base, types, times)
+
+Shape_Part {Field_Position_Part | Type_Position_Part}
+
+# The name a record's head gives.
+Record_Name {}
+  head* {Record_Header}
+  result {Type_Name} (head.name)
+
+# The positions of a shape.
+Positions_Of_Shape {}
+  shape* {Shape}
+  result {Shape_Position...} (shape.positions)
+
+# The positions of a shape item.
+Shape_Positions {}
+  item* {Shape_Item}
+  result {Positions_Of_Shape} (item.line)
+
+# A record's text shape as a compiled type: the shape's positions in order.
+# Example: kernel.etale's Instruction reads "  push 5" and a newline.
+Shape_Type {}
+  shape* {Shape_Item}
+  block* {Record_Block}
+  types* {Compiled_Type...}
+  items {Field_Item...} (block.fields)
+  lines {Plain_Field...} (items.line)
+  known {Field_Known...} (lines..., types)
+  fields {Known_Field...} (known.result)
+  positions {Shape_Positions} (shape)
+  parts {Shape_Part...} (positions..., fields, types)
+  body {Instruction...} (parts.result)
+  name {Record_Name} (block.head)
+  number {Integer} (First_Type_Number + types.count)
+  compiled {Compiled_Type} (name, number, body)
+  result {Compiled_Type...} (compiled)
+
+# A record of fields gives a type when it has a text shape; with no shape, none yet.
 Record_Type {}
   block* {Record_Block}
   types* {Compiled_Type...}
-  result {Compiled_Type...} (Empty_String)
+  shapes {Shape_Item...} (block.shape)
+  made {Shape_Type...} (shapes..., block, types)
+  result {Compiled_Type...} (made.result)
 
 # A repeating record is not compiled yet: it gives no type.
 Repeating_Type {}
