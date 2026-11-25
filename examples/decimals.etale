@@ -1,0 +1,20 @@
+Sku:
+  1. (Letter... 3)
+  2. "-"
+  3. (Digit... 4)
+
+Line:
+  sku: Sku
+  units: 1..1000
+  price: 0..9999.99
+    places 2
+
+  line_total: units * price
+
+  text:
+    1. sku
+    2. " x"
+    3. units
+    4. " @ "
+    5. price
+    6. Newline

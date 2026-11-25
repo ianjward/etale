@@ -1,0 +1,52 @@
+Station_Character: " " | Letter
+
+Station_Name:
+  1. Letter
+  2. (Station_Character... 0..19)
+
+Nonstop_Link:
+  from: Station_Name
+  to: Station_Name
+
+  text:
+    1. from
+    2. " > "
+    3. to
+    4. Newline
+
+Network:
+  links: (Nonstop_Link... 1..)
+
+  text:
+    1. (links)
+    2. "---"
+    3. Newline
+
+Leg:
+  from*: Station_Name
+  network*: Network
+  to: Station_Name
+
+  matching_links: (network.links)
+    where Nonstop_Link.from is Leg.from
+    where Nonstop_Link.to is Leg.to
+
+  impossible:
+    (matching_links).count is 0
+
+  text:
+    1. to
+    2. Newline
+
+Trip:
+  network: Network
+  start: Station_Name
+  legs: (Leg... 1..)
+    1. Leg(from: start, network: network)
+    2... Leg(from: previous.to, network: network)
+
+  text:
+    1. network
+    2. start
+    3. Newline
+    4. (legs)

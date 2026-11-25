@@ -1,0 +1,19 @@
+Base: 2
+
+Division:
+  number*: 1..
+  divisor*: 1..
+
+  remainder: number
+    wrap_at divisor
+  multiple: number - remainder
+  quotient: multiple / divisor
+
+Binary_Conversion:
+  number_to_convert*: 1..
+
+  divisions: (Division... 1..64)
+    1. Division(number: number_to_convert, divisor: Base)
+    2... Division(number: previous.quotient, divisor: Base)
+      until previous.quotient is 0
+  binary_digits_lowest_first: (divisions.remainder)

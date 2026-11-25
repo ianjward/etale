@@ -1,0 +1,24 @@
+Framed_Body:
+  length: 0..
+  body: (Character... length)
+
+  text:
+    1. "Content-Length: "
+    2. length
+    3. Return
+    4. Newline
+    5. Return
+    6. Newline
+    7. (body)
+
+Chunk:
+  size: 1..
+  data: (Character... size)
+
+  text:
+    1. size base 16
+    2. Return
+    3. Newline
+    4. (data)
+    5. Return
+    6. Newline
