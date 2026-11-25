@@ -36,7 +36,7 @@ The project's aims, and where each one stands:
 - Built: nothing on this route yet. There is no engine and no rule file, so nothing has
   checked the examples.
 - Retired: the Gleam host (to 16 November), and the JavaScript engine with every file in the
-  old forms, route B, kernel.etale and wasm.etale (to 19 November). Both are kept at tags
+  old forms, route B, kernel.etale and wasm.etale (to 19 November). Both are in the history
   (section 10).
 
 ## 3. The language, version 1
@@ -731,10 +731,10 @@ warnings (every check refuses); grapheme clusters in the engine.
 Not to come back unless the person asks.
 
 - The Gleam host, its checker and prover, the canvas workspace and the site (to 16 November):
-  retired so Etale needs no outside language. At the tag gleam-host.
+  retired so Etale needs no outside language. At commit bacec75.
 - The brace forms (`Name {Type}`, `value:`, `if:`, `{Needs}`, `{Claims}`), optional fields
   (replaced by unions, 19 November), language.etale reading itself through engine/seed.json,
-  and the JavaScript engine (to 19 November). At the tag javascript-engine.
+  and the JavaScript engine (to 19 November). At commit ca81f1e.
 - Route B (compile.etale, Etale to a small stack machine), kernel.etale, wasm.etale and the
   x86 backend plan (16 to 19 November): off the path since 24 November (section 8).
 - Lean for Etale's bounds and meaning: replaced on 19 November by Etale's meaning in Etale.
@@ -761,11 +761,10 @@ Each phase adds its own files: the test list beside the examples (phase 0), the 
 (phase 1), the rule files (phase 2), the pinned seed sources and build script (phase 3), and
 the engine's assembly (phase 4). Few folders, each named for what it holds.
 
-Older work is kept at tags, not branches:
+Older work is in this branch's history:
 
-- gleam-host: the Gleam host as it was on 16 November.
-- javascript-engine: the JavaScript engine and every file in the old forms, as on
-  25 November.
+- bacec75: the Gleam host, as on 16 November.
+- ca81f1e: the JavaScript engine and every file in the old forms, as on 25 November.
 
 How work is done:
 

@@ -11,8 +11,8 @@ checked, the build in phases, and what is still open.
 - examples/: the nine example files that define version 1. Nothing has checked them yet.
 - LICENSE
 
-Earlier work is kept at two tags:
+Earlier work is in the history of this branch:
 
-- gleam-host: the Gleam host, as on 16 November 2026.
-- javascript-engine: the JavaScript engine and every file in the old forms, including route B,
+- bacec75: the Gleam host, as on 16 November 2026.
+- ca81f1e: the JavaScript engine and every file in the old forms, including route B,
   kernel.etale and wasm.etale, as on 25 November 2026.
