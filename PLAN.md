@@ -266,6 +266,9 @@ How refusals are reported:
   3 the step budget or the memory ran out.
 - The step budget has a fixed default, which the command line can lower. Running out is a
   refusal, never a crash. It also bounds how deep input can go.
+- Every rule match, new element and branch counts as one step, and there is no other bound
+  (chosen 25 November). The default is set in phase 2 from the steps the examples need, with
+  room to spare.
 - No clock, randomness, network or environment variables. The same file and the same input
   always give the same result, so checks can later be cached by hash.
 
@@ -380,8 +383,8 @@ stays small enough to read in full.
    facts, fill in the names, and add what its union says follows, until nothing new appears.
    A match of a rule contained in the empty union is a refusal.
 6. Unions and there exists: a result that is a union of several cases branches, one branch
-   for each. A result that says a value exists makes a new element. Both are bounded: a check
-   that grows past its bound stops with exit value 3, never a wrong verdict.
+   for each. A result that says a value exists makes a new element. Both count against the
+   step budget (3.10): a check that runs out stops with exit value 3, never a wrong verdict.
 7. Numbers: comparing, adding, multiplying, the remainder and `divisible_by`, on whole
    numbers of any size. These are atoms, since arithmetic as rules would be far too slow.
 8. Verdicts: accepted, with the result's printed text on standard output; or every refusal
@@ -611,8 +614,6 @@ Each of these decides how the test engine and the rule files are written.
    splitting ranges into parts for case tables; the number checks of 3.9 (a divisor that
    might be 0, a quotient that might not be exact, a value that might not fit). With it, how
    a rule refers to itself, since that depends on how much the engine works out itself.
-2. The bound on new elements and on branching, how it is written, and how it relates to the
-   step budget of 3.10.
 
 ### 7.2 Found when the docs were joined (25 November)
 
