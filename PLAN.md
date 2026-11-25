@@ -308,7 +308,7 @@ Etale's own words: a type's parts are there exists, `given` lines a restriction,
 is needed. Two things differ from version 1 files: a type's values are every match among the
 facts the engine holds, not texts read from outside; and a rule may refer to itself, so it can
 walk through a file's lines (how, 7.1). The file being checked comes in as built-in types, as
-Letter and Digit are built in (7.1).
+Letter and Digit are built in (5.3).
 
 New forms come only as rule files that rewrite them into these five. The engine never grows,
 and the chain stays one step: Rust is built from source one release after another, and Go
@@ -370,12 +370,12 @@ stays small enough to read in full.
    through a small buffer.
 3. The reader: lines to lists. Indentation becomes nesting; words, numbers and quoted texts
    become atoms. Refused at their line: a tab, a line two steps deeper than the one above,
-   `#`, a carriage return, any character outside 3.5, and, outside a quoted text, any
-   character no form uses. A command prints the tree as bracketed lists, so the reader can be
+   `#`, a carriage return, any character outside 3.5, outside a quoted text any character no
+   form uses, two blank lines together, and a blank line inside an item (one followed by a
+   line two or more steps in). A command prints the tree as bracketed lists, so the reader can be
    checked by eye.
-4. The file as facts: the tree becomes plain facts (this line has these words, this line is
-   under that one, this word is at this place). A text to read becomes facts too (character
-   12 is a colon).
+4. The file as facts: the tree becomes the built-in types of 5.3, its lines, words and
+   paragraphs with their counts, and a text to read becomes its characters.
 5. The rule loop: for each contained-in rule, find every match of its restriction among the
    facts, fill in the names, and add what its union says follows, until nothing new appears.
    A match of a rule contained in the empty union is a refusal.
@@ -407,6 +407,38 @@ into the core and checks them. Each form's rewrite should be short enough to che
 6. Values: the value checks of 3.9.
 
 Alphabetical (3.6) is written here too.
+
+Every file is checked by the whole set of rule files, always. A file never names its own
+rules, so nothing can opt out of a check, and the set's checksum is recorded with the engine's
+(chosen 25 November).
+
+What the rule files see (chosen 25 November): the engine hands over the file being checked,
+and any text being read, as four built-in types, the way Letter and Digit are built in. Each
+limit of 3.4 comes with its count as a field, so every limit is one impossible block. A field
+that does not apply, such as the line above the first line, is absent, and a rule that names
+it matches nothing there. The field names, and how a line splits into words, are Claude's
+defaults, to change at review:
+
+- Line, one for each line that is not blank: number (in the file, blank lines counted), depth
+  (steps of indentation), holder (the line it sits under), above (the line before it), length
+  (characters, indentation included), place (among the lines directly under its holder),
+  choice_count (choices joined by `|` on it), type_place (for a line that starts a type, its
+  place among the file's types), paragraph (the one it is in).
+- Word, one for each word of a line: line, place (on its line), next (the word after it), kind
+  ("name", "number", "quoted" or "mark"), text (for a quoted text, what is between the
+  quotes), name_word_count (for a name, its words between underscores).
+- Paragraph, one for each run of lines with no blank line in it: holder (the line of the type
+  it is in, absent at the top of the file), place (among its holder's paragraphs, or the
+  file's), before (the paragraph before it), first_line, last_line, item_count (at the top of
+  a file, its definitions).
+- Input_Character, one for each character of a text being read: place, value (the character
+  as a quoted text, or Newline), code (its code number), next (the character after it).
+
+A line splits into words at spaces. A quoted text is one word, spaces and all. Each of `:`, `(`,
+`)`, `,`, `|`, `*` and a run of dots (`.`, `..`, `...`) is a word of its own even with no space
+around it, except a single point between two digits, which stays in its number; a minus right
+before a digit belongs to the number. So `(Stop... 1..)` is the words `(`, `Stop`, `...`, `1`,
+`..` and `)`, and `previous.quotient` is `previous`, `.` and `quotient`.
 
 ### 5.4 Phases
 
@@ -577,11 +609,10 @@ Each of these decides how the test engine and the rule files are written.
 
 1. Which checks are atoms in the engine and which are rules: exactly one reading of a text;
    splitting ranges into parts for case tables; the number checks of 3.9 (a divisor that
-   might be 0, a quotient that might not be exact, a value that might not fit).
+   might be 0, a quotient that might not be exact, a value that might not fit). With it, how
+   a rule refers to itself, since that depends on how much the engine works out itself.
 2. The bound on new elements and on branching, how it is written, and how it relates to the
    step budget of 3.10.
-3. How the rule files name the facts of a file's tree, how a rule refers to itself, and how
-   a file says which rule files check it.
 
 ### 7.2 Found when the docs were joined (25 November)
 
