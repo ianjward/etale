@@ -9,6 +9,8 @@ checked, the build in phases, and what is still open.
 
 - PLAN.md: the one plan.
 - examples/: the eight example files that define version 1. Nothing has checked them yet.
+- tests/: the texts each example must accept or refuse, a copy of an example for each mistake
+  it must refuse, and test_list.txt with every verdict. Nothing has run them yet.
 - LICENSE
 
 Earlier work is in the history of this branch:

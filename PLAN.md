@@ -33,8 +33,9 @@ The project's aims, and where each one stands:
 - Decided: the forms of version 1 (the eight files in examples/), the five decisions of
   25 November (characters, input and output, checks, self-reference, induction), the frozen
   core, and the route: a small engine written by hand in assembly on the stage0-posix seed.
-- Built: nothing on this route yet. There is no engine and no rule file, so nothing has
-  checked the examples.
+- Built: the corpus (phase 0, done 25 November): the examples, and in tests/ every text and
+  mistake of section 6 with the test list. There is no engine and no rule file yet, so
+  nothing has checked any of them.
 - Retired: the Gleam host (to 16 November), and the JavaScript engine with every file in the
   old forms, route B, kernel.etale and wasm.etale (to 19 November). Both are in the history
   (section 10).
@@ -266,7 +267,27 @@ How refusals are reported:
   a refused type is still checked; a type that uses one is skipped, not refused again.
 - Each refusal names its rule and its line. For a refused text, it also gives the character
   where reading stopped.
-- Tests compare verdicts and lines, never wording (16 November).
+- Tests compare verdicts and lines, never wording (16 November). A test of an accepted text
+  also compares what it prints.
+
+Which line a refusal names (Claude's defaults, set with the test list on 25 November, to
+change at review):
+
+- A field worked out by cases that gives some value no answer, or two: the field's line. It
+  is tried over the ranges of the fields it uses, so a field that uses a refused field is not
+  refused as well.
+- A claim step that does not follow, or that calls a claim whose `given` lines do not hold
+  for what it gives: the step's line. The steps below it and the claim rest on it, so they
+  are not checked.
+- A claim with no steps that fails: its `claim` line.
+- A refused text names two lines: the line of the Etale file that refused it (a part's range,
+  a `places`, `unique` or `ordered by` line, or an `impossible:` line), and the line of the
+  text where the refused value starts. For `unique` and `ordered by`, that value is the item
+  that breaks it: the second item with the same value, or the first item that comes before
+  the one above it. A text that does not read names the position or range where reading
+  stopped, and the line of the text where it stopped.
+- A value that holds a refused value, such as the train of a refused stop, is not refused
+  again.
 
 ### 3.10 Running a type from outside (decided 25 November)
 
@@ -475,7 +496,7 @@ before a digit belongs to the number. So `(Stop... 1..)` is the words `(`, `Stop
 
 | Phase | What | Done when |
 |---|---|---|
-| 0 | Corpus | the examples are in files (done 25 November), with a test list of section 6's texts and verdicts, and one file for each mistake listed there |
+| 0 | Corpus | the examples are in files, with a test list of section 6's texts and verdicts, and one file for each mistake listed there. Done 25 November: examples/ and tests/ |
 | 1 | Test engine | a short engine in the small Scheme below, on Chibi-Scheme, runs the frozen core (engine parts 3 to 8). It is a test bench, not part of the chain, and is deleted after phase 5 |
 | 2 | Etale as rules | the rule files rewrite every example into the core and give section 6's verdicts on the test engine. This is the milestone: Etale defined in Etale |
 | 3 | Seed tools | in an empty system holding only the seed and the four tools' pinned sources, the seed builds the four tools, and a test program in assembly copies a file to its output and exits with a value |
@@ -523,6 +544,26 @@ These are phase 0's tests. The plain-English sentences say what each type means;
 comments are refused, they live here and not in the files. A text in quotes is one the type
 must accept.
 
+Every text and mistake below is a file in tests/, and tests/test_list.txt gives each test
+with its verdict, grouped by example in this order (done 25 November). Its lines, with one
+space between words:
+
+- `examples/dates.etale accepted`: the file is accepted (exit value 0).
+- `tests/dates_two_answers.etale refused at 18`: the file is refused at its line 18 (exit
+  value 2).
+- `Date tests/dates_2026-10-15.txt accepted`, one step under an accepted file: that file reads
+  the text as a Date and prints it back exactly as it was (exit value 0).
+- `Date tests/dates_2023-02-29.txt refused by 30 at 1`: the text is refused by line 30 of the
+  Etale file, at line 1 of the text (exit value 1).
+- `Date tests/dates_2026-10-15.txt printed as european tests/dates_2026-10-15_european.txt`:
+  accepted, and printed with the european text it gives that file.
+
+A file holds its text exactly. A Date's text has no Newline, so a date's file ends without
+one; every other text ends with a Newline. A mistake is a copy of its example with one
+change, and is refused once: a type that uses a refused type is skipped. Which lines a
+refusal names is in 3.9. How the command line names the type, and a second text to print
+with, is open (7.3).
+
 ### dates.etale
 
 - Date: a calendar date in the Gregorian calendar, as in "2026-10-15", or "15.10.2026" in
@@ -533,8 +574,10 @@ must accept.
   is not a date.
 - Accepts 2026-10-15, 2024-02-29 and 2000-02-29. Refuses 2023-02-29 and 1900-02-29. Prints
   2026-10-15 as european, 15.10.2026. February_2023 holds.
-- Mistakes it must refuse: the 29 case without `month is 2` (a value gets two answers); a leap
-  case dropped (some year gets none); a wrong step in February_2023.
+- Mistakes it must refuse: the 29 case without `month is 2` (a value gets two answers: month 1
+  in a leap year gets both 31 and 29); the 400 case dropped (no year divisible by 400 gets an
+  answer, the first being year 0); February_2023's step as `date.is_leap is True`, which does
+  not follow.
 
 ### train.etale
 
@@ -549,10 +592,14 @@ must accept.
 - Very_Late_Refund: a very late stop on a fast train gives a refund.
 - Late_Start_Refund: a fast train whose first stop is 30 minutes late gives a refund, as
   Very_Late_Refund shows.
-- Accepts a fast train with a late stop, and a slow train. Refuses a delay of 121.
-  Very_Late_Refund and Late_Start_Refund hold.
-- Mistakes: a refund case that overlaps another; a step that does not follow; citing
-  Very_Late_Refund for a stop 5 minutes late, which its `given` lines do not allow.
+- Accepts a fast train with a late stop ("R10 fast 60", a stop 4 minutes late: a refund), and
+  a slow train ("R11 slow 30", a stop 12 minutes late: no refund). Refuses the fast train
+  with a delay of 121. Very_Late_Refund and Late_Start_Refund hold.
+- Mistakes: a refund case that overlaps another (the second taking a count in 0..1, so a fast
+  train with one late stop gets both answers); a step that does not follow (Very_Late_Refund
+  without its first step, so `stop in (train.late_stops)` would need the status case and the
+  list rule at once); citing Very_Late_Refund for a stop 5 minutes late, which its `given`
+  lines do not allow (Late_Start_Refund's first stop 5 minutes late).
 
 ### timetable.etale
 
@@ -583,7 +630,10 @@ must accept.
 
 - Refuses: a station missing from the index; an index entry with no stop; a late stop past
   its train's max_delay_minutes; stops out of time order; a station twice on one train; an
-  index out of alphabetical order (Oslo S above Oslo).
+  index out of alphabetical order (Oslo S above Oslo). Each is the text above with one change:
+  Drammen left out of the index; Lier added to it; R10's max_delay_minutes 10, below
+  Drammen's 20; R10's two stops swapped; a second Asker on R10 at 23:55; and a stop at Oslo
+  on R11, listed below Oslo S.
 
 ### trip.etale
 
@@ -605,8 +655,8 @@ must accept.
   Lier
   ```
 
-- Refuses a leg with no link. The engine checks a trip it is given; finding one is a tool's
-  job.
+- Refuses a leg with no link: the text above ending in Asker, since no link goes from Drammen
+  to Asker. The engine checks a trip it is given; finding one is a tool's job.
 
 ### bank_account.etale
 
@@ -614,7 +664,7 @@ must accept.
   is never below 0.
 - Bank_Account: as in "100", then one transaction a line, as in "-60".
 - Refuses "100", then "-60", "10" and "-120", at the third transaction: its balance after
-  would be -70. Accepts a text whose balance never goes below 0.
+  would be -70. Accepts a text whose balance never goes below 0: "100", then "-60" and "10".
 
 ### binary_conversion.etale
 
@@ -622,7 +672,8 @@ must accept.
 - Binary_Conversion: writing a number in binary, the number given by its call. Divide it by
   the base, then divide each quotient by the base until it is 0. The remainders are the
   binary digits, lowest first: 6 gives divisions of 6, 3 and 1, with remainders 0, 1 and 1.
-- The file is checked. It runs when a call gives it its number.
+- The file is checked. It runs when a call gives it its number; no test runs it yet, since
+  how a call comes from outside is open (7.3).
 
 ### decimals.etale
 
@@ -676,7 +727,8 @@ Each was a place where two decided things disagree, or a form was missing. All a
 
 - Counterexamples: suggested that a claim tried on every value, when it fails, names the value
   that breaks it. The xor mistake already expects it; tests compare only verdicts and lines,
-  so it blocks nothing.
+  so it blocks nothing. Counting up from each part's lowest value, the last part changing
+  fastest, the first value that breaks the xor mistake is a 1, b 0, c 1.
 - In a `where` fact, `Stop.station` names the list's item, or the type the line is in. If a
   type ever filters a list of its own type, it could mean either. No example does this.
 - Whether `min` and `max` earn their words.
@@ -690,6 +742,13 @@ Each was a place where two decided things disagree, or a form was missing. All a
   named the first line that did not read, then tried a blank line above it and said whether
   the file then read (commit 535871c, 18 November). Whether the new engine gives such a hint
   is not decided.
+- How the command line names the type a text is read as, and a second text such as
+  `european` to print with. The test list names both; 3.10 does not say.
+- How a call is given from outside, so that binary_conversion's 6 can be a test: it has only
+  a starred part and no text.
+- The test list's shape is written in plain words in section 6. Claude's suggestion, not
+  chosen: write it as an Etale type, so the engine checks the list as well. Its lines have
+  three shapes, so it needs a choice of record types read from a text, which no example uses.
 
 ## 8. Later
 
@@ -824,10 +883,12 @@ The repo holds:
 - README.md: what is here.
 - PLAN.md: this plan.
 - examples/: the eight example files, version 1's definition. Nothing has checked them yet.
+- tests/: section 6's texts, a file for each of its mistakes, and test_list.txt with every
+  verdict (phase 0). Nothing has run them yet.
 - LICENSE.
 
 All work is on main, from 25 November; the old branches kernel and minimal are fully inside
-it. Each phase adds its own files: the test list beside the examples (phase 0), the test engine
+it. Each phase adds its own files: tests/ beside the examples (phase 0), the test engine
 (phase 1, deleted after phase 5), the rule files (phase 2), the pinned seed sources and build script (phase 3), and
 the engine's assembly (phase 4). Few folders, each named for what it holds.
 

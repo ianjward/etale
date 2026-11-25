@@ -1,0 +1,44 @@
+examples/dates.etale accepted
+  Date tests/dates_2026-10-15.txt accepted
+  Date tests/dates_2024-02-29.txt accepted
+  Date tests/dates_2000-02-29.txt accepted
+  Date tests/dates_2023-02-29.txt refused by 30 at 1
+  Date tests/dates_1900-02-29.txt refused by 30 at 1
+  Date tests/dates_2026-10-15.txt printed as european tests/dates_2026-10-15_european.txt
+tests/dates_two_answers.etale refused at 18
+tests/dates_no_answer.etale refused at 6
+tests/dates_wrong_step.etale refused at 53
+
+examples/train.etale accepted
+  Train tests/train_fast_late.txt accepted
+  Train tests/train_slow.txt accepted
+  Train tests/train_delay_121.txt refused by 28 at 3
+tests/train_refund_cases_overlap.etale refused at 55
+tests/train_step_does_not_follow.etale refused at 82
+tests/train_citation_not_allowed.etale refused at 95
+
+examples/timetable.etale accepted
+  Timetable tests/timetable.txt accepted
+  Timetable tests/timetable_station_not_in_index.txt refused by 108 at 1
+  Timetable tests/timetable_entry_with_no_stop.txt refused by 110 at 1
+  Timetable tests/timetable_stop_too_late.txt refused by 84 at 1
+  Timetable tests/timetable_stops_out_of_order.txt refused by 72 at 3
+  Timetable tests/timetable_station_twice.txt refused by 71 at 4
+  Timetable tests/timetable_index_out_of_order.txt refused by 98 at 11
+
+examples/trip.etale accepted
+  Trip tests/trip.txt accepted
+  Trip tests/trip_leg_with_no_link.txt refused by 34 at 7
+
+examples/bank_account.etale accepted
+  Bank_Account tests/bank_account.txt accepted
+  Bank_Account tests/bank_account_below_zero.txt refused by 7 at 4
+
+examples/binary_conversion.etale accepted
+
+examples/decimals.etale accepted
+  Line tests/decimals.txt accepted
+  Line tests/decimals_price_one_place.txt refused by 10 at 1
+
+examples/xor.etale accepted
+tests/xor_wrong_case.etale refused at 31

@@ -1,0 +1,95 @@
+Minutes_Per_Hour: 60
+
+Time:
+  hour: 0..23
+  minute: 0..59
+
+  hour_minutes: hour * Minutes_Per_Hour
+  minutes: hour_minutes + minute
+
+  text:
+    1. hour digits 2
+    2. ":"
+    3. minute digits 2
+
+Line_Code:
+  1. "R"
+  2. (Digit... 1..2)
+
+Station_Character: " " | Letter
+
+Station_Name:
+  1. Letter
+  2. (Station_Character... 0..19)
+
+Stop:
+  station: Station_Name
+  due: Time
+  delay_minutes: 0..120
+
+  status: "on time" | "late" | "very late"
+    "late":
+      delay_minutes in 2..9
+    "very late":
+      delay_minutes in 10..120
+    "on time":
+      delay_minutes in 0..1
+
+  text:
+    1. station
+    2. " "
+    3. due
+    4. " +"
+    5. delay_minutes
+    6. Newline
+
+Train:
+  line: Line_Code
+  kind: "fast" | "slow"
+  max_delay_minutes: 10 | 30 | 60
+  stops: (Stop... 1..)
+
+  late_stops: (stops)
+    where Stop.status in "late" | "very late"
+
+  refund: True | False
+    True:
+      kind is "fast"
+      (late_stops).count in 1..
+    False:
+      kind is "fast"
+      (late_stops).count is 0
+    False:
+      kind is "slow"
+
+  text:
+    1. line
+    2. " "
+    3. kind
+    4. " "
+    5. max_delay_minutes
+    6. Newline
+    7. (stops)
+
+Very_Late_Refund:
+  train: Train
+    given train.kind is "fast"
+  stop: Stop
+    given stop in (train.stops)
+    given stop.delay_minutes in 10..120
+
+  claim train.refund is True:
+    1. stop.status is "very late"
+    2. stop in (train.late_stops)
+    3. (train.late_stops).count in 1..
+
+Late_Start_Refund:
+  train: Train
+    given train.kind is "fast"
+  stop: Stop
+    given stop is (train.stops).first
+    given stop.delay_minutes is 5
+
+  claim train.refund is True:
+    1. stop in (train.stops)
+    2. Very_Late_Refund(train: train, stop: stop)
