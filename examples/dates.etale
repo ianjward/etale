@@ -46,8 +46,8 @@ Date:
 
 February_2023:
   date: Date
+    given date.year is 2023
+    given date.month is 2
 
-  given date.year is 2023
-  given date.month is 2
   claim date.days_in_month is 28:
     1. date.is_leap is False

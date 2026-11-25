@@ -60,7 +60,7 @@ what is checked.
 - A type: `Name:` with lines under it, in paragraphs (3.4).
 - A type that is only a text: its numbered positions right under its name, after
   `ordered by` if it has one (`ordered by Alphabetical`). It has no paragraphs.
-- A claim type: a type with a `claim` line, and `given` lines if any (3.8).
+- A claim type: a type with a `claim` line, its parts narrowed by `given` lines if any (3.8).
 - Refused: an empty type (a name with nothing under it), a case table outside its type, and
   comments (`#`). Nothing below a type, or in another file, can add to it.
 
@@ -75,7 +75,7 @@ In a type:
   another.
 - `impossible:` with its facts under it: one case for each block.
 - `text:`, or another name such as `european:`, with numbered positions under it.
-- `given` and a fact; `claim` and a fact, alone or with a colon and numbered steps under it.
+- `claim` and a fact, alone or with a colon and numbered steps under it.
 - Inside a type, a bare name is the type's own field.
 - A line has at most one colon, between its name or number and its definition. A numbered
   line has its number in place of a colon.
@@ -85,6 +85,11 @@ Under a field:
 - `where` and a fact (a filter); `places 2`; `wrap_at Minutes_Per_Day`; `unique station`;
   `ordered by due.minutes`.
 - `1.` and `2...`, each with a call, and `until` and a fact one step under `2...` (a loop).
+- `given` and a fact, one step under a part: only the values where it holds (chosen
+  25 November). It names the part, not its type, since two parts can share a type, and a
+  `given` that ties two parts together goes under the later one. `where` makes a smaller list
+  inside each value; `given` narrows the type itself; neither refuses anything, only
+  `impossible:` does. In version 1 files only claim types use it; rule files use it too.
 
 Definitions:
 
@@ -121,11 +126,11 @@ proves exact needs no `places`.
 
 - A type's lines come in paragraphs, one blank line apart, in this order:
   1. Parts: starred inputs first, then what is read from the text (in a claim type, what the
-     claim is about).
+     claim is about), each with its `given` lines one step under it.
   2. Worked out: each value after what it uses. A field worked out by cases is a paragraph
      of its own.
   3. Impossible.
-  4. The claim: `given` lines, then the claim and its steps.
+  4. The claim: the claim and its steps.
   5. Texts: each in a paragraph of its own.
 - A kind with nothing in it is left out. No blank line inside a paragraph, and never two
   together. A blank line around every type.

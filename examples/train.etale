@@ -73,11 +73,11 @@ Train:
 
 Very_Late_Refund:
   train: Train
+    given train.kind is "fast"
   stop: Stop
+    given stop in (train.stops)
+    given stop.delay_minutes in 10..120
 
-  given train.kind is "fast"
-  given stop in (train.stops)
-  given stop.delay_minutes in 10..120
   claim train.refund is True:
     1. stop.status is "very late"
     2. stop in (train.late_stops)
