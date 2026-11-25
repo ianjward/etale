@@ -300,6 +300,16 @@ How the forms become sugar:
 - Lists and texts: rules that refer to themselves (a list is empty, or an item followed by a
   list), positive only (3.7), within the engine's bound on new elements.
 
+How the core is written (chosen 25 November): rule files are written in a small part of
+Etale itself, using only four forms the examples already use: a type with its parts, `given`
+lines, a field worked out by cases, and `impossible:`. These are the five core things in
+Etale's own words: a type's parts are there exists, `given` lines a restriction, cases a union,
+`impossible:` contained in nothing, and the atoms are the engine's built-in facts. No new word
+is needed. Two things differ from version 1 files: a type's values are every match among the
+facts the engine holds, not texts read from outside; and a rule may refer to itself, so it can
+walk through a file's lines (how, 7.1). The file being checked comes in as built-in types, as
+Letter and Digit are built in (7.1).
+
 New forms come only as rule files that rewrite them into these five. The engine never grows,
 and the chain stays one step: Rust is built from source one release after another, and Go
 pins an old version, but here the pin is total.
@@ -379,7 +389,7 @@ stays small enough to read in full.
 
 ### 5.3 The rule files
 
-Etale's definition, written in the frozen core, run by the engine. Each file rewrites forms
+Etale's definition, written in the core's part of Etale (section 4), run by the engine. Each file rewrites forms
 into the core and checks them. Each form's rewrite should be short enough to check by reading.
 
 1. Forms: every block and line is a form of version 1, in the paragraph order and within the
@@ -565,15 +575,13 @@ must accept.
 
 Each of these decides how the test engine and the rule files are written.
 
-1. How the frozen core is written in a file: the fixed layout in which the engine reads
-   restriction, union, there exists and contained in. Everything after phase 0 depends on it.
-2. Which checks are atoms in the engine and which are rules: exactly one reading of a text;
+1. Which checks are atoms in the engine and which are rules: exactly one reading of a text;
    splitting ranges into parts for case tables; the number checks of 3.9 (a divisor that
    might be 0, a quotient that might not be exact, a value that might not fit).
-3. The bound on new elements and on branching, how it is written, and how it relates to the
+2. The bound on new elements and on branching, how it is written, and how it relates to the
    step budget of 3.10.
-4. How the rule files name the facts of a file's tree, and how a file says which rule files
-   check it.
+3. How the rule files name the facts of a file's tree, how a rule refers to itself, and how
+   a file says which rule files check it.
 
 ### 7.2 Found when the docs were joined (25 November)
 
