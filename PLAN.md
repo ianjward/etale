@@ -497,9 +497,12 @@ the 32 bits the assembly engine holds (`+`, `-`, `*`,
 `call/cc`, exceptions, records, hash tables, vectors, floating point or modules. Its names are
 whole words.
 
-Claude's suggestion, not chosen: reach the milestone with the first five rule files, then add
-the values file before phase 4. The value checks are the largest part of version 1 and need
-the rest working first.
+Claude's suggestions, not chosen:
+
+- Before the test engine's rule loop is written, draft the two hardest rule files, names and
+  reading, to try the rule-file forms on real lines before the engine depends on them.
+- Reach the milestone with the first five rule files, then add the values file before phase 4.
+  The value checks are the largest part of version 1 and need the rest working first.
 
 ### 5.5 What this workspace can do (checked 25 November)
 
@@ -645,8 +648,7 @@ refers to itself (section 4); what the rule files see, and which rule files chec
 
 ### 7.2 Found when the docs were joined (25 November)
 
-Each was a place where two decided things disagree, or a form was missing. All are settled
-except the last open one, item 6, which is Claude's own change, to be confirmed.
+Each was a place where two decided things disagree, or a form was missing. All are settled.
 
 1. Settled: carriage returns. The character decision refused a carriage return, but the HTTP
    example read texts with them. The person chose to keep carriage returns refused everywhere,
@@ -663,9 +665,10 @@ except the last open one, item 6, which is Claude's own change, to be confirmed.
    every value, so the check knows it is 0 or more (25 November; 3.9).
 5. Settled: citing a claim. A step calls the cited claim, giving its parts by name, and
    train.etale's Late_Start_Refund uses it (25 November; 3.8).
-6. Facts in a `where`. The 24 November rule allowed only `in` a choice or a range, the
-   comparisons and `divisible_by`, but the examples also use `is` (the trip's legs) and `in`
-   a list (the timetable, chosen 25 November). This plan allows what the examples use (3.3).
+6. Settled: facts in a `where`. The 24 November rule allowed only `in` a choice or a range,
+   the comparisons and `divisible_by`, but the examples also use `is` (the trip's legs) and
+   `in` a list (the timetable). Both have opposites the engine can work out, so `where` takes
+   them too; the person kept this (25 November; 3.3).
 7. Closed: the engine outline listed `previous` and `last` in loops as open. They were settled
    on 24 November (3.3).
 
