@@ -308,10 +308,16 @@ Etale itself, using only four forms the examples already use: a type with its pa
 lines, a field worked out by cases, and `impossible:`. These are the five core things in
 Etale's own words: a type's parts are there exists, `given` lines a restriction, cases a union,
 `impossible:` contained in nothing, and the atoms are the engine's built-in facts. No new word
-is needed. Two things differ from version 1 files: a type's values are every match among the
-facts the engine holds, not texts read from outside; and a rule may refer to itself, so it can
-walk through a file's lines (how, 7.1). The file being checked comes in as built-in types, as
-Letter and Digit are built in (5.3).
+is needed. Two things differ from version 1 files. First, a type's values are every match
+among the facts the engine holds, not texts read from outside: an unstarred part is matched
+among those facts, and a starred part is given by a call, as in version 1. Second, a type may
+call itself one step on, as in `earlier: Name_Above(name: name, line: line.above)`, with the
+walk's end stated as one of its cases, so a rule can walk through a file's lines (chosen
+25 November). Version 1 files keep the loop as their only way to refer to themselves, and the
+rule files define the loop on top of such calls. A call to itself carries back only a fixed
+answer such as True or False; handing back a value would need a case whose value is another
+field, which version 1 does not have, so that is decided if a rule file needs it. The file
+being checked comes in as built-in types, as Letter and Digit are built in (5.3).
 
 New forms come only as rule files that rewrite them into these five. The engine never grows,
 and the chain stays one step: Rust is built from source one release after another, and Go
@@ -615,10 +621,9 @@ must accept.
 
 ### 7.1 Before phase 1
 
-Each of these decides how the test engine and the rule files are written.
-
-1. How a rule refers to itself: a type that calls itself one step on, with its end stated as
-   a case, or the loop of version 1 read by the engine itself.
+All settled on 25 November: the test engine (5.4); how the core is written, and how a rule
+refers to itself (section 4); what the rule files see, and which rule files check a file
+(5.3); one step budget (3.10); and rules before atoms (5.3).
 
 ### 7.2 Found when the docs were joined (25 November)
 
