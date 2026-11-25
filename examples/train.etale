@@ -82,3 +82,14 @@ Very_Late_Refund:
     1. stop.status is "very late"
     2. stop in (train.late_stops)
     3. (train.late_stops).count in 1..
+
+Late_Start_Refund:
+  train: Train
+    given train.kind is "fast"
+  stop: Stop
+    given stop is (train.stops).first
+    given stop.delay_minutes is 30
+
+  claim train.refund is True:
+    1. stop in (train.stops)
+    2. Very_Late_Refund(train: train, stop: stop)

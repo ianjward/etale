@@ -75,7 +75,8 @@ In a type:
   another.
 - `impossible:` with its facts under it: one case for each block.
 - `text:`, or another name such as `european:`, with numbered positions under it.
-- `claim` and a fact, alone or with a colon and numbered steps under it.
+- `claim` and a fact, alone or with a colon and numbered steps under it. A step is a fact,
+  or a call to a proved claim above it (3.8).
 - Inside a type, a bare name is the type's own field.
 - A line has at most one colon, between its name or number and its definition. A numbered
   line has its number in place of a colon.
@@ -200,8 +201,8 @@ proves exact needs no `places`.
   tested on each text.
 - Numbered steps under the claim each follow from the givens and the steps above, by one case,
   one built-in fact (2023 `not_divisible_by` 4) or one list rule (an item is in a filter when
-  it is in the list and the `where` fact holds; a list with an item in it has a count of 1 or
-  more). The claim follows from the steps by one more case, so it is not repeated as a step.
+  it is in the list and the `where` fact holds; a list's first and last items are in it; a
+  list with an item in it has a count of 1 or more). The claim follows from the steps by one more case, so it is not repeated as a step.
 - A claim with no steps is tried on every value, as Xor_Associativity is.
 - Induction works only over lists built with `1.` and `2...`. The engine splits a claim about
   a whole list into two without the file saying anything: it holds for item `1.`, and if it
@@ -210,6 +211,11 @@ proves exact needs no `places`.
 - A step may cite another claim by its name, and so may the next-item case as its assumption.
   Only claims in the same file, and only proved ones, not claims tried on some values.
   Defining names before use rules out claims proving each other in a circle.
+- A step cites a claim by calling it, giving its parts by name, as in
+  `2. Very_Late_Refund(train: train, stop: stop)` in Late_Start_Refund (chosen 25 November).
+  The engine checks that the cited claim's `given` lines hold for those values, and its claim
+  then holds for them. The same call, given `previous`, cites a claim for the item before in
+  the next-item case of induction.
 - No proof search: someone writes the steps, or the engine tries every value.
 
 ### 3.9 Checks (decided 25 November)
@@ -538,9 +544,12 @@ must accept.
   train gives a refund when any stop is late, and none when no stop is late. A slow train
   never gives a refund.
 - Very_Late_Refund: a very late stop on a fast train gives a refund.
+- Late_Start_Refund: a fast train whose first stop is 30 minutes late gives a refund, as
+  Very_Late_Refund shows.
 - Accepts a fast train with a late stop, and a slow train. Refuses a delay of 121.
-  Very_Late_Refund holds.
-- Mistakes: a refund case that overlaps another; a step that does not follow.
+  Very_Late_Refund and Late_Start_Refund hold.
+- Mistakes: a refund case that overlaps another; a step that does not follow; citing
+  Very_Late_Refund for a stop 5 minutes late, which its `given` lines do not allow.
 
 ### timetable.etale
 
@@ -636,7 +645,8 @@ refers to itself (section 4); what the rule files see, and which rule files chec
 
 ### 7.2 Found when the docs were joined (25 November)
 
-Each was a place where two decided things disagree. All but citing a claim are settled.
+Each was a place where two decided things disagree, or a form was missing. All are settled
+except the last open one, item 6, which is Claude's own change, to be confirmed.
 
 1. Settled: carriage returns. The character decision refused a carriage return, but the HTTP
    example read texts with them. The person chose to keep carriage returns refused everywhere,
@@ -651,9 +661,8 @@ Each was a place where two decided things disagree. All but citing a claim are s
 4. Settled: a value given at a call. The bank account gives `previous.balance_after`, worked
    out as -1000 or more, to `balance_before*: 0..`. Impossible blocks count as facts about
    every value, so the check knows it is 0 or more (25 November; 3.9).
-5. Citing a claim. 3.8 lets a step cite another claim by its name, but no form for a citation
-   is written and no example uses one. It needs a form, and an example in the corpus, before
-   the claims rule file.
+5. Settled: citing a claim. A step calls the cited claim, giving its parts by name, and
+   train.etale's Late_Start_Refund uses it (25 November; 3.8).
 6. Facts in a `where`. The 24 November rule allowed only `in` a choice or a range, the
    comparisons and `divisible_by`, but the examples also use `is` (the trip's legs) and `in`
    a list (the timetable, chosen 25 November). This plan allows what the examples use (3.3).
