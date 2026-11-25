@@ -335,8 +335,8 @@ Why not hexadecimal alone: with no labels, every jump is counted by hand, and on
 instruction shifts them all. The four tools cost little and give names.
 
 Fixed: 32-bit x86 first, since the seed and the tiny operating system are written for it;
-whole numbers of any size, as lists of digits in base 10000, so a 32-bit machine holds every
-step; the engine reads Etale files and texts itself.
+and whole numbers of any size, as lists of digits in base 10000, so a 32-bit machine holds
+every step.
 
 Names, for looking things up: the seed and the four tools come from stage0-posix, where the
 seed is hex0, the tools are hex1, hex2, catm and M0, and their assembly is M1. The tiny
@@ -358,8 +358,9 @@ stays small enough to read in full.
    through a small buffer.
 3. The reader: lines to lists. Indentation becomes nesting; words, numbers and quoted texts
    become atoms. Refused at their line: a tab, a line two steps deeper than the one above,
-   `#`, a carriage return, and any character outside 3.5. A command prints the tree as
-   bracketed lists, so the reader can be checked by eye.
+   `#`, a carriage return, any character outside 3.5, and, outside a quoted text, any
+   character no form uses. A command prints the tree as bracketed lists, so the reader can be
+   checked by eye.
 4. The file as facts: the tree becomes plain facts (this line has these words, this line is
    under that one, this word is at this place). A text to read becomes facts too (character
    12 is a colon).
