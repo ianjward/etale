@@ -761,7 +761,8 @@ The repo holds:
 - examples/: the eight example files, version 1's definition. Nothing has checked them yet.
 - LICENSE.
 
-All work is on main, the only branch (25 November). Each phase adds its own files: the test list beside the examples (phase 0), the test engine
+All work is on main, from 25 November; the old branches kernel and minimal are fully inside
+it. Each phase adds its own files: the test list beside the examples (phase 0), the test engine
 (phase 1), the rule files (phase 2), the pinned seed sources and build script (phase 3), and
 the engine's assembly (phase 4). Few folders, each named for what it holds.
 
@@ -782,7 +783,8 @@ How work is done:
 - Docs are in plain words, in the style of the examples: no symbols such as turnstiles or
   Greek letters, no codes for decisions (say what was decided), and whole-word names in code.
 - The claude.ai project holds a copy of this plan and of the examples. The repo is the master
-  copy, and the project is updated with it.
+  copy, and the project is updated with it. The project's 92 older docs (16 October to
+  25 November) were deleted on 25 November; what was still in force is in this plan.
 - Each chat ends by saying whether it needs to be kept: anything decided only in the chat goes
   into this plan first.
 
