@@ -220,9 +220,9 @@ How the code is written (the forms rule file):
 
 - Arithmetic and `<`, `<=`, `>`, `>=` only on numbers. A calculation gives a number, never a
   text or a record. Two texts compared with `<` must use the same order.
-- `<` and the like between two values are refused when either one wraps. Open: whether a
-  wrapping value may be compared with a fixed value, which the timetable's
-  `arrives < Day_Starts` needs (7.2).
+- `<` and the like between two values are refused when either one wraps, unless the other
+  is a fixed value: a constant cannot wrap, so the timetable's `arrives < Day_Starts` is
+  allowed (chosen 25 November).
 - No raw numbers in calculations: a number in a calculation is a named constant.
 - At most three starred fields in a type.
 - A list item cannot be the empty text.
@@ -231,9 +231,15 @@ Values (the values rule file, using induction for claims about whole lists):
 
 - A divisor that might be 0.
 - A quotient that might not be exact and has no `places` line.
-- A value that might not fit its range (see 7.2 on calls).
+- A value that might not fit its range. Impossible blocks count as facts about every value
+  of their type, so the bank account's `previous.balance_after`, which every Transaction keeps
+  at 0 or more, fits `balance_before*: 0..` (chosen 25 November).
 - A rule that never refuses.
 - A `wrap_at` that never wraps.
+- A type no value can have: whatever it reads from a text or is given by a call, its ranges,
+  cases, `given` lines and impossible blocks leave nothing. This covers a text shape no text
+  can match, a type no call could make, and a claim whose `given` lines leave nothing, which
+  would otherwise pass whatever it claims (chosen 25 November).
 
 Case tables (the case tables rule file):
 
@@ -243,8 +249,6 @@ Case tables (the case tables rule file):
 
 Texts (the texts rule file):
 
-- A type with no texts. Open: what this covers, since read word for word it refuses every
-  type without a text (7.2).
 - A type with exactly the same texts as another.
 - A printed text that does not read back to the same value in exactly one way.
 - Without nesting, a type's texts are built from unions, sequences and lists of simpler
@@ -632,26 +636,21 @@ refers to itself (section 4); what the rule files see, and which rule files chec
 
 ### 7.2 Found when the docs were joined (25 November)
 
-Each was a place where two decided things disagree. The first is settled; the rest are open.
+Each was a place where two decided things disagree. All but citing a claim are settled.
 
 1. Settled: carriage returns. The character decision refused a carriage return, but the HTTP
    example read texts with them. The person chose to keep carriage returns refused everywhere,
    so the HTTP example left version 1 (25 November), and with it `Return`, `Character`, `base`
    and a count taken from a field (section 8).
-2. Comparing a wrapping value. The 25 November list of checks says `<` is refused when either
-   value wraps. The 24 November form allowed a wrapping value against a fixed one, and the
-   timetable compares `arrives` with `Day_Starts`. Either that exception comes back, or the
-   timetable's part_of_day changes. To settle before the forms rule file.
-3. "A type with no texts". Read word for word, it refuses every type without a text: Division,
-   Xor, Binary_Conversion and the claim types, which are made by calls or hold a claim. One
-   reading would keep them: a type that has a text, but no text can match it. To settle before
-   the texts rule file.
-4. A value that might not fit its range, at a call. The bank account gives
-   `previous.balance_after`, worked out as -1000 or more, to `balance_before*: 0..`. It fits
-   only because every Transaction passed its impossible block. Either the values check treats
-   a type's impossible blocks as facts about all its values, or a call refuses a value that
-   does not fit, as a call refused the values of a union that did not fit (18 November). To
-   settle in the values rule file.
+2. Settled: comparing a wrapping value. The 25 November list of checks dropped the
+   24 November exception for a fixed value, which the timetable's `arrives < Day_Starts`
+   needs. The person chose to bring it back (25 November; 3.9).
+3. Settled: "a type with no texts". Read word for word, it refused every type without a text,
+   such as Division, Xor and the claim types. It now means a type no value can have
+   (25 November; 3.9).
+4. Settled: a value given at a call. The bank account gives `previous.balance_after`, worked
+   out as -1000 or more, to `balance_before*: 0..`. Impossible blocks count as facts about
+   every value, so the check knows it is 0 or more (25 November; 3.9).
 5. Citing a claim. 3.8 lets a step cite another claim by its name, but no form for a citation
    is written and no example uses one. It needs a form, and an example in the corpus, before
    the claims rule file.
