@@ -411,6 +411,13 @@ into the core and checks them. Each form's rewrite should be short enough to che
 
 Alphabetical (3.6) is written here too.
 
+Finding that a text has exactly one reading, splitting ranges into parts for case tables, and
+the number checks of 3.9 all start as rules (chosen 25 November). The engine's atoms stay as
+section 4 has them: a value's field, a character at a place, and the number facts. A check
+moves into the engine only if phase 2 measures it as too slow, and then as a general routine
+over facts the rule files produce, so the engine still never learns a form. Reading is the
+check most likely to move.
+
 Every file is checked by the whole set of rule files, always. A file never names its own
 rules, so nothing can opt out of a check, and the set's checksum is recorded with the engine's
 (chosen 25 November).
@@ -610,10 +617,8 @@ must accept.
 
 Each of these decides how the test engine and the rule files are written.
 
-1. Which checks are atoms in the engine and which are rules: exactly one reading of a text;
-   splitting ranges into parts for case tables; the number checks of 3.9 (a divisor that
-   might be 0, a quotient that might not be exact, a value that might not fit). With it, how
-   a rule refers to itself, since that depends on how much the engine works out itself.
+1. How a rule refers to itself: a type that calls itself one step on, with its end stated as
+   a case, or the loop of version 1 read by the engine itself.
 
 ### 7.2 Found when the docs were joined (25 November)
 
