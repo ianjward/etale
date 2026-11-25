@@ -1,94 +1,18 @@
 # Etale
 
-Etale is an experimental typed language that aims to be a human-readable version of positive
-(geometric) logic. Its grammar is language/language.etale, which reads itself.
+Etale is an experimental typed language for geometric logic, written to be read by someone
+who reads English but does not program. It is to be checked by a small engine written by hand
+in assembly, built from a seed small enough to check by hand.
 
-This branch is the smallest form of the repository: Etale files, and one small engine that
-reads, writes, checks and runs them. It needs Node 22 and nothing else. There are no tests.
+Nothing runs yet. Start with PLAN.md: what Etale is for, the forms of version 1, how Etale is
+checked, the build in phases, and what is still open.
 
-## What is here
+- PLAN.md: the one plan.
+- examples/: the nine example files that define version 1. Nothing has checked them yet.
+- LICENSE
 
-- language/: every Etale file. language.etale is the language; every other file is the
-  standard library, which every file sees.
-- language/kernel.etale: the kernel, a small stack machine. Etale is to compile to its
-  programs.
-- language/wasm.etale: kernel programs compiled to WebAssembly, in Etale. Functions are
-  numbered 0, 1, 2 and on, main first, and say how many values they take, at most three
-  ("function 1 copy_one takes 0"). A call gives the number ("call 1").
-- language/compile.etale: Etale compiled to the kernel, in Etale (route B). So far a file's
-  constants, each of which may name the ones above it, are worked out while compiling, and
-  main gives the last one's value:
-  'node engine/etale.mjs print language/compile.etale Compiled_File FILE kernel'.
-  A file's types become a program that reads its last type from the input:
-  'print language/compile.etale Compiled_Reader FILE reader'. Character ranges, quoted texts,
-  lists with counts, one-text types and layouts are compiled, each to a function that gives 1
-  and moves the position on, or gives 0 and puts it back. A field worked out by cases refuses
-  the record unless exactly one case holds. Unions of more than one member and fields that may
-  be missing are not compiled: they wait for the definition of what Etale means. The program
-  loads its input into memory, writes what it read and gives 0, or gives 1 when the input is
-  refused.
-- engine/: the engine, about 2,350 lines of code, with its command line in etale.mjs. It goes
-  once Etale runs on its own kernel.
+Earlier work is kept at two tags:
 
-## Commands
-
-```
-node engine/etale.mjs self                  language.etale reads as File and gives the stored rules back
-node engine/etale.mjs seed                  store the rules that language.etale gives
-node engine/etale.mjs check FILE            FILE's mistakes
-node engine/etale.mjs fmt FILE [--write]    FILE in its canonical form
-node engine/etale.mjs read FILE TYPE DATA   is the text of DATA a TYPE of FILE?
-node engine/etale.mjs run FILE TYPE DATA    read DATA as a TYPE of FILE and show every value
-node engine/etale.mjs print FILE TYPE DATA [FIELD]  DATA in its canonical text, or one record field of it
-node engine/etale.mjs rules FILE            FILE's rules, in plain words
-```
-
-A record field prints by its own type's shape, and must read back as that type. A record whose
-shape is 'text {Binary_Digit}' is bits, written eight to a byte. So this compiles a kernel
-program to WebAssembly:
-
-```
-node engine/etale.mjs print language/wasm.etale Compiled_Program main.kernel wasm > main.wasm
-```
-
-The program runs on any WASI runtime, such as wasmtime ('wasmtime main.wasm'). It reads its
-input, writes its output, and ends with main's value.
-
-For example, with a date from the standard library in date.txt:
-
-```
-node engine/etale.mjs run language/dates.etale Date date.txt
-```
-
-## How it starts
-
-engine/seed.json holds the rules of language.etale. The engine reads language.etale with them
-in exactly one way, and its reading gives the same rules back. To change the syntax, first
-change the declarations in language.etale in forms that the stored rules still read, run
-'seed', then write files in the new forms.
-
-Every declaration becomes rules of one shape: a text is a HEAD when it is these parts in a
-row, and each part is that. A record's rule also holds its worked-out fields.
-
-## Printing
-
-Printing is reading run backwards. A type that reads only spaces,
-such as Pad, Gap or End_Spaces, prints its first form, and so does a position of a record that
-holds no value. Everything else prints as it was read. The printed text must read back in
-exactly one way, to the same values, or printing fails.
-
-## Two refusals
-
-1. A type that can reach itself before it reads a character is refused.
-2. A list, or an item that may be absent, whose item can be the empty text is refused. Put a
-   mark that always reads, such as a separator, in the item.
-
-## Not carried yet
-
-- The bounds of a calculation, and the checks that need them: a divisor that may be 0, a
-  quotient with no 'round:' that may not be exact, a calculation that needs 'wrap_at:', a
-  'wrap_at:' that can never wrap.
-- Claims as a proof over every text. A claim is checked on each text that is read, not
-  proved for all texts.
-- The checks on 'order:', 'unique:' and on kept and collected lists, before any text is read.
-- The seed is JSON, not a text of an Etale type.
+- gleam-host: the Gleam host, as on 16 November 2026.
+- javascript-engine: the JavaScript engine and every file in the old forms, including route B,
+  kernel.etale and wasm.etale, as on 25 November 2026.
