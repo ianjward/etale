@@ -8,7 +8,7 @@ Nothing runs yet. Start with PLAN.md: what Etale is for, the forms of version 1,
 checked, the build in phases, and what is still open.
 
 - PLAN.md: the one plan.
-- examples/: the nine example files that define version 1. Nothing has checked them yet.
+- examples/: the eight example files that define version 1. Nothing has checked them yet.
 - LICENSE
 
 Earlier work is in the history of this branch:

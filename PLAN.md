@@ -30,7 +30,7 @@ The project's aims, and where each one stands:
 
 ## 2. Where things stand
 
-- Decided: the forms of version 1 (the nine files in examples/), the five decisions of
+- Decided: the forms of version 1 (the eight files in examples/), the five decisions of
   25 November (characters, input and output, checks, self-reference, induction), the frozen
   core, and the route: a small engine written by hand in assembly on the stage0-posix seed.
 - Built: nothing on this route yet. There is no engine and no rule file, so nothing has
@@ -43,7 +43,7 @@ The project's aims, and where each one stands:
 
 ### 3.1 The examples are the definition
 
-Version 1 is the nine files in examples/, exactly as written. A form they do not use is not
+Version 1 is the eight files in examples/, exactly as written. A form they do not use is not
 in version 1. A change to a form starts as a change to an example. What each example means,
 and what it must accept and refuse, is in section 6.
 
@@ -92,8 +92,8 @@ Definitions:
 - A choice of values or type names, with `|`. A type name.
 - A call: `Xor(left: a, right: b)`. Every starred field is given by name, as a name or a path
   with one dot, never a list. A comma appears only between a call's inputs.
-- A list declared: `(Stop... 1..)`, the item type, `...`, a space, then how many (a range, a
-  number or a field). The item must be a named type.
+- A list declared: `(Stop... 1..)`, the item type, `...`, a space, then how many (a range or
+  a number). The item must be a named type.
 - A list used: `(stops)`, `(stops.delay_minutes)`, `(network.links)`, then `.count`, `.sum`,
   `.min`, `.max`, `.first` or `.last`. `(trains.stops)` is every train's stops, joined in
   order.
@@ -105,8 +105,8 @@ Facts: `is`, `in` (a choice, a range or a list), `divisible_by`, `not_divisible_
 knows: `is`, `in` (a choice, a range or a list), the four comparisons, and `divisible_by`
 (see 7.2).
 
-Text positions: a field, with `digits 4` or `base 16` after it if any; a text in quotes;
-`Letter`, `Digit`, `Newline`, `Return` or `Character`; a list, declared or used.
+Text positions: a field, with `digits 4` after it if any; a text in quotes; `Letter`, `Digit`
+or `Newline`; a list, declared or used.
 
 Loops: `previous` is the item before the one being made; `last` means only a list's last
 item. `until` is checked on `previous` before each item after the first, and the top of the
@@ -143,9 +143,10 @@ proves exact needs no `places`.
 - A character is a printable ASCII character, a space, a newline or a tab. Anything else is
   refused, naming the character where reading stopped.
 - A tab is allowed in input texts and refused in Etale files, where it would clash with
-  indentation. Version 1 has no name for it: an input text's tab reads only as `Character`.
-- Lines end with a newline only. A carriage return is refused. (This conflicts with the HTTP
-  example: see 7.2.)
+  indentation. No version 1 form reads a tab, so an input text with one is refused where
+  reading reaches it.
+- Lines end with a newline only. A carriage return is refused everywhere, in Etale files and
+  in input texts; for that, the HTTP example left version 1 (25 November; section 8).
 - Characters are ordered by their code number, so a range such as `"A".."Z"` keeps its meaning
   when Unicode comes.
 - Later: a character is a Unicode code point read from UTF-8, and text not in the standard
@@ -157,9 +158,8 @@ proves exact needs no `places`.
 
 - Words: `claim`, `given`, `impossible`, `text`, `where`, `until`, `previous`, `first`,
   `last`, `count`, `sum`, `min`, `max`, `unique`, `ordered`, `by`, `places`, `wrap_at`,
-  `digits`, `base`, `is`, `in`, `divisible_by`, `not_divisible_by`.
-- Names: `True`, `False`, `Letter`, `Digit`, `Newline`, `Return`, `Character`, and the order
-  `Alphabetical`.
+  `digits`, `is`, `in`, `divisible_by`, `not_divisible_by`.
+- Names: `True`, `False`, `Letter`, `Digit`, `Newline`, and the order `Alphabetical`.
 - Characters: `:`, `|`, `..`, `...`, `.`, `( )`, `,` between a call's inputs, `"`, `*` after
   a starred field's name, `+ - * /`, `< <= > >=`, a minus before a number, a point in a
   decimal, and the numbers of numbered lines (`1.`, `2...`).
@@ -215,8 +215,9 @@ How the code is written (the forms rule file):
 
 - Arithmetic and `<`, `<=`, `>`, `>=` only on numbers. A calculation gives a number, never a
   text or a record. Two texts compared with `<` must use the same order.
-- `<` and the like between two values are refused when either one wraps. A wrapping value
-  may be compared with a fixed value, as the timetable's `arrives < Day_Starts` is (see 7.2).
+- `<` and the like between two values are refused when either one wraps. Open: whether a
+  wrapping value may be compared with a fixed value, which the timetable's
+  `arrives < Day_Starts` needs (7.2).
 - No raw numbers in calculations: a number in a calculation is a named constant.
 - At most three starred fields in a type.
 - A list item cannot be the empty text.
@@ -237,7 +238,8 @@ Case tables (the case tables rule file):
 
 Texts (the texts rule file):
 
-- A type with a text that no text can match (see 7.2 on how this is read).
+- A type with no texts. Open: what this covers, since read word for word it refuses every
+  type without a text (7.2).
 - A type with exactly the same texts as another.
 - A printed text that does not read back to the same value in exactly one way.
 - Without nesting, a type's texts are built from unions, sequences and lists of simpler
@@ -548,12 +550,6 @@ must accept.
 - Line: one order line, as in "ABC-0001 x3 @ 19.99".
 - Accepts "ABC-0001 x3 @ 19.99". Refuses a price of "19.9" for its places.
 
-### http_framing.etale
-
-- Framed_Body: a body framed by its length: "Content-Length: 5", a blank line, then "hello".
-- Chunk: one chunk of a chunked body: its size in hex, a line end, then that many characters.
-- Accepts a Framed_Body and a Chunk, read from texts with carriage returns (but see 7.2).
-
 ### xor.etale
 
 - Bit: 0 or 1.
@@ -582,18 +578,20 @@ Each of these decides how the test engine and the rule files are written.
 
 ### 7.2 Found when the docs were joined (25 November)
 
-Each is a place where two decided things disagree.
+Each was a place where two decided things disagree. The first is settled; the rest are open.
 
-1. Carriage returns. 3.5 refuses a carriage return, but the HTTP example reads texts with
-   carriage returns, and `Return` is a version 1 name. Either a carriage return is allowed in
-   input texts only, as a tab is, or the HTTP example leaves version 1.
+1. Settled: carriage returns. The character decision refused a carriage return, but the HTTP
+   example read texts with them. The person chose to keep carriage returns refused everywhere,
+   so the HTTP example left version 1 (25 November), and with it `Return`, `Character`, `base`
+   and a count taken from a field (section 8).
 2. Comparing a wrapping value. The 25 November list of checks says `<` is refused when either
    value wraps. The 24 November form allowed a wrapping value against a fixed one, and the
-   timetable compares `arrives` with `Day_Starts`. Since version 1 is the examples as written,
-   this plan keeps the 24 November wording (3.9).
+   timetable compares `arrives` with `Day_Starts`. Either that exception comes back, or the
+   timetable's part_of_day changes. To settle before the forms rule file.
 3. "A type with no texts". Read word for word, it refuses every type without a text: Division,
-   Xor, Binary_Conversion and the claim types, which are made by calls or hold a claim. This
-   plan reads it as a type that has a text but that no text can match (3.9).
+   Xor, Binary_Conversion and the claim types, which are made by calls or hold a claim. One
+   reading would keep them: a type that has a text, but no text can match it. To settle before
+   the texts rule file.
 4. A value that might not fit its range, at a call. The bank account gives
    `previous.balance_after`, worked out as -1000 or more, to `balance_before*: 0..`. It fits
    only because every Transaction passed its impossible block. Either the values check treats
@@ -616,8 +614,8 @@ Each is a place where two decided things disagree.
   so it blocks nothing.
 - In a `where` fact, `Stop.station` names the list's item, or the type the line is in. If a
   type ever filters a list of its own type, it could mean either. No example does this.
-- Whether `min`, `max` and `base` earn their words.
-- Whether `digits` and `base` go on their own lines under a text position.
+- Whether `min` and `max` earn their words.
+- Whether `digits` goes on its own line under a text position.
 - Whether a second text, such as `european`, also reads, or only prints. Version 1 only prints
   it.
 - Rounding to a unit that is not a place, such as 0.05, is written in two fields for now: a
@@ -635,6 +633,11 @@ set; "not decided" still needs a decision on what it should be.
 
 Forms and data:
 
+- HTTP framing, the driving example for networking: a body framed by its Content-Length, and
+  chunks with sizes in hex. It left version 1 on 25 November, since carriage returns are
+  refused, and needs them back in input texts, with the names `Return` and `Character`, `base`
+  after a text position, and a list's count taken from a field read before it. Later. The
+  example is at commit 0c1f420 (examples/http_framing.etale).
 - Types that hold each other, for JSON, XML and bracketed expressions. Later. Needs the
   positive-only rule (3.7) and a rule that a type reads at least one character before coming
   back to itself (about the engine finishing, not about meaning), and an exception to names
@@ -755,10 +758,10 @@ The repo holds:
 
 - README.md: what is here.
 - PLAN.md: this plan.
-- examples/: the nine example files, version 1's definition. Nothing has checked them yet.
+- examples/: the eight example files, version 1's definition. Nothing has checked them yet.
 - LICENSE.
 
-Each phase adds its own files: the test list beside the examples (phase 0), the test engine
+All work is on main, the only branch (25 November). Each phase adds its own files: the test list beside the examples (phase 0), the test engine
 (phase 1), the rule files (phase 2), the pinned seed sources and build script (phase 3), and
 the engine's assembly (phase 4). Few folders, each named for what it holds.
 
