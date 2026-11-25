@@ -403,29 +403,30 @@ Alphabetical (3.6) is written here too.
 | Phase | What | Done when |
 |---|---|---|
 | 0 | Corpus | the examples are in files (done 25 November), with a test list of section 6's texts and verdicts, and one file for each mistake listed there |
-| 1 | Test engine | a short engine in the small Scheme below, on Chibi-Scheme, runs the frozen core (engine parts 3 to 8). It is a test bench, not part of the chain |
+| 1 | Test engine | a short engine in the small Scheme below, on Chibi-Scheme, runs the frozen core (engine parts 3 to 8). It is a test bench, not part of the chain, and is deleted after phase 5 |
 | 2 | Etale as rules | the rule files rewrite every example into the core and give section 6's verdicts on the test engine. This is the milestone: Etale defined in Etale |
 | 3 | Seed tools | in an empty system holding only the seed and the four tools' pinned sources, the seed builds the four tools, and a test program in assembly copies a file to its output and exits with a value |
 | 4 | The engine in assembly | built part by part, translated by hand from the test engine; each part gives the test engine's output on its tests |
-| 5 | Agreement | both engines give the same verdict on every example; the engine's checksum is recorded with the versions. Etale now runs from the seed |
+| 5 | Agreement | both engines give the same verdict on every example; the engine's checksum is recorded with the versions, and the test engine is deleted. Etale now runs from the seed |
 | 6 | No Linux | the same in a virtual machine, with the tiny operating system in place of Linux |
 
-The test engine uses only this part of Scheme, so that it reads as plain code and translates
-to assembly part by part: `define`, `lambda`, `if`, `cond`, `let`, `let*`, `letrec`, named
+The test engine stays only until both engines agree on every example, then it is deleted, so
+the repo ends with no language but Etale and the engine's assembly (chosen 25 November). It
+runs on Chibi-Scheme, since Guile cannot be had here (5.5). It uses only this part of Scheme,
+so that it reads as plain code and translates to assembly part by part: `define`, `lambda`, `if`, `cond`, `let`, `let*`, `letrec`, named
 `let`, `and`, `or`, `not`, `quote`, `begin`; `cons`, `car`, `cdr`, `list`, `append`,
 `reverse`, `length`, `map`, `for-each`, `assoc`, `member`, `equal?`, `null?`; `char=?`,
 `char->integer`, `string->list`, `list->string`, `string-append`, `string=?`,
-`string->symbol`, `symbol->string`; whole numbers below 100,000,000 (`+`, `-`, `*`,
+`string->symbol`, `symbol->string`; whole numbers below 100,000,000, so every step fits in
+the 32 bits the assembly engine holds (`+`, `-`, `*`,
 `quotient`, `remainder`, `=`, `<`, `<=`, `>`, `>=`); `read-char`, `peek-char`, `eof-object?`,
 `open-input-file`, `display`, `newline`, `exit`, `command-line`. Not `set!`, macros,
 `call/cc`, exceptions, records, hash tables, vectors, floating point or modules. Its names are
 whole words.
 
-Claude's suggestions, not chosen:
-
-- Chibi-Scheme in place of Guile for the test engine, because Guile cannot be had here (5.5).
-- Reach the milestone with the first five rule files, then add the values file before phase 4.
-  The value checks are the largest part of version 1 and need the rest working first.
+Claude's suggestion, not chosen: reach the milestone with the first five rule files, then add
+the values file before phase 4. The value checks are the largest part of version 1 and need
+the rest working first.
 
 ### 5.5 What this workspace can do (checked 25 November)
 
@@ -566,14 +567,12 @@ Each of these decides how the test engine and the rule files are written.
 
 1. How the frozen core is written in a file: the fixed layout in which the engine reads
    restriction, union, there exists and contained in. Everything after phase 0 depends on it.
-2. Whether to have the test engine at all. Claude suggests it: hand-written assembly is the
-   hardest code to debug, and two engines that must agree catch each other's mistakes.
-3. Which checks are atoms in the engine and which are rules: exactly one reading of a text;
+2. Which checks are atoms in the engine and which are rules: exactly one reading of a text;
    splitting ranges into parts for case tables; the number checks of 3.9 (a divisor that
    might be 0, a quotient that might not be exact, a value that might not fit).
-4. The bound on new elements and on branching, how it is written, and how it relates to the
+3. The bound on new elements and on branching, how it is written, and how it relates to the
    step budget of 3.10.
-5. How the rule files name the facts of a file's tree, and how a file says which rule files
+4. How the rule files name the facts of a file's tree, and how a file says which rule files
    check it.
 
 ### 7.2 Found when the docs were joined (25 November)
@@ -763,7 +762,7 @@ The repo holds:
 
 All work is on main, from 25 November; the old branches kernel and minimal are fully inside
 it. Each phase adds its own files: the test list beside the examples (phase 0), the test engine
-(phase 1), the rule files (phase 2), the pinned seed sources and build script (phase 3), and
+(phase 1, deleted after phase 5), the rule files (phase 2), the pinned seed sources and build script (phase 3), and
 the engine's assembly (phase 4). Few folders, each named for what it holds.
 
 Older work is in this branch's history:
