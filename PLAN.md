@@ -649,8 +649,19 @@ What the engine does, and Claude's choices in it, to change at review:
   type it reads: a new value of Name_Search's `line` had re-run every rule that reads any
   `line`, and timetable.etale went from 13.7 to 9.7 seconds. Measured with the first rule
   files, see 5.7.
-- Size: engine.scm is about 2,200 lines of Scheme without comments and blank lines: the reader
-  230, the facts 310, numbers 145, reading rule files and running them 1,050, verdicts 100,
+- Speed, from 26 November, for the forms rule files to come (5.7), which double the rule
+  files to 50: when the only thing new since a rule last started is elements of the type its
+  first step goes through, and no later step goes through that type, the rule runs on those
+  new elements only, since every match with an older one was found when it last ran. A walk
+  through the words of a line then costs each pass only the step it takes. And the store's
+  tables of types, of made values, the index and the change stamps are keyed trees (a tree of
+  buckets by the hash of the key) in place of lists, which every new fact searched from the
+  start: with about 170 types that was most of the time. With all 50, the whole set then
+  checks dates.etale in about 8.5 seconds and timetable.etale in about 9.6, what the first 25
+  took before (10 and 9.7). Every value made is the same as before, checked with `made` on
+  examples and mistakes.
+- Size: engine.scm is about 2,270 lines of Scheme without comments and blank lines: the reader
+  230, the facts 340, numbers 145, reading rule files and running them 1,085, verdicts 100,
   and the commands and test runner 230. Reading rule files is the largest part, so 5.2's
   guess for the engine in assembly may be low.
 - The test list gains three kinds of line: `rules FILE ...` (the rule files for the tests

@@ -25,6 +25,7 @@
 (define (fourth items) (car (cdr (cdr (cdr items)))))
 (define (fifth items) (car (cdr (cdr (cdr (cdr items))))))
 (define (sixth items) (car (cdr (cdr (cdr (cdr (cdr items)))))))
+(define (seventh items) (car (cdr (cdr (cdr (cdr (cdr (cdr items))))))))
 
 (define (item-at items place)
   (if (= place 0) (car items) (item-at (cdr items) (- place 1))))
@@ -48,6 +49,17 @@
   (cond ((null? items) #f)
         ((test (car items)) #t)
         (else (any test (cdr items)))))
+
+(define (any-of-two test left right)
+  ;; whether test holds for some item of left with the item of right at its place
+  (cond ((null? left) #f)
+        ((test (car left) (car right)) #t)
+        (else (any-of-two test (cdr left) (cdr right)))))
+
+(define (all-of-two test left right)
+  (cond ((null? left) #t)
+        ((test (car left) (car right)) (all-of-two test (cdr left) (cdr right)))
+        (else #f)))
 
 (define (count-of test items)
   (let loop ((items items) (count 0))
@@ -669,11 +681,11 @@
 ;;; The facts the rules match are kept in a store:
 ;;;   (next-id types elements made refusals steps budget added index changes)
 ;;; types:    for each type, how many elements it has, and their ids, newest
-;;;           first
+;;;           first, in a keyed tree
 ;;; elements: for each id, its type and its fields; a field may hold more
 ;;;           than one value
 ;;; made:     for each type, each value a rule made, found by its parts, so
-;;;           that it is made only once
+;;;           that it is made only once; a keyed tree
 ;;; refusals: each refusal found
 ;;; steps:    the steps counted so far, and budget the most allowed
 ;;; added:    how many facts have been added, so the rule loop sees when a
@@ -681,14 +693,17 @@
 ;;; index:    for each type and field a rule looks elements up by (given
 ;;;           word.line is line), the elements with each value in that
 ;;;           field, newest first, so such a part is found without looking
-;;;           at every element of its type
+;;;           at every element of its type; a keyed tree
 ;;; changes:  when, counted in facts added, each type last got a new element
 ;;;           and each field a new value, so the rule loop runs again only
-;;;           the rules that read something new
+;;;           the rules that read something new; a keyed tree
 
 (define (empty-store budget indexed)
   ;; indexed: the (type field) pairs the rules look elements up by
-  (list 0 '() '() '() '() 0 budget 0 (map (lambda (pair) (cons pair '())) indexed) '()))
+  (list 0 '() '() '() '() 0 budget 0
+        (let loop ((pairs indexed) (index '()))
+          (if (null? pairs) index (loop (cdr pairs) (keyed-store index (car pairs) '()))))
+        '()))
 (define (store-next-id store) (item-at store 0))
 (define (store-types store) (item-at store 1))
 (define (store-elements store) (item-at store 2))
@@ -703,7 +718,36 @@
 (define (stamp-change store key)
   ;; key is (element Type), (field name), or (field-of Type name) for a field
   ;; of one type
-  (replace-at store 9 (set-entry (store-changes store) key (store-added store))))
+  (replace-at store 9 (keyed-store (store-changes store) key (store-added store))))
+
+(define (hashed-change-stamp store key hash)
+  ;; when, counted in facts added, key last changed, or -1; hash is the
+  ;; key's, worked out once when the rule was read
+  (let ((found (tree-find (store-changes store) hash)))
+    (if (null? found) -1 (entry-value (car found) key -1))))
+
+;;; A keyed tree: a tree of buckets by the hash of a key that is a list of
+;;; symbols, each bucket holding (key . value) entries, so that the store's
+;;; tables for types, the index and changes are found in a few steps however
+;;; many types the rule files have.
+
+(define (keyed-find tree key)
+  ;; the value stored under key, or #f
+  (let ((found (tree-find tree (hash-symbols key 0))))
+    (if (null? found) #f (entry-value (car found) key #f))))
+
+(define (keyed-store tree key value)
+  (let* ((hash (hash-symbols key 0))
+         (found (tree-find tree hash))
+         (bucket (if (null? found) '() (car found))))
+    (tree-store tree hash (set-entry bucket key value))))
+
+(define (hash-symbols symbols hash)
+  (if (null? symbols)
+      hash
+      (hash-symbols (cdr symbols)
+                    (hash-characters (string->list (symbol->string (car symbols)))
+                                     (hash-step hash 6)))))
 
 (define (store-out-of-steps? store) (> (store-steps store) (store-budget store)))
 (define (count-step store) (replace-at store 5 (+ 1 (store-steps store))))
@@ -773,35 +817,34 @@
 
 (define (index-add index type field value id)
   ;; the index with id under value, if the rules look up type by field
-  (let ((entry (assoc (list type field) index)))
-    (if entry
-        (set-entry index (list type field)
-                   (bucket-store (cdr entry) (list value)
-                                 (cons id (let ((ids (bucket-find (cdr entry) (list value))))
-                                            (if ids ids '())))))
+  (let ((values (keyed-find index (list type field))))
+    (if values
+        (keyed-store index (list type field)
+                     (bucket-store values (list value)
+                                   (cons id (let ((ids (bucket-find values (list value))))
+                                              (if ids ids '())))))
         index)))
 
 (define (store-indexed store type field value)
   ;; the ids of the elements of type with value in field, newest first
-  (let ((entry (assoc (list type field) (store-index store))))
-    (if entry
-        (let ((ids (bucket-find (cdr entry) (list value)))) (if ids ids '()))
+  (let ((values (keyed-find (store-index store) (list type field))))
+    (if values
+        (let ((ids (bucket-find values (list value)))) (if ids ids '()))
         '())))
 
 (define (store-elements-of store type)
-  (let ((entry (assoc type (store-types store))))
-    (if entry (third entry) '())))
+  (let ((entry (keyed-find (store-types store) (list type))))
+    (if entry (cdr entry) '())))
 
 (define (store-count-of store type)
-  (let ((entry (assoc type (store-types store))))
-    (if entry (second entry) 0)))
+  (let ((entry (keyed-find (store-types store) (list type))))
+    (if entry (car entry) 0)))
 
 (define (add-to-types types type id)
-  (cond ((null? types) (list (list type 1 (list id))))
-        ((equal? (car (car types)) type)
-         (cons (list type (+ 1 (second (car types))) (cons id (third (car types))))
-               (cdr types)))
-        (else (cons (car types) (add-to-types (cdr types) type id)))))
+  ;; types: a keyed tree giving each type (count . ids), ids newest first
+  (let ((entry (keyed-find types (list type))))
+    (keyed-store types (list type)
+                 (if entry (cons (+ 1 (car entry)) (cons id (cdr entry))) (cons 1 (list id))))))
 
 (define (store-new-element store type fields)
   ;; a new element with these fields, each given as (name value);
@@ -855,12 +898,13 @@
 
 (define (store-find-made store type values)
   ;; the value of type already made with these parts, or #f
-  (bucket-find (entry-value (store-made store) type '()) values))
+  (let ((made (keyed-find (store-made store) (list type))))
+    (if made (bucket-find made values) #f)))
 
 (define (store-remember-made store type values element)
-  (replace-at store 3 (set-entry (store-made store) type
-                                 (bucket-store (entry-value (store-made store) type '())
-                                               values element))))
+  (let ((made (keyed-find (store-made store) (list type))))
+    (replace-at store 3 (keyed-store (store-made store) (list type)
+                                     (bucket-store (if made made '()) values element)))))
 
 ;;; The built-in types the rule files see (PLAN.md 5.3), one element for
 ;;;   each line that is not blank (Line), each run of lines with no blank
@@ -1939,11 +1983,21 @@
                                       (type-info-name info)))))))
 
 (define (sequent source state conclusion)
-  ;; (sequent source steps conclusion reads): reads are the types whose new
-  ;; elements, and the fields whose new values, could give the rule a new
-  ;; match
-  (let ((steps (reverse (state-steps state))))
-    (list 'sequent source steps conclusion (steps-read steps))))
+  ;; (sequent source steps conclusion reads first-type hashes): reads are the
+  ;; types whose new elements, and the fields whose new values, could give
+  ;; the rule a new match, and hashes their keys' hashes; first-type is the
+  ;; type its first step goes through when no later step goes through it
+  ;; too, or #f, so that the rule can run on that type's new elements only
+  ;; (part 5)
+  (let* ((steps (reverse (state-steps state))) (reads (steps-read steps)))
+    (list 'sequent source steps conclusion reads (only-first-type steps)
+          (map (lambda (key) (hash-symbols key 0)) reads))))
+
+(define (only-first-type steps)
+  (if (and (not (null? steps)) (equal? (car (car steps)) 'each-of-type)
+           (not (member (list 'element (third (car steps))) (steps-read (cdr steps)))))
+      (third (car steps))
+      #f))
 
 (define (steps-read steps)
   (without-repeats
@@ -2386,10 +2440,13 @@
 ;;; rule files, until a whole pass adds nothing new or the steps run out. A
 ;;; rule runs again only when something it reads has changed since it last
 ;;; started: facts are only ever added, so with nothing new to read it can
-;;; find no new match.
+;;; find no new match. And when the only thing new is elements of the type
+;;; its first step goes through, it runs on those new elements only: every
+;;; match with an older one was found when the rule last ran.
 
 (define (run-rules program store)
-  (let pass ((store store) (started (map (lambda (sequent) -1) (program-sequents program))))
+  (let pass ((store store)
+             (started (map (lambda (sequent) (cons -1 0)) (program-sequents program))))
     (let* ((before (store-added store))
            (result (run-sequents (program-sequents program) started store program '()))
            (store (car result)))
@@ -2398,25 +2455,58 @@
           (pass store (cdr result))))))
 
 (define (run-sequents sequents started store program now-started)
-  ;; started: for each rule, the facts added when it last started, or -1;
+  ;; started: for each rule, the facts added when it last started, or -1,
+  ;; and how many elements its first step's type had when it last finished;
   ;; returns (cons store started)
   (cond ((null? sequents) (cons store (reverse now-started)))
-        ((or (store-out-of-steps? store) (not (reads-something-new? (car sequents) (car started) store)))
+        ((or (store-out-of-steps? store)
+             (not (reads-something-new? (car sequents) (car (car started)) store)))
          (run-sequents (cdr sequents) (cdr started) store program (cons (car started) now-started)))
         (else
-         (run-sequents (cdr sequents) (cdr started)
-                       (run-sequent (car sequents) store program)
-                       program (cons (store-added store) now-started)))))
+         (let ((ran (run-sequent (car sequents) (car started) store program)))
+           (run-sequents (cdr sequents) (cdr started) ran program
+                         (cons (cons (store-added store) (first-type-count (car sequents) ran))
+                               now-started))))))
 
 (define (reads-something-new? sequent started store)
   (or (< started 0)
-      (any (lambda (key) (> (entry-value (store-changes store) key -1) started))
-           (fifth sequent))))
+      (any-of-two (lambda (key hash) (> (hashed-change-stamp store key hash) started))
+                  (fifth sequent) (seventh sequent))))
 
-(define (run-sequent sequent store program)
-  (match-steps (third sequent) '() store
-               (lambda (environment store)
-                 (apply-conclusion (fourth sequent) (second sequent) environment store program))))
+(define (first-type-count sequent store)
+  ;; how many elements the rule's first-type has, or 0
+  (if (sixth sequent) (store-count-of store (sixth sequent)) 0))
+
+(define (only-new-first? sequent started store)
+  ;; whether only new elements of the rule's first-type can give it a new
+  ;; match: it has run before, and nothing else it reads has changed since
+  ;; it last started
+  (and (>= (car started) 0)
+       (sixth sequent)
+       (let ((first-key (list 'element (sixth sequent))))
+         (all-of-two (lambda (key hash)
+                       (or (equal? key first-key)
+                           (<= (hashed-change-stamp store key hash) (car started))))
+                     (fifth sequent) (seventh sequent)))))
+
+(define (run-sequent sequent started store program)
+  (let ((steps (third sequent))
+        (finish (lambda (environment store)
+                  (apply-conclusion (fourth sequent) (second sequent) environment store program))))
+    (if (only-new-first? sequent started store)
+        (match-new-elements (second (car steps)) (third (car steps)) (cdr steps) store finish
+                            (cdr started))
+        (match-steps steps '() store finish))))
+
+(define (match-new-elements variable type later store finish seen)
+  ;; the elements of type made since it had seen of them, then any made
+  ;; while matching, until no more are made
+  (let loop ((seen seen) (store store))
+    (let ((now (store-count-of store type)))
+      (if (or (<= now seen) (store-out-of-steps? store))
+          store
+          (loop now (match-ids variable (take (store-elements-of store type) (- now seen))
+                               later '() store finish))))))
 
 ;;; ------------------------------------------------------------------------
 ;;; Part 8: verdicts
