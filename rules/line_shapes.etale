@@ -1,0 +1,89 @@
+Empty_Type:
+  line: Line
+    given line.depth is Type_Depth
+    given line.word_count is Two_Words
+    given line.under_count is 0
+
+  impossible:
+    line.under_count is 0
+
+Lines_Under_A_Definition:
+  line: Line
+    given line.depth is Type_Depth
+    given line.word_count > Two_Words
+    given line.under_count in 1..
+
+  impossible:
+    line.under_count in 1..
+
+Empty_Heading:
+  line: Line
+    given line.depth in Item_Depth..Under_Item_Depth
+    given line.word_count is Two_Words
+    given line.under_count is 0
+  second: Word
+    given second.line is line
+    given second.place is Second_Place
+  mark: Word_Class
+    given mark.word is second
+    given mark.class is ":"
+
+  impossible:
+    line.under_count is 0
+
+Lines_Under_An_Item:
+  line: Line
+    given line.depth is Item_Depth
+    given line.under_count in 1..
+  first: Word
+    given first.line is line
+    given first.place is First_Place
+  head: Word_Class
+    given head.word is first
+    given head.class in "number" | "ordered"
+
+  impossible:
+    line.under_count in 1..
+
+Claim_Steps:
+  line: Line
+    given line.depth is Item_Depth
+  first: Word
+    given first.line is line
+    given first.place is First_Place
+  head: Word_Class
+    given head.word is first
+    given head.class is "claim"
+  final: Word
+    given final.line is line
+    given final.place is line.word_count
+  end: Word_Class
+    given end.word is final
+
+  impossible:
+    end.class is ":"
+    line.under_count is 0
+  impossible:
+    end.class < ":"
+    line.under_count in 1..
+  impossible:
+    end.class > ":"
+    line.under_count in 1..
+
+Lines_Under_A_Setting:
+  line: Line
+    given line.depth is Under_Item_Depth
+    given line.under_count in 1..
+  second: Word
+    given second.line is line
+    given second.place is Second_Place
+  mark: Word_Class
+    given mark.word is second
+
+  impossible:
+    mark.class < "..."
+  impossible:
+    mark.class > "..."
+    mark.class < ":"
+  impossible:
+    mark.class > ":"

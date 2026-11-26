@@ -1,0 +1,39 @@
+In_Final_Name:
+  at: Final_Name
+
+  dot: Way(at: at, after: "", class: ".", to: End_Name)
+  colon: Way(at: at, after: ".", class: ":", to: Claim_Colon)
+  end: Last(at: at, after: ":", class: "end", to: Ended)
+
+In_End_Name:
+  at: End_Name
+
+  name: Last(at: at, after: "", class: "name", to: Done)
+
+In_Done:
+  at: Done
+
+  colon: Way(at: at, after: "", class: ":", to: Claim_Colon)
+  end: Last(at: at, after: ":", class: "end", to: Ended)
+
+In_List_Open:
+  at: List_Open
+
+  name: Last(at: at, after: "", class: "name", to: List_Item)
+
+In_List_Item:
+  at: List_Item
+
+  close: Way(at: at, after: "", class: ")", to: List_Close)
+  dot: Way(at: at, after: ")", class: ".", to: Item_Dot)
+  dots: Last(at: at, after: ".", class: "...", to: List_Dots)
+
+In_Item_Dot:
+  at: Item_Dot
+
+  name: Last(at: at, after: "", class: "name", to: List_Path)
+
+In_List_Path:
+  at: List_Path
+
+  close: Last(at: at, after: "", class: ")", to: List_Close)

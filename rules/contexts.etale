@@ -1,0 +1,83 @@
+Lines_Context:
+  holder*: Line
+  context*: Text
+
+Top_Reading:
+  line: Line
+    given line.depth is Type_Depth
+  first: Word
+    given first.line is line
+    given first.place is First_Place
+  head: Word_Class
+    given head.word is first
+
+  next: Next_Word(state: Top_Line, word: first, class: head.class)
+
+Top_Context:
+  line: Line
+    given line.depth is Type_Depth
+
+  holds: Lines_Context(holder: line, context: Item_Line)
+
+Item_Context:
+  line: Line
+    given line.depth is Item_Depth
+  first: Word
+    given first.line is line
+    given first.place is First_Place
+  second: Word
+    given second.line is line
+    given second.place is Second_Place
+  head: Word_Class
+    given head.word is first
+  mark: Word_Class
+    given mark.word is second
+
+  context: Under_Field | Fact | Under_Text | Under_Claim
+    Under_Field:
+      mark.class is ":"
+      line.word_count > Two_Words
+    Under_Field:
+      mark.class is "*"
+    Fact:
+      head.class is "impossible"
+      line.word_count is Two_Words
+    Under_Text:
+      head.class in "name" | "text"
+      line.word_count is Two_Words
+      mark.class is ":"
+    Under_Claim:
+      head.class is "claim"
+
+  holds: Lines_Context(holder: line, context: context)
+
+Under_Item_Context:
+  line: Line
+    given line.depth is Under_Item_Depth
+  second: Word
+    given second.line is line
+    given second.place is Second_Place
+  mark: Word_Class
+    given mark.word is second
+
+  context: Fact | Under_Loop
+    Fact:
+      mark.class is ":"
+      line.word_count is Two_Words
+    Under_Loop:
+      mark.class is "..."
+
+  holds: Lines_Context(holder: line, context: context)
+
+Lower_Reading:
+  holding: Lines_Context
+  line: Line
+    given line.holder is holding.holder
+  first: Word
+    given first.line is line
+    given first.place is First_Place
+  head: Word_Class
+    given head.word is first
+
+  context: holding.context
+  next: Next_Word(state: context, word: first, class: head.class)

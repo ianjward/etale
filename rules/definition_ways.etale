@@ -1,0 +1,53 @@
+In_After_Number:
+  at: After_Number
+
+  times: Way(at: at, after: "", class: "*", to: Operator)
+  plus: Way(at: at, after: "*", class: "+", to: Operator)
+  minus: Way(at: at, after: "+", class: "-", to: Operator)
+  range: Way(at: at, after: "-", class: "..", to: Range_Dots)
+  divided: Way(at: at, after: "..", class: "/", to: Operator)
+  end: Way(at: at, after: "/", class: "end", to: Ended)
+  bar: Last(at: at, after: "end", class: "|", to: Bar)
+
+In_Member:
+  at: Member
+
+  colon: Way(at: at, after: "", class: ":", to: Claim_Colon)
+  end: Way(at: at, after: ":", class: "end", to: Ended)
+  bar: Last(at: at, after: "end", class: "|", to: Bar)
+
+In_Bar:
+  at: Bar
+
+  false: Way(at: at, after: "", class: "False", to: Member)
+  true: Way(at: at, after: "False", class: "True", to: Member)
+  name: Way(at: at, after: "True", class: "name", to: Member)
+  number: Way(at: at, after: "name", class: "number", to: Member)
+  quoted: Last(at: at, after: "number", class: "quoted", to: Member)
+
+In_Range_Dots:
+  at: Range_Dots
+
+  colon: Way(at: at, after: "", class: ":", to: Claim_Colon)
+  end: Way(at: at, after: ":", class: "end", to: Ended)
+  number: Last(at: at, after: "end", class: "number", to: Done)
+
+In_Path_Dot:
+  at: Path_Dot
+
+  name: Last(at: at, after: "", class: "name", to: After_Path)
+
+In_After_Path:
+  at: After_Path
+
+  times: Way(at: at, after: "", class: "*", to: Operator)
+  plus: Way(at: at, after: "*", class: "+", to: Operator)
+  minus: Way(at: at, after: "+", class: "-", to: Operator)
+  divided: Way(at: at, after: "-", class: "/", to: Operator)
+  end: Last(at: at, after: "/", class: "end", to: Ended)
+
+In_Operator:
+  at: Operator
+
+  name: Way(at: at, after: "", class: "name", to: Final_Name)
+  number: Last(at: at, after: "name", class: "number", to: Done)

@@ -1,0 +1,18 @@
+Next_Word:
+  state*: Text
+  word*: Word
+  class*: Text
+
+Way:
+  at*: Text
+  after*: Text
+  class*: Text
+  to*: Text
+
+Last:
+  at*: Text
+  after*: Text
+  class*: Text
+  to*: Text
+
+  way: Way(at: at, after: after, class: class, to: to)

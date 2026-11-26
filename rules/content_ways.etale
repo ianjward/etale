@@ -1,0 +1,39 @@
+In_Value:
+  at: Value
+
+  name: Last(at: at, after: "", class: "name", to: Final_Name)
+
+In_Content:
+  at: Content
+
+  open: Way(at: at, after: "", class: "(", to: Content_Open)
+  name: Way(at: at, after: "(", class: "name", to: Content_Name)
+  quoted: Last(at: at, after: "name", class: "quoted", to: Done)
+
+In_Content_Name:
+  at: Content_Name
+
+  digits: Way(at: at, after: "", class: "digits", to: Places)
+  end: Last(at: at, after: "digits", class: "end", to: Ended)
+
+In_Content_Open:
+  at: Content_Open
+
+  name: Last(at: at, after: "", class: "name", to: Content_Item)
+
+In_Content_Item:
+  at: Content_Item
+
+  close: Way(at: at, after: "", class: ")", to: Done)
+  dot: Way(at: at, after: ")", class: ".", to: Content_Dot)
+  dots: Last(at: at, after: ".", class: "...", to: List_Dots)
+
+In_Content_Dot:
+  at: Content_Dot
+
+  name: Last(at: at, after: "", class: "name", to: Bracket)
+
+In_Claim_Colon:
+  at: Claim_Colon
+
+  end: Last(at: at, after: "", class: "end", to: Ended)

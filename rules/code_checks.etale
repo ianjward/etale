@@ -1,0 +1,53 @@
+Most_Inputs: 3
+
+Raw_Number_Left:
+  calculation: Calculation_Definition
+  left: Term
+    given left is calculation.left
+    given left.kind is "number"
+
+  impossible:
+    left.kind is "number"
+
+Raw_Number_Right:
+  calculation: Calculation_Definition
+  right: Term
+    given right is calculation.right
+    given right.kind is "number"
+
+  impossible:
+    right.kind is "number"
+
+Too_Many_Inputs:
+  line: Line
+    given line.depth is Item_Depth
+    given line.place > Most_Inputs
+  second: Word
+    given second.line is line
+    given second.place is Second_Place
+  mark: Word_Class
+    given mark.word is second
+    given mark.class is "*"
+
+  impossible:
+    line.place > Most_Inputs
+
+Built_In_Named:
+  word: Word
+    given word.place is First_Place
+    given word.text in Built_In_Low | Built_In_High
+  class: Word_Class
+    given class.word is word
+    given class.class is "name"
+  line: Line
+    given line is word.line
+    given line.depth in Type_Depth..Item_Depth
+  second: Word
+    given second.line is line
+    given second.place is Second_Place
+  mark: Word_Class
+    given mark.word is second
+    given mark.class in ":" | "*"
+
+  impossible:
+    class.class is "name"

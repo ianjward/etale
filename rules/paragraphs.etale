@@ -1,0 +1,44 @@
+Rank_Pair:
+  lower: Item_Rank
+  lower_line: Line
+    given lower_line is lower.line
+  upper_line: Line
+    given upper_line.holder is lower_line.holder
+    given upper_line.place is lower.place_above
+  upper: Item_Rank
+    given upper.line is upper_line
+
+  impossible:
+    lower.kind < upper.kind
+  impossible:
+    lower.order is Starred_Order
+    upper.order is Read_Order
+  impossible:
+    lower.kind > upper.kind
+    lower_line.paragraph is upper_line.paragraph
+
+Cases_Alone:
+  shape: Field_Cases
+    given shape.has_cases is True
+  field: Field
+    given field is shape.field
+  line: Line
+    given line is field.line
+  paragraph: Paragraph
+    given paragraph is line.paragraph
+    given paragraph.item_count > One
+
+  impossible:
+    paragraph.item_count > One
+
+Text_Alone:
+  rank: Item_Rank
+    given rank.order is Text_Order
+  line: Line
+    given line is rank.line
+  paragraph: Paragraph
+    given paragraph is line.paragraph
+    given paragraph.item_count > One
+
+  impossible:
+    paragraph.item_count > One

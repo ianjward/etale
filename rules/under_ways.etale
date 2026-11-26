@@ -1,0 +1,47 @@
+In_Places:
+  at: Places
+
+  number: Last(at: at, after: "", class: "number", to: Done)
+
+In_Under_Text:
+  at: Under_Text
+
+  number: Last(at: at, after: "", class: "number", to: Numbered)
+
+In_Under_Claim:
+  at: Under_Claim
+
+  number: Last(at: at, after: "", class: "number", to: Step)
+
+In_Step:
+  at: Step
+
+  dot: Last(at: at, after: "", class: ".", to: Step_Fact)
+
+In_Under_Loop:
+  at: Under_Loop
+
+  until: Last(at: at, after: "", class: "until", to: Fact)
+
+In_Defining:
+  at: Defining
+
+  open: Way(at: at, after: "", class: "(", to: List_Open)
+  false: Way(at: at, after: "(", class: "False", to: Member)
+  true: Way(at: at, after: "False", class: "True", to: Member)
+  name: Way(at: at, after: "True", class: "name", to: After_Name)
+  value: Way(at: at, after: "name", class: "number", to: After_Number)
+  quoted: Last(at: at, after: "number", class: "quoted", to: Member)
+
+In_After_Name:
+  at: After_Name
+
+  open: Way(at: at, after: "", class: "(", to: Call_Open)
+  times: Way(at: at, after: "(", class: "*", to: Operator)
+  plus: Way(at: at, after: "*", class: "+", to: Operator)
+  minus: Way(at: at, after: "+", class: "-", to: Operator)
+  dot: Way(at: at, after: "-", class: ".", to: Path_Dot)
+  divided: Way(at: at, after: ".", class: "/", to: Operator)
+  end: Way(at: at, after: "/", class: "end", to: Ended)
+
+  bar: Last(at: at, after: "end", class: "|", to: Bar)

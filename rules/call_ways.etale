@@ -1,0 +1,37 @@
+In_Argument:
+  at: Argument
+
+  colon: Last(at: at, after: "", class: ":", to: Passing)
+
+In_Passing:
+  at: Passing
+
+  name: Last(at: at, after: "", class: "name", to: Passed)
+
+In_Passed:
+  at: Passed
+
+  close: Way(at: at, after: "", class: ")", to: Done)
+  comma: Way(at: at, after: ")", class: ",", to: Call_Open)
+  dot: Last(at: at, after: ",", class: ".", to: Passed_Dot)
+
+In_Passed_Dot:
+  at: Passed_Dot
+
+  name: Last(at: at, after: "", class: "name", to: Passed_Path)
+
+In_Passed_Path:
+  at: Passed_Path
+
+  close: Way(at: at, after: "", class: ")", to: Done)
+  comma: Last(at: at, after: ")", class: ",", to: Call_Open)
+
+In_Call:
+  at: Call
+
+  name: Last(at: at, after: "", class: "name", to: Call_Name)
+
+In_Call_Name:
+  at: Call_Name
+
+  open: Last(at: at, after: "", class: "(", to: Call_Open)

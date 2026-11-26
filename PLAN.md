@@ -5,7 +5,7 @@ This is the one plan for Etale. It replaces every earlier plan, decisions doc an
 Decisions go into this file in the same commit as the work they belong to, not into a new
 dated doc.
 
-Last changed: 26 November 2026 (phase 2 started).
+Last changed: 26 November 2026 (phase 2: the forms).
 
 ## 1. What Etale is for
 
@@ -36,10 +36,11 @@ The project's aims, and where each one stands:
 - Built: the corpus (phase 0, done 25 November): the examples, and in tests/ every text and
   mistake of section 6 with the test list. The test engine (phase 1, done 26 November, 5.6):
   it reads every example and runs rule files written in the core's part of Etale.
-- Started: Etale's own rule files (phase 2, from 26 November, 5.7). They read every line of
-  the eight examples as its form, check that names are defined above where they are used,
-  and check that a field worked out by cases gives one answer. Claims, texts and values
-  are still to come, so 26 of the corpus's verdicts wait.
+- Started: Etale's own rule files (phase 2, from 26 November, 5.7). They refuse a line that
+  reads as no form, a type whose paragraphs are out of order and a calculation with a raw
+  number, check that names are defined above where they are used, and check that a field
+  worked out by cases gives one answer. Claims, texts and values are still to come, so 26
+  of the corpus's verdicts wait.
 - Retired: the Gleam host (to 16 November), and the JavaScript engine with every file in the
   old forms, route B, kernel.etale and wasm.etale (to 19 November). Both are in the history
   (section 10).
@@ -227,7 +228,7 @@ proves exact needs no `places`.
 
 Every check refuses. There is no warning level.
 
-How the code is written (the forms rule file):
+How the code is written (the forms rule files, 5.7):
 
 - Arithmetic and `<`, `<=`, `>`, `>=` only on numbers. A calculation gives a number, never a
   text or a record. Two texts compared with `<` must use the same order.
@@ -588,7 +589,7 @@ small_scheme.sld names the part of Scheme in 5.4. The engine runs with only thos
 a name outside them stops it before anything runs. `-h 1G` gives Chibi-Scheme a large heap
 from the start; without it the engine runs about half as fast.
 
-The engine's tests (test_engine/tests/test_list.txt, 85 tests, all passing) cover each part:
+The engine's tests (test_engine/tests/test_list.txt, 110 tests, all passing) cover each part:
 the reader's refusals, and its tree of dates.etale; the limits of 3.4 as a rule file
 (rules/limits.etale, moved there on 26 November), which accepts the eight examples and every
 rule file, and refuses a file that breaks each limit at the right line; a walk up the lines
@@ -649,17 +650,17 @@ What the engine does, and Claude's choices in it, to change at review:
   type it reads: a new value of Name_Search's `line` had re-run every rule that reads any
   `line`, and timetable.etale went from 13.7 to 9.7 seconds. Measured with the first rule
   files, see 5.7.
-- Speed, from 26 November, for the forms rule files to come (5.7), which double the rule
-  files to 50: when the only thing new since a rule last started is elements of the type its
-  first step goes through, and no later step goes through that type, the rule runs on those
-  new elements only, since every match with an older one was found when it last ran. A walk
+- Speed, from 26 November, when the forms rule files (5.7) doubled the rule files to 50:
+  when the only thing new since a rule last started is elements of the type its first step
+  goes through, and no later step goes through that type, the rule runs on those new
+  elements only, since every match with an older one was found when it last ran. A walk
   through the words of a line then costs each pass only the step it takes. And the store's
-  tables of types, of made values, the index and the change stamps are keyed trees (a tree of
-  buckets by the hash of the key) in place of lists, which every new fact searched from the
-  start: with about 170 types that was most of the time. With all 50, the whole set then
-  checks dates.etale in about 8.5 seconds and timetable.etale in about 9.6, what the first 25
-  took before (10 and 9.7). Every value made is the same as before, checked with `made` on
-  examples and mistakes.
+  tables of types, of made values, the index and the change stamps are keyed trees (a tree
+  of buckets by the hash of the key) in place of lists, which every new fact searched from
+  the start: with about 170 types that was most of the time. The whole set of 50 rule files
+  then checks dates.etale in about 8.5 seconds and timetable.etale in about 9.6, what the
+  first 25 took before (10 and 9.7). Every value made is the same as before, checked with
+  `made` on examples and mistakes.
 - Size: engine.scm is about 2,270 lines of Scheme without comments and blank lines: the reader
   230, the facts 340, numbers 145, reading rule files and running them 1,085, verdicts 100,
   and the commands and test runner 230. Reading rule files is the largest part, so 5.2's
@@ -732,39 +733,108 @@ The files so far:
     line is refused, with no answer. This is exact for a field whose cases read one input;
     with two or more it finds only the gaps one input shows on its own, and checking every
     combination of inputs is still to come.
+14. classes.etale and name_gaps.etale: each word's class, which the reading of a line (15)
+    goes by. A mark's class is its text, a number's is "number" and a quoted text's
+    "quoted". A reserved word's class is the word itself, except that `divisible_by` and
+    `not_divisible_by` are both "divides", and `count`, `sum`, `min`, `max`, `first` and
+    `last` are all "list word"; True and False are classes of their own. Every other name
+    is "name", `previous`, Letter, Digit, Newline and Alphabetical among them: name_gaps
+    lists the 25 gaps between the reserved words in the order of their characters, and a
+    name in a gap is a plain name.
+15. states.etale, reading.etale, contexts.etale, moves.etale, and eleven tables: line_ways,
+    item_ways, under_ways, definition_ways, term_ways, list_ways, call_ways, content_ways,
+    fact_ways, left_ways and right_ways (all .etale). A line is read word by word, and
+    every word must fit. The reading is in one of 77 states, and the next word's class
+    decides where it goes. Each state's table lists the classes that may come next, in the
+    order of their characters, each with the state it leads to, and the class "end" where
+    the line may end. Each entry names the class listed before it, so a word whose class
+    falls between two listed classes, or after the last, is refused at its line (Not_Listed
+    and Above_The_Top in moves.etale). This is how a rule sees that a line reads as no form,
+    since nothing is absent in a match. Where a line's reading starts depends on its depth
+    and on the line it sits under (contexts.etale): the top of a file, the items of a type,
+    the lines under a field, under `impossible:`, under a text, under a claim, under a case,
+    and under a `2...` line. A colon may follow a fact and end the line, and it is refused
+    on a line that does not start with `claim`, so a claim with steps needs no states of
+    its own.
+16. line_shapes.etale: which lines must have lines under them (a type's name line,
+    `impossible:`, a text, a case, and a claim ending in a colon) and which may have none
+    (a one-line definition, a position, `ordered by`, a claim with no colon, and every line
+    under a field but a case and `2...`).
+17. numbering.etale: a numbered line's number is its place among the lines under the line it
+    sits under, or one less after `ordered by`; and a loop is a `1.` line first under its
+    field, then a `2...` line.
+18. text_types.etale: a type that is only a text holds only numbered positions, after an
+    `ordered by` line if it has one, in one paragraph.
+19. item_ranks.etale, field_ranks.etale, list_ranks.etale and paragraphs.etale: the paragraph
+    order of 3.4. Each item of a type is ranked a starred part, a part read from the text, a
+    value worked out, `impossible:`, the claim, or a text. A field's rank comes from its
+    definition: a range, a choice, a type, a constant, a number, a quoted text or a declared
+    list is a part; a calculation, a call, a path, a copy of a field, a list used or a list
+    use is worked out, and so is a field worked out by cases. A declared list whose `2...`
+    line has an `until` under it is worked out, as binary_conversion's divisions, since no
+    text ends it; one without is read from the text, as the trip's legs. Of two items one
+    after the other, the lower may not be of an earlier kind, a starred part may not follow
+    a part that is not starred, and two kinds never share a paragraph. A field worked out by
+    cases, and each text, is a paragraph of its own.
+20. code_checks.etale: the checks of 3.9 that need nothing but the lines: no raw number in a
+    calculation, and at most three starred fields, which come first, so a fourth stands at
+    place 4. And a name a file defines may not be a built-in name: Letter, Digit, Newline,
+    Alphabetical or `previous` (True and False are already refused by the reading).
 
-What they give now: every line of the eight examples is read as exactly one form (checked by
-listing which form claims each line), and every definition and fact is read. On the corpus,
-the eight examples are accepted, and section 6's three case-table mistakes are refused at
-their lines: dates_two_answers at 18, dates_no_answer at 6, train_refund_cases_overlap at
-55. Six mistakes were added for the rule files' own checks and are refused at the right
-lines: a name not defined (names_undefined), a constant used one line above its definition
-(names_used_above), a path with two dots (names_two_dots), a gap in a range of cases
-(cases_gap), an overlap (cases_overlap), and a comparison that leaves one value out
-(cases_boundary, `arrives > Day_Starts`). The corpus gives 17 passed and 26 waiting (the four
-claim mistakes, and every text). It takes about 296 seconds; dates.etale and timetable.etale
-take about 10 seconds each, most of it the case tables and the name search.
+Claude wrote the tables from one list of each state's classes and where they lead, so that
+every state lists its classes in the order of their characters. The states, their names, and
+every choice in items 14 to 20 are Claude's, to change at review; the person has not
+reviewed them.
+
+What they give now: every line of the eight examples reads as its form, and every definition
+and fact is read. On the corpus, the eight examples are accepted, and section 6's three
+case-table mistakes are refused at their lines: dates_two_answers at 18, dates_no_answer at
+6, train_refund_cases_overlap at 55. Six mistakes were added for the rule files' own checks
+and are refused at the right lines: a name not defined (names_undefined), a constant used one
+line above its definition (names_used_above), a path with two dots (names_two_dots), a gap in
+a range of cases (cases_gap), an overlap (cases_overlap), and a comparison that leaves one
+value out (cases_boundary, `arrives > Day_Starts`). Thirteen more were added for the forms,
+each a copy of an example with one change, and each is refused at its line: a fact with no
+fact word (forms_fact_without_word), a position with a word past its end
+(forms_words_past_the_end), `when` in place of `where` (forms_not_a_form), an `impossible:`
+with nothing under it (forms_empty_block), a claim with steps and no colon
+(forms_steps_without_colon), a `1.` line with no `2...` (forms_loop_without_next), a position
+numbered past its place (forms_position_number), a field in a type that is only a text
+(forms_mixed_type), a starred part below one that is not (paragraphs_starred_after), a field
+worked out by cases sharing a paragraph (paragraphs_cases_not_alone), parts and worked-out
+values in one paragraph (paragraphs_two_kinds), a raw number in a calculation
+(code_raw_number), and a field named `previous` (code_built_in_name). No example has a type
+with three starred fields, so no mistake made with one change can test the limit of three; it
+was tried on a file of its own. The corpus gives 30 passed and 26 waiting (the four claim
+mistakes, and every text). It takes about 360 seconds; dates.etale and timetable.etale take
+about 9 seconds each.
 
 Still to come, in this order:
 
-- Forms: refusing a line that is no form, the paragraph order, and the checks on how code is
-  written (3.9). A rule cannot see that a line read no way, since nothing is absent in a
-  match, so each line's start will be classified by facts with known opposites (its depth,
-  its holder's kind, its first word's kind and text), and a refusal written for each start
-  that is no form, and for each form whose words stop before the line does.
+- Forms, what is left: which lines may sit under which fields. Each line under a field reads
+  as a form, but nothing yet refuses `given` under a value worked out, `where` under
+  anything but a list used, a loop under anything but a declared list, cases under anything
+  but a choice or a range, or `unique` and `ordered by` under anything but a list.
 - Names: a path's second name is a field of the first one's type, `unique` and `ordered by`
   name fields of the list's item, and a call gives every starred field of the type it
-  calls, by name, and nothing else.
+  calls, by name, and nothing else. Then the checks of 3.9 on how code is written that need
+  to know what a value is: arithmetic and `<`, `<=`, `>`, `>=` only on numbers, a calculation
+  giving a number, two texts compared with `<` in one order, and a wrapping value compared
+  only with a fixed one. They wait for the names, since each needs what a path names.
 - Case tables: no answer over every combination of two or more inputs (a walk over the
   type's fields building each combination, with one more value for a field the table does
   not read), and the other case checks of 3.9: a case's value outside its field's range, an
   output no input produces, and a case that can never be reached. A refusal names the
   field's line, but not yet the value with no answer or two, as 5.3 asks: the engine
   reports only a rule and its lines.
-- Claims (4 of the corpus), texts (21), and values.
-- Speed: every pass matches every value again, so a walk of 15 steps costs 15 full passes.
-  Matching only what is new since a rule last ran (semi-naive matching) is the fix to try
-  next in the engine; it changes how the engine runs rules, not what they mean.
+- Claims (4 of the corpus), texts (21), and values. The texts also take the last check of
+  3.9 on how code is written, that a list item cannot be the empty text, since it needs a
+  type's texts.
+- Speed: a rule whose only new input is new elements of its first step's type now runs on
+  those alone (5.6), but a walk still takes a pass for each step, since a type's call is a
+  rule of its own, and a rule with more than one thing new matches every value again.
+  Matching only what is new at every step (semi-naive matching) is still the fix to try; it
+  changes how the engine runs rules, not what they mean.
 
 ## 6. The corpus: what each example must do
 
@@ -989,8 +1059,9 @@ Each needed an answer by phase 2. Three were answered on 26 November with Claude
   refusal its rules find. Nothing may depend on whether a refusal happened (3.7), so the skip
   cannot be a rule; it would be part of how the engine reports. How the engine would know
   that one type uses another is open. None of the corpus's mistakes seems to need it, since
-  in each the types that use the refused one still hold. For the case tables this is
-  checked: each of their mistakes is refused at one line only. The claims are still to check.
+  in each the types that use the refused one still hold. For the case tables and the forms
+  this is checked: each of their mistakes is refused at one line only. The claims are still
+  to check.
 - Answered: a walk's end. The first line of a file is the line at depth 0 whose place is 1,
   since a file's first line that is not blank is never indented, so no new field or refusal
   was needed. The last line under a line is the one whose place is its holder's under_count.

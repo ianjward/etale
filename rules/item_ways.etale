@@ -1,0 +1,52 @@
+In_Item_Colon:
+  at: Item_Colon
+
+  open: Way(at: at, after: "", class: "(", to: List_Open)
+  false: Way(at: at, after: "(", class: "False", to: Member)
+  true: Way(at: at, after: "False", class: "True", to: Member)
+  end: Way(at: at, after: "True", class: "end", to: Ended)
+  name: Way(at: at, after: "end", class: "name", to: After_Name)
+  value: Way(at: at, after: "name", class: "number", to: After_Number)
+  quoted: Last(at: at, after: "number", class: "quoted", to: Member)
+
+In_Heading:
+  at: Heading
+
+  colon: Last(at: at, after: "", class: ":", to: Line_End)
+
+In_Line_End:
+  at: Line_End
+
+  end: Last(at: at, after: "", class: "end", to: Ended)
+
+In_Ordered:
+  at: Ordered
+
+  by: Last(at: at, after: "", class: "by", to: Value)
+
+In_Numbered:
+  at: Numbered
+
+  dot: Last(at: at, after: "", class: ".", to: Content)
+
+In_Under_Field:
+  at: Under_Field
+
+  false: Way(at: at, after: "", class: "False", to: Heading)
+  true: Way(at: at, after: "False", class: "True", to: Heading)
+  given: Way(at: at, after: "True", class: "given", to: Fact)
+  number: Way(at: at, after: "given", class: "number", to: Numeral)
+  ordered: Way(at: at, after: "number", class: "ordered", to: Ordered)
+  places: Way(at: at, after: "ordered", class: "places", to: Places)
+  quoted: Way(at: at, after: "places", class: "quoted", to: Heading)
+
+  unique: Way(at: at, after: "quoted", class: "unique", to: End_Name)
+  where: Way(at: at, after: "unique", class: "where", to: Fact)
+  wrap_at: Last(at: at, after: "where", class: "wrap_at", to: Value)
+
+In_Numeral:
+  at: Numeral
+
+  dot: Way(at: at, after: "", class: ".", to: Call)
+  dots: Way(at: at, after: ".", class: "...", to: Call)
+  colon: Last(at: at, after: "...", class: ":", to: Line_End)

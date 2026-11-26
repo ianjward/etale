@@ -1,0 +1,57 @@
+Item_Family:
+  line: Line
+    given line.depth is Item_Depth
+  first: Word
+    given first.line is line
+    given first.place is First_Place
+  head: Word_Class
+    given head.word is first
+
+  family: "text" | "record"
+    "text":
+      head.class in "number" | "ordered"
+    "record":
+      head.class in "claim" | "impossible" | "name" | "text"
+
+Mixed_Items:
+  item: Item_Family
+  line: Line
+    given line is item.line
+    given line.place > First_Place
+  top: Line
+    given top.holder is line.holder
+    given top.place is First_Place
+  top_item: Item_Family
+    given top_item.line is top
+
+  impossible:
+    item.family < top_item.family
+  impossible:
+    item.family > top_item.family
+
+Ordered_Not_First:
+  line: Line
+    given line.depth is Item_Depth
+    given line.place > First_Place
+  first: Word
+    given first.line is line
+    given first.place is First_Place
+  head: Word_Class
+    given head.word is first
+    given head.class is "ordered"
+
+  impossible:
+    line.place > First_Place
+
+Text_Type_Paragraph:
+  paragraph: Paragraph
+    given paragraph.place > First_Place
+  top: Line
+    given top.holder is paragraph.holder
+    given top.place is First_Place
+  top_item: Item_Family
+    given top_item.line is top
+    given top_item.family is "text"
+
+  impossible:
+    paragraph.place > First_Place

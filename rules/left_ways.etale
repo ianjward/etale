@@ -1,0 +1,53 @@
+In_Left_Path:
+  at: Left_Path
+
+  close: Last(at: at, after: "", class: ")", to: Left_List)
+
+In_Left_List:
+  at: Left_List
+
+  dot: Way(at: at, after: "", class: ".", to: Left_Use)
+  less: Way(at: at, after: ".", class: "<", to: After_Is)
+  at_most: Way(at: at, after: "<", class: "<=", to: After_Is)
+  more: Way(at: at, after: "<=", class: ">", to: After_Is)
+  at_least: Way(at: at, after: ">", class: ">=", to: After_Is)
+  divides: Way(at: at, after: ">=", class: "divides", to: Divisor)
+  in: Way(at: at, after: "divides", class: "in", to: After_In)
+
+  is: Last(at: at, after: "in", class: "is", to: After_Is)
+
+In_Left_Use:
+  at: Left_Use
+
+  use: Last(at: at, after: "", class: "list word", to: Left_Term)
+
+In_After_Is:
+  at: After_Is
+
+  open: Way(at: at, after: "", class: "(", to: Right_Open)
+  false: Way(at: at, after: "(", class: "False", to: Done)
+  true: Way(at: at, after: "False", class: "True", to: Done)
+  name: Way(at: at, after: "True", class: "name", to: Final_Name)
+  number: Way(at: at, after: "name", class: "number", to: Done)
+  quoted: Last(at: at, after: "number", class: "quoted", to: Done)
+
+In_Right_Open:
+  at: Right_Open
+
+  name: Last(at: at, after: "", class: "name", to: Right_Item)
+
+In_Right_Item:
+  at: Right_Item
+
+  close: Way(at: at, after: "", class: ")", to: List_Close)
+  dot: Last(at: at, after: ")", class: ".", to: Item_Dot)
+
+In_After_In:
+  at: After_In
+
+  open: Way(at: at, after: "", class: "(", to: In_Open)
+  false: Way(at: at, after: "(", class: "False", to: In_Text)
+  true: Way(at: at, after: "False", class: "True", to: In_Text)
+  name: Way(at: at, after: "True", class: "name", to: Member)
+  number: Way(at: at, after: "name", class: "number", to: In_Number)
+  quoted: Last(at: at, after: "number", class: "quoted", to: In_Text)

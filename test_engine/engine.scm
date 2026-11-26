@@ -2528,7 +2528,15 @@
     "rules/case_ranges.etale" "rules/boundaries.etale" "rules/starts.etale"
     "rules/multiples.etale" "rules/representatives.etale" "rules/case_tests.etale"
     "rules/choice_tests.etale" "rules/case_walks.etale" "rules/case_answers.etale"
-    "rules/case_overlaps.etale"))
+    "rules/case_overlaps.etale" "rules/classes.etale" "rules/name_gaps.etale"
+    "rules/states.etale" "rules/reading.etale" "rules/line_ways.etale"
+    "rules/item_ways.etale" "rules/under_ways.etale" "rules/definition_ways.etale"
+    "rules/term_ways.etale" "rules/list_ways.etale" "rules/call_ways.etale"
+    "rules/content_ways.etale" "rules/fact_ways.etale" "rules/left_ways.etale"
+    "rules/right_ways.etale" "rules/contexts.etale" "rules/moves.etale"
+    "rules/line_shapes.etale" "rules/numbering.etale" "rules/text_types.etale"
+    "rules/item_ranks.etale" "rules/field_ranks.etale" "rules/list_ranks.etale"
+    "rules/paragraphs.etale" "rules/code_checks.etale"))
 
 (define default-budget 10000000)
 

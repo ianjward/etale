@@ -1,0 +1,38 @@
+In_List_Close:
+  at: List_Close
+
+  dot: Way(at: at, after: "", class: ".", to: Use_Dot)
+  colon: Way(at: at, after: ".", class: ":", to: Claim_Colon)
+  end: Last(at: at, after: ":", class: "end", to: Ended)
+
+In_Use_Dot:
+  at: Use_Dot
+
+  use: Last(at: at, after: "", class: "list word", to: Done)
+
+In_List_Dots:
+  at: List_Dots
+
+  number: Last(at: at, after: "", class: "number", to: List_Count)
+
+In_List_Count:
+  at: List_Count
+
+  close: Way(at: at, after: "", class: ")", to: Done)
+  range: Last(at: at, after: ")", class: "..", to: Count_Dots)
+
+In_Count_Dots:
+  at: Count_Dots
+
+  close: Way(at: at, after: "", class: ")", to: Done)
+  number: Last(at: at, after: ")", class: "number", to: Bracket)
+
+In_Bracket:
+  at: Bracket
+
+  close: Last(at: at, after: "", class: ")", to: Done)
+
+In_Call_Open:
+  at: Call_Open
+
+  name: Last(at: at, after: "", class: "name", to: Argument)

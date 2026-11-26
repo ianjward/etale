@@ -4,10 +4,12 @@ Etale is an experimental typed language for geometric logic, written to be read 
 who reads English but does not program. It is to be checked by a small engine written by hand
 in assembly, built from a seed small enough to check by hand.
 
-The test engine runs (phase 1), and Etale's own rule files are under way (phase 2): they read
-every line of the examples as its form and check their names, while case tables, claims,
-texts and values are still to come. Start with PLAN.md: what Etale is for, the forms of
-version 1, how Etale is checked, the build in phases, and what is still open.
+The test engine runs (phase 1), and Etale's own rule files are under way (phase 2): they
+refuse a line that reads as no form and a type whose paragraphs are out of order, check that
+names are defined above where they are used, and check that a field worked out by cases gives
+one answer, while claims, texts and values are still to come. Start with PLAN.md: what Etale
+is for, the forms of version 1, how Etale is checked, the build in phases, and what is still
+open.
 
 - PLAN.md: the one plan.
 - examples/: the eight example files that define version 1.

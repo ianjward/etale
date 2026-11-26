@@ -1,0 +1,23 @@
+Transaction:
+  amount: -1000..1000
+  balance_before*: 0..
+
+  balance_after: balance_before + amount
+
+  impossible:
+    balance_after < 0
+
+  text:
+    1. amount
+    2. Newline
+
+Bank_Account:
+  starting_balance: 0..1000000
+  transactions: (Transaction... 0..)
+    1. Transaction(balance_before: starting_balance)
+    2... Transaction(balance_before: previous.balance_after)
+
+  text:
+    1. starting_balance
+    2. Newline
+    3. (transactions)

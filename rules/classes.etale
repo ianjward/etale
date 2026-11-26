@@ -1,0 +1,41 @@
+Kept_Low: "False" | "True" | "by" | "claim" | "digits" | "given"
+Kept_High: "impossible" | "in" | "is" | "ordered" | "places" | "text"
+Kept_Last: "unique" | "until" | "where" | "wrap_at"
+Kept_Word: Kept_Low | Kept_High | Kept_Last
+
+Word_Class:
+  word*: Word
+  class*: Text
+
+Mark_Class:
+  word: Word
+    given word.kind is "mark"
+
+  class: Word_Class(word: word, class: word.text)
+
+Value_Class:
+  word: Word
+    given word.kind in "number" | "quoted"
+
+  class: Word_Class(word: word, class: word.kind)
+
+Kept_Class:
+  word: Word
+    given word.kind is "name"
+    given word.text in Kept_Word
+
+  class: Word_Class(word: word, class: word.text)
+
+Divides_Class:
+  word: Word
+    given word.kind is "name"
+    given word.text in Division_Word
+
+  class: Word_Class(word: word, class: "divides")
+
+List_Word_Class:
+  word: Word
+    given word.kind is "name"
+    given word.text in List_Use
+
+  class: Word_Class(word: word, class: "list word")

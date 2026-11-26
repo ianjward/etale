@@ -1,0 +1,117 @@
+Minutes_Per_Hour: 60
+Hours_Per_Day: 24
+Minutes_Per_Day: Hours_Per_Day * Minutes_Per_Hour
+Day_Start_Hour: 6
+Day_Starts: 6 * Minutes_Per_Hour
+
+Time:
+  hour: 0..23
+  minute: 0..59
+
+  hour_minutes: hour * Minutes_Per_Hour
+  minutes: hour_minutes + minute
+
+  text:
+    1. hour digits 2
+    2. ":"
+    3. minute digits 2
+
+Station_Character: " " | Letter
+
+Station_Name:
+  ordered by Alphabetical
+  1. Letter
+  2. (Station_Character... 0..19)
+
+Line_Code:
+  1. "R"
+  2. (Digit... 1..2)
+
+Index_Entry:
+  station: Station_Name
+
+  text:
+    1. station
+    2. Newline
+
+Stop:
+  station: Station_Name
+  due: Time
+  delay_minutes: 0..120
+
+  arrives: due.minutes + delay_minutes
+    wrap_at Minutes_Per_Day
+
+  status: "on time" | "late" | "very late"
+    "late":
+      delay_minutes in 2..9
+    "very late":
+      delay_minutes in 10..120
+    "on time":
+      delay_minutes in 0..1
+
+  part_of_day: "night" | "day"
+    "night":
+      arrives < Day_Starts
+    "day":
+      arrives >= Day_Starts
+
+  text:
+    1. station
+    2. " "
+    3. due
+    4. " +"
+    5. delay_minutes
+    6. Newline
+
+Train:
+  line: Line_Code
+  max_delay_minutes: 10 | 30 | 60
+  stops: (Stop... 1..)
+    unique station
+    ordered by due.minutes
+
+  late_stops: (stops)
+    where Stop.status in "late" | "very late"
+  too_late_stops: (late_stops)
+    where Stop.delay_minutes > Train.max_delay_minutes
+  stop_count: (stops).count
+  total_delay: (stops.delay_minutes).sum
+  most_delay: (stops.delay_minutes).max
+  average_delay: total_delay / stop_count
+    places 1
+
+  impossible:
+    (too_late_stops).count in 1..
+
+  text:
+    1. line
+    2. " "
+    3. max_delay_minutes
+    4. Newline
+    5. (stops)
+
+Timetable:
+  trains: (Train... 1..)
+  index: (Index_Entry... 1..)
+    unique station
+    ordered by station
+
+  all_stops: (trains.stops)
+  index_stations: (index.station)
+  all_stations: (all_stops.station)
+  indexed_stops: (all_stops)
+    where Stop.station in (Timetable.index_stations)
+  entries_with_stops: (index)
+    where Index_Entry.station in (Timetable.all_stations)
+
+  impossible:
+    (indexed_stops).count < (all_stops).count
+  impossible:
+    (entries_with_stops).count < (index).count
+
+  text:
+    1. (trains)
+    2. "---"
+    3. Newline
+    4. (index)

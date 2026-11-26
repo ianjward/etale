@@ -1,0 +1,109 @@
+Starred_Order: 1
+Read_Order: 2
+Worked_Order: 3
+Impossible_Order: 4
+Claim_Order: 5
+Text_Order: 6
+
+Parts: 1
+Worked: 2
+Impossibles: 3
+Claims: 4
+Texts: 5
+
+Item_Rank:
+  line*: Line
+  order*: 1..6
+  kind*: 1..5
+
+  place_above: line.place - One
+
+Field_Cases:
+  field*: Field
+  has_cases*: True | False
+
+Claim_Rank:
+  line: Line
+    given line.depth is Item_Depth
+  first: Word
+    given first.line is line
+    given first.place is First_Place
+  head: Word_Class
+    given head.word is first
+    given head.class is "claim"
+
+  rank: Item_Rank(line: line, order: Claim_Order, kind: Claims)
+
+Block_Rank:
+  line: Line
+    given line.depth is Item_Depth
+    given line.word_count is Two_Words
+  first: Word
+    given first.line is line
+    given first.place is First_Place
+  head: Word_Class
+    given head.word is first
+  second: Word
+    given second.line is line
+    given second.place is Second_Place
+  mark: Word_Class
+    given mark.word is second
+    given mark.class is ":"
+
+  order: Impossible_Order | Text_Order
+    Impossible_Order:
+      head.class is "impossible"
+    Text_Order:
+      head.class in "name" | "text"
+
+  kind: Impossibles | Texts
+    Impossibles:
+      head.class is "impossible"
+    Texts:
+      head.class in "name" | "text"
+
+  rank: Item_Rank(line: line, order: order, kind: kind)
+
+Starred_Rank:
+  line: Line
+    given line.depth is Item_Depth
+  second: Word
+    given second.line is line
+    given second.place is Second_Place
+  mark: Word_Class
+    given mark.word is second
+    given mark.class is "*"
+
+  rank: Item_Rank(line: line, order: Starred_Order, kind: Parts)
+
+Field_Shape:
+  field: Field
+  line: Line
+    given line is field.line
+    given line.under_count in 1..
+  child: Line
+    given child.holder is line
+    given child.place is First_Place
+  second: Word
+    given second.line is child
+    given second.place is Second_Place
+  mark: Word_Class
+    given mark.word is second
+
+  has_cases: True | False
+    True:
+      mark.class is ":"
+    False:
+      mark.class < ":"
+    False:
+      mark.class > ":"
+
+  shape: Field_Cases(field: field, has_cases: has_cases)
+
+Bare_Field:
+  field: Field
+  line: Line
+    given line is field.line
+    given line.under_count is 0
+
+  shape: Field_Cases(field: field, has_cases: False)

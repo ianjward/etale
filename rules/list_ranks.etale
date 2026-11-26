@@ -1,0 +1,70 @@
+Bare_List:
+  shape: Field_Cases
+    given shape.has_cases is False
+  field: Field
+    given field is shape.field
+    given field.starred is False
+  reading: List_Definition
+    given reading.definition is field.definition
+  line: Line
+    given line is field.line
+    given line.under_count is 0
+
+  rank: Item_Rank(line: line, order: Read_Order, kind: Parts)
+
+Settled_List:
+  shape: Field_Cases
+    given shape.has_cases is False
+  field: Field
+    given field is shape.field
+    given field.starred is False
+  reading: List_Definition
+    given reading.definition is field.definition
+  child: Line
+    given child.holder is field.line
+    given child.place is First_Place
+  second: Word
+    given second.line is child
+    given second.place is Second_Place
+  mark: Word_Class
+    given mark.word is second
+
+  order: Read_Order
+    Read_Order:
+      mark.class < "."
+    Read_Order:
+      mark.class > "."
+
+  rank: Item_Rank(line: field.line, order: order, kind: Parts)
+
+Looped_List:
+  shape: Field_Cases
+    given shape.has_cases is False
+  field: Field
+    given field is shape.field
+    given field.starred is False
+  reading: List_Definition
+    given reading.definition is field.definition
+  next_line: Line
+    given next_line.holder is field.line
+    given next_line.place is Second_Place
+  second: Word
+    given second.line is next_line
+    given second.place is Second_Place
+  mark: Word_Class
+    given mark.word is second
+    given mark.class is "..."
+
+  order: Read_Order | Worked_Order
+    Read_Order:
+      next_line.under_count is 0
+    Worked_Order:
+      next_line.under_count in 1..
+
+  kind: Parts | Worked
+    Parts:
+      next_line.under_count is 0
+    Worked:
+      next_line.under_count in 1..
+
+  rank: Item_Rank(line: field.line, order: order, kind: kind)

@@ -49,3 +49,16 @@ tests/names_two_dots.etale refused at 82
 tests/cases_gap.etale refused at 30
 tests/cases_overlap.etale refused at 30
 tests/cases_boundary.etale refused at 53
+tests/forms_fact_without_word.etale refused at 31
+tests/forms_words_past_the_end.etale refused at 35
+tests/forms_not_a_form.etale refused at 53
+tests/forms_empty_block.etale refused at 30
+tests/forms_steps_without_colon.etale refused at 81
+tests/forms_loop_without_next.etale refused at 45
+tests/forms_position_number.etale refused at 36
+tests/forms_mixed_type.etale refused at 18
+tests/paragraphs_starred_after.etale refused at 3
+tests/paragraphs_cases_not_alone.etale refused at 54
+tests/paragraphs_two_kinds.etale refused at 25
+tests/code_raw_number.etale refused at 5
+tests/code_built_in_name.etale refused at 80

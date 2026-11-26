@@ -1,0 +1,61 @@
+Move:
+  next: Next_Word
+  way: Way
+    given way.at is next.state
+    given way.class is next.class
+  word: Word
+    given word is next.word
+  after: Word
+    given after is word.next
+  class: Word_Class
+    given class.word is after
+
+  moved: Next_Word(state: way.to, word: after, class: class.class)
+
+Move_To_End:
+  next: Next_Word
+  way: Way
+    given way.at is next.state
+    given way.class is next.class
+  word: Word
+    given word is next.word
+  line: Line
+    given line is word.line
+    given word.place is line.word_count
+
+  moved: Next_Word(state: way.to, word: word, class: "end")
+
+Not_Listed:
+  next: Next_Word
+  way: Way
+    given way.at is next.state
+    given next.class > way.after
+    given next.class < way.class
+
+  impossible:
+    next.class < way.class
+
+Above_The_Top:
+  next: Next_Word
+  last: Last
+    given last.at is next.state
+    given next.class > last.class
+
+  impossible:
+    next.class > last.class
+
+Colon_Outside_A_Claim:
+  next: Next_Word
+    given next.state is Claim_Colon
+  word: Word
+    given word is next.word
+  first: Word
+    given first.line is word.line
+    given first.place is First_Place
+  head: Word_Class
+    given head.word is first
+
+  impossible:
+    head.class < "claim"
+  impossible:
+    head.class > "claim"

@@ -1,0 +1,141 @@
+Numbered_Line:
+  line: Line
+    given line.depth is Under_Item_Depth
+  first: Word
+    given first.line is line
+    given first.place is First_Place
+    given first.kind is "number"
+  second: Word
+    given second.line is line
+    given second.place is Second_Place
+  mark: Word_Class
+    given mark.word is second
+    given mark.class in "." | "..."
+
+  impossible:
+    first.number < line.place
+  impossible:
+    first.number > line.place
+
+Numbered_Position:
+  line: Line
+    given line.depth is Item_Depth
+  first: Word
+    given first.line is line
+    given first.place is First_Place
+    given first.kind is "number"
+  top: Line
+    given top.holder is line.holder
+    given top.place is First_Place
+  top_first: Word
+    given top_first.line is top
+    given top_first.place is First_Place
+    given top_first.kind is "number"
+
+  impossible:
+    first.number < line.place
+  impossible:
+    first.number > line.place
+
+Ordered_Position:
+  line: Line
+    given line.depth is Item_Depth
+  first: Word
+    given first.line is line
+    given first.place is First_Place
+    given first.kind is "number"
+  top: Line
+    given top.holder is line.holder
+    given top.place is First_Place
+  top_first: Word
+    given top_first.line is top
+    given top_first.place is First_Place
+  top_head: Word_Class
+    given top_head.word is top_first
+    given top_head.class is "ordered"
+
+  place_above: line.place - One
+
+  impossible:
+    first.number < place_above
+  impossible:
+    first.number > place_above
+
+Loop_First:
+  line: Line
+    given line.depth is Under_Item_Depth
+  holding: Lines_Context
+    given holding.holder is line.holder
+    given holding.context is Under_Field
+  second: Word
+    given second.line is line
+    given second.place is Second_Place
+  mark: Word_Class
+    given mark.word is second
+    given mark.class is "."
+  holder: Line
+    given holder is line.holder
+
+  impossible:
+    line.place > First_Place
+  impossible:
+    holder.under_count is line.place
+
+Loop_Pair:
+  line: Line
+    given line.depth is Under_Item_Depth
+    given line.place is First_Place
+  holding: Lines_Context
+    given holding.holder is line.holder
+    given holding.context is Under_Field
+  second: Word
+    given second.line is line
+    given second.place is Second_Place
+  mark: Word_Class
+    given mark.word is second
+    given mark.class is "."
+
+  next_line: Line
+    given next_line.holder is line.holder
+    given next_line.place is Second_Place
+  next_second: Word
+    given next_second.line is next_line
+    given next_second.place is Second_Place
+  next_mark: Word_Class
+    given next_mark.word is next_second
+
+  impossible:
+    next_mark.class < "..."
+  impossible:
+    next_mark.class > "..."
+
+Loop_Next:
+  line: Line
+    given line.depth is Under_Item_Depth
+  holding: Lines_Context
+    given holding.holder is line.holder
+    given holding.context is Under_Field
+  second: Word
+    given second.line is line
+    given second.place is Second_Place
+  mark: Word_Class
+    given mark.word is second
+    given mark.class is "..."
+
+  first_line: Line
+    given first_line.holder is line.holder
+    given first_line.place is First_Place
+  first_second: Word
+    given first_second.line is first_line
+    given first_second.place is Second_Place
+  first_mark: Word_Class
+    given first_mark.word is first_second
+
+  impossible:
+    line.place < Second_Place
+  impossible:
+    line.place > Second_Place
+  impossible:
+    first_mark.class < "."
+  impossible:
+    first_mark.class > "."

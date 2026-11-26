@@ -1,0 +1,42 @@
+Name_Gap:
+  after*: Text
+  before*: Text
+
+Name_Gaps:
+  before_false: Name_Gap(after: "", before: "False")
+  false_true: Name_Gap(after: "False", before: "True")
+  true_by: Name_Gap(after: "True", before: "by")
+  by_claim: Name_Gap(after: "by", before: "claim")
+  claim_count: Name_Gap(after: "claim", before: "count")
+  count_digits: Name_Gap(after: "count", before: "digits")
+  digits_divisible: Name_Gap(after: "digits", before: "divisible_by")
+
+  divisible_first: Name_Gap(after: "divisible_by", before: "first")
+  first_given: Name_Gap(after: "first", before: "given")
+  given_impossible: Name_Gap(after: "given", before: "impossible")
+  impossible_in: Name_Gap(after: "impossible", before: "in")
+  in_is: Name_Gap(after: "in", before: "is")
+  is_last: Name_Gap(after: "is", before: "last")
+  last_max: Name_Gap(after: "last", before: "max")
+
+  max_min: Name_Gap(after: "max", before: "min")
+  min_not: Name_Gap(after: "min", before: "not_divisible_by")
+  not_ordered: Name_Gap(after: "not_divisible_by", before: "ordered")
+  ordered_places: Name_Gap(after: "ordered", before: "places")
+  places_sum: Name_Gap(after: "places", before: "sum")
+  sum_text: Name_Gap(after: "sum", before: "text")
+  text_unique: Name_Gap(after: "text", before: "unique")
+
+  unique_until: Name_Gap(after: "unique", before: "until")
+  until_where: Name_Gap(after: "until", before: "where")
+  where_wrap: Name_Gap(after: "where", before: "wrap_at")
+  after_wrap: Name_Gap(after: "wrap_at", before: "~")
+
+Plain_Class:
+  word: Word
+    given word.kind is "name"
+  gap: Name_Gap
+    given word.text > gap.after
+    given word.text < gap.before
+
+  class: Word_Class(word: word, class: "name")

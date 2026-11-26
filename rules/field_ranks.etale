@@ -1,0 +1,91 @@
+Ranges: Range_Definition | Open_Range_Definition
+Value_Terms: "number" | "quoted"
+Made_Terms: "path" | "list" | "list use"
+
+Cases_Rank:
+  shape: Field_Cases
+    given shape.has_cases is True
+  field: Field
+    given field is shape.field
+
+  rank: Item_Rank(line: field.line, order: Worked_Order, kind: Worked)
+
+Part_Definition:
+  shape: Field_Cases
+    given shape.has_cases is False
+  field: Field
+    given field is shape.field
+    given field.starred is False
+  reading: Ranges | Choice_Definition
+    given reading.definition is field.definition
+
+  rank: Item_Rank(line: field.line, order: Read_Order, kind: Parts)
+
+Worked_Definition:
+  shape: Field_Cases
+    given shape.has_cases is False
+  field: Field
+    given field is shape.field
+    given field.starred is False
+  reading: Calculation_Definition | Call_Definition
+    given reading.definition is field.definition
+
+  rank: Item_Rank(line: field.line, order: Worked_Order, kind: Worked)
+
+Term_Rank:
+  shape: Field_Cases
+    given shape.has_cases is False
+  field: Field
+    given field is shape.field
+    given field.starred is False
+  term_definition: Term_Definition
+    given term_definition.definition is field.definition
+  term: Term
+    given term is term_definition.term
+    given term.kind in Value_Terms | Made_Terms
+
+  order: Read_Order | Worked_Order
+    Read_Order:
+      term.kind in Value_Terms
+    Worked_Order:
+      term.kind in Made_Terms
+
+  kind: Parts | Worked
+    Parts:
+      term.kind in Value_Terms
+    Worked:
+      term.kind in Made_Terms
+
+  rank: Item_Rank(line: field.line, order: order, kind: kind)
+
+Field_Name_Rank:
+  shape: Field_Cases
+    given shape.has_cases is False
+  field: Field
+    given field is shape.field
+    given field.starred is False
+  term_definition: Term_Definition
+    given term_definition.definition is field.definition
+  term: Term
+    given term is term_definition.term
+    given term.kind is "name"
+  use: Field_Use
+    given use.word is term.first
+
+  rank: Item_Rank(line: field.line, order: Worked_Order, kind: Worked)
+
+Type_Name_Rank:
+  shape: Field_Cases
+    given shape.has_cases is False
+  field: Field
+    given field is shape.field
+    given field.starred is False
+  term_definition: Term_Definition
+    given term_definition.definition is field.definition
+  term: Term
+    given term is term_definition.term
+    given term.kind is "name"
+  use: Type_Use | Constant_Use
+    given use.word is term.first
+
+  rank: Item_Rank(line: field.line, order: Read_Order, kind: Parts)
