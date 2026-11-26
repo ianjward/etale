@@ -978,8 +978,8 @@ Each needed an answer by phase 2. Three were answered on 26 November with Claude
   refusal its rules find. Nothing may depend on whether a refusal happened (3.7), so the skip
   cannot be a rule; it would be part of how the engine reports. How the engine would know
   that one type uses another is open. None of the corpus's mistakes seems to need it, since
-  in each the types that use the refused one still hold; this is to be checked when the case
-  tables and claims are written.
+  in each the types that use the refused one still hold. For the case tables this is
+  checked: each of their mistakes is refused at one line only. The claims are still to check.
 - Answered: a walk's end. The first line of a file is the line at depth 0 whose place is 1,
   since a file's first line that is not blank is never indented, so no new field or refusal
   was needed. The last line under a line is the one whose place is its holder's under_count.
