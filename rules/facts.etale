@@ -1,0 +1,23 @@
+Order_Word: "<" | "<=" | ">" | ">="
+Division_Word: "divisible_by" | "not_divisible_by"
+Relation_Word: "is" | "in" | Division_Word | Order_Word
+
+Fact_Start:
+  line*: Line
+  start*: Word
+  last*: Word
+
+Fact_Shape:
+  fact: Fact_Start
+  left: Term
+    given left.first is fact.start
+  left_last: Word
+    given left_last is left.last
+  relation: Word
+    given relation is left_last.next
+    given relation.text in Relation_Word
+  right: Word
+    given right is relation.next
+
+  right_side: Definition(start: right, last: fact.last)
+  left_use: Term_Use(term: left)

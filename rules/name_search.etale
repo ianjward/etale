@@ -1,0 +1,99 @@
+Built_In_Low: "Alphabetical" | "Digit" | "False"
+Built_In_High: "Letter" | "Newline" | "True" | "previous"
+
+Checked_Name:
+  use: Name_Use
+  word: Word
+    given word is use.word
+  line: Line
+    given line is word.line
+
+  searched_low: True | False
+    False:
+      word.text in Built_In_Low
+    True:
+      word.text < "Alphabetical"
+    True:
+      word.text > "Alphabetical"
+      word.text < "Digit"
+    True:
+      word.text > "Digit"
+      word.text < "False"
+    True:
+      word.text > "False"
+      word.text < "Letter"
+
+  searched_high: True | False
+    False:
+      word.text in Built_In_High
+    True:
+      word.text > "Letter"
+      word.text < "Newline"
+    True:
+      word.text > "Newline"
+      word.text < "True"
+    True:
+      word.text > "True"
+      word.text < "previous"
+    True:
+      word.text > "previous"
+
+  searched: True | False
+    True:
+      searched_low is True
+    True:
+      searched_high is True
+    False:
+      searched_low is False
+    False:
+      searched_high is False
+
+Line_Item:
+  line*: Line
+  at*: Line
+
+  up: Line_Item(line: line, at: at.holder)
+
+Name_Search:
+  name*: Word
+  line*: Line
+  start: Word
+    given start.line is line
+    given start.place is First_Place
+
+  place_above: line.place - One
+
+  differs: True | False
+    True:
+      start.text < name.text
+    True:
+      start.text > name.text
+
+Inside_Start:
+  name: Checked_Name
+    given name.searched is True
+  line: Line
+    given line is name.line
+    given line.depth in 1..
+
+  ancestor: Line_Item(line: line, at: line)
+
+Item_Start:
+  ancestor: Line_Item
+  name: Checked_Name
+    given name.line is ancestor.line
+    given name.searched is True
+  item: Line
+    given item is ancestor.at
+    given item.depth is Item_Depth
+
+  search: Name_Search(name: name.word, line: item)
+
+Top_Start:
+  name: Checked_Name
+    given name.searched is True
+  line: Line
+    given line is name.line
+    given line.depth is Type_Depth
+
+  search: Name_Search(name: name.word, line: line)

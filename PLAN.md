@@ -5,7 +5,7 @@ This is the one plan for Etale. It replaces every earlier plan, decisions doc an
 Decisions go into this file in the same commit as the work they belong to, not into a new
 dated doc.
 
-Last changed: 26 November 2026.
+Last changed: 26 November 2026 (phase 2 started).
 
 ## 1. What Etale is for
 
@@ -35,8 +35,11 @@ The project's aims, and where each one stands:
   core, and the route: a small engine written by hand in assembly on the stage0-posix seed.
 - Built: the corpus (phase 0, done 25 November): the examples, and in tests/ every text and
   mistake of section 6 with the test list. The test engine (phase 1, done 26 November, 5.6):
-  it reads every example and runs rule files written in the core's part of Etale. Etale's
-  own rule files are phase 2, so nothing checks the examples' forms yet.
+  it reads every example and runs rule files written in the core's part of Etale.
+- Started: Etale's own rule files (phase 2, from 26 November, 5.7). They read every line of
+  the eight examples as its form and check that names are defined above where they are
+  used. Case tables, claims, texts and values are still to come, so 29 of the corpus's
+  verdicts wait.
 - Retired: the Gleam host (to 16 November), and the JavaScript engine with every file in the
   old forms, route B, kernel.etale and wasm.etale (to 19 November). Both are in the history
   (section 10).
@@ -466,26 +469,42 @@ rules, so nothing can opt out of a check, and the set's checksum is recorded wit
 (chosen 25 November).
 
 What the rule files see (chosen 25 November): the engine hands over the file being checked,
-and any text being read, as four built-in types, the way Letter and Digit are built in. Each
+and any text being read, as built-in types, the way Letter and Digit are built in. Each
 limit of 3.4 comes with its count as a field, so every limit is one impossible block. A field
 that does not apply, such as the line above the first line, is absent, and a rule that names
 it matches nothing there. The field names, and how a line splits into words, are Claude's
-defaults, to change at review:
+defaults, to change at review (word_count, under_count, Word's length, Quoted_Character and
+Input_Text were added on 26 November for phase 2, answering 7.4):
 
 - Line, one for each line that is not blank: number (in the file, blank lines counted), depth
   (steps of indentation), holder (the line it sits under), above (the line before it), length
   (characters, indentation included), place (among the lines directly under its holder),
+  word_count (its words), under_count (the lines directly under it, 0 for none),
   choice_count (choices joined by `|` on it), type_place (for a line that starts a type, its
   place among the file's types), paragraph (the one it is in).
 - Word, one for each word of a line: line, place (on its line), next (the word after it), kind
   ("name", "number", "quoted" or "mark"), text (for a quoted text, what is between the
-  quotes), name_word_count (for a name, its words between underscores).
+  quotes), length (the characters of its text), name_word_count (for a name, its words
+  between underscores).
 - Paragraph, one for each run of lines with no blank line in it: holder (the line of the type
   it is in, absent at the top of the file), place (among its holder's paragraphs, or the
   file's), before (the paragraph before it), first_line, last_line, item_count (at the top of
   a file, its definitions).
+- Quoted_Character, one for each character of a quoted word, between its quotes: word, place,
+  value, code, next. A rule needs these to read a quoted text such as `" > "` from an input
+  text, since no form takes a text apart.
+- Input_Text, one for the text being read: type (the name of the type it is read as), printed_as
+  (the name of the text it is printed with: "text" unless the command line names another,
+  such as "european"), length (its characters). The last character is the one whose place is
+  the length.
 - Input_Character, one for each character of a text being read: place, value (the character
   as a quoted text, or Newline), code (its code number), next (the character after it).
+
+A rule file may also give a starred part the type `Number` (any whole number) or `Text` (any
+text). Only a starred part can have them, since they have no end; they let a value such as a
+representative of a range, or a quoted word's text, be handed to a call. They are names of
+the rule files only, like Line and Word, and no version 1 file sees them (chosen by Claude on
+26 November, to change at review).
 
 A line splits into words at spaces. A quoted text is one word, spaces and all. Each of `:`, `(`,
 `)`, `,`, `|`, `*` and a run of dots (`.`, `..`, `...`) is a word of its own even with no space
@@ -554,25 +573,28 @@ chibi-scheme -h 1G -I test_engine -x small_scheme test_engine/engine.scm COMMAND
 - `tree FILE` prints the reader's tree as bracketed lists, a line of the file to a line
   (engine part 3).
 - `facts FILE [TYPE [TEXT]]` prints every built-in fact the rules see (part 4).
-- `check FILE [TYPE [TEXT]] [steps N] [rules RULE_FILE ...]` checks a file, and a text, with
-  the whole set of rule files or the ones named last. A TYPE with no TEXT reads standard
-  input. Verdicts and exit values are those of 3.10.
+- `check FILE [TYPE [TEXT]] [print NAME] [steps N] [rules RULE_FILE ...]` checks a file, and
+  a text read as TYPE, with the whole set of rule files or the ones named last. `print NAME`
+  names the text it is printed with, such as european (added 26 November; until then the
+  rules print with `text`). A TYPE with no TEXT reads standard input. Verdicts and exit
+  values are those of 3.10.
+- `made FILE [TYPE [TEXT]] [print NAME] [steps N] [rules RULE_FILE ...]` prints every value
+  the rules made, type by type, then the refusals (added 26 November, to check rule files by
+  eye as `tree` and `facts` check the reader).
 - `test TEST_LIST` runs a test list and says which tests pass.
 
 small_scheme.sld names the part of Scheme in 5.4. The engine runs with only those names, so
 a name outside them stops it before anything runs. `-h 1G` gives Chibi-Scheme a large heap
 from the start; without it the engine runs about half as fast.
 
-The engine's tests (test_engine/tests/test_list.txt, 61 tests, all passing) cover each part:
+The engine's tests (test_engine/tests/test_list.txt, 72 tests, all passing) cover each part:
 the reader's refusals, and its tree of dates.etale; the limits of 3.4 as a rule file
-(limits.etale), which accepts the eight examples and every rule file there, and refuses a
-file that breaks each limit at the right line; a walk up the lines through a type that calls
-itself one step on; numbers of up to 36 digits; a union tried member by member; a text
-printed back exactly; a refusal naming a line of the file and a line of the text; the step
-budget running out; and rule files the engine refuses. On the corpus (tests/test_list.txt) it
-gives 8 passed (the eight examples accepted), 28 failed and 1 not run: every text and mistake
-waits for phase 2's rule files, and printing as european waits for 7.3. The whole set of rule
-files is empty until phase 2 names its files in engine.scm (`whole-rule-set`).
+(rules/limits.etale, moved there on 26 November), which accepts the eight examples and every
+rule file, and refuses a file that breaks each limit at the right line; a walk up the lines
+through a type that calls itself one step on; numbers of up to 36 digits; a union tried
+member by member; a text printed back exactly; a refusal naming a line of the file and a line
+of the text; the step budget running out; and rule files the engine refuses. The whole set of
+rule files is the list `whole-rule-set` in engine.scm (5.7).
 
 What the engine does, and Claude's choices in it, to change at review:
 
@@ -619,10 +641,13 @@ What the engine does, and Claude's choices in it, to change at review:
 - Steps: each full match of a rule, each new element (the built-in facts too) and each member
   of a union tried counts one. The default budget is 10,000,000 until phase 2 sets it.
 - Speed, on this workspace's two cores: limits.etale checks the largest example in about a
-  second, and the walk over every name used in train.etale (about 10,000 values) takes about
-  46 seconds. Two things keep it there: an index on the field named by a part's first
-  `given` (as in `given start.line is line`), and a rule runs again in a pass only when a type
-  or field it reads has changed since it last started. Phase 2 measures the real rule files.
+  second. Two things keep it there: an index on the field named by a part's first `given` (as
+  in `given start.line is line`), and a rule runs again in a pass only when a type or field
+  it reads has changed since it last started. From 26 November a change is kept for each
+  field of each type, not for each field name across every type, where the rule knows the
+  type it reads: a new value of Name_Search's `line` had re-run every rule that reads any
+  `line`, and timetable.etale went from 13.7 to 9.7 seconds. Measured with the first rule
+  files, see 5.7.
 - Size: engine.scm is about 2,200 lines of Scheme without comments and blank lines: the reader
   230, the facts 310, numbers 145, reading rule files and running them 1,050, verdicts 100,
   and the commands and test runner 230. Reading rule files is the largest part, so 5.2's
@@ -630,7 +655,81 @@ What the engine does, and Claude's choices in it, to change at review:
 - The test list gains three kinds of line: `rules FILE ...` (the rule files for the tests
   below it, none if no file follows), `steps N`, and `tree FILE TREE`; and three verdicts:
   `ran out of steps`, `rule file refused at N`, and, for a text refused before any rule runs,
-  `refused at N`, naming a line of the text.
+  `refused at N`, naming a line of the text. A text's line `TYPE TEXT printed as NAME FILE`
+  checks the text with `print NAME` and compares what it prints with FILE (26 November).
+
+### 5.7 The rule files (phase 2, started 26 November)
+
+rules/ holds the rule files, run in the order of `whole-rule-set` in engine.scm. Each keeps to
+every limit of 3.4, so a file holds at most 7 types, and each is accepted by rules/limits.etale
+(tested in the engine's test list). The parts and the names below are Claude's, to change at
+review; the person has not reviewed them.
+
+The files so far:
+
+1. limits.etale: the limits of 3.4 (phase 1).
+2. terms.etale: every term a line can hold: a word (a number, a quoted text or a name), a path
+   (`date.year`), a list used (`(stops)`, `(train.stops)`) and a list use (`(stops).count`,
+   `(train.stops).first`), each as a Term with its first and last word. A Term is made for
+   every place one could start, and the line around it decides which is meant: in
+   `date.year is 2023` only the path is followed by a fact word. Term_Use and Name_Use mark
+   the terms and names a definition or fact uses.
+3. definitions.etale: what follows a colon, or the right side of a fact, as a Definition
+   from its first word to its last: a term, a range, an open range (`1..`) or a choice, whose
+   members are found by a walk along the `|` marks.
+4. compounds.etale: a calculation (`hour * Minutes_Per_Hour`), a list declared
+   (`(Stop... 1..)`, its count a Definition of its own) and a call, with its inputs found by
+   a walk along the commas.
+5. facts.etale: a fact as its left term, its fact word and a Definition for its right side.
+6. blocks.etale: a type's line, a one-line definition, the items of a type, a field (starred
+   or not, with its Definition), `impossible:` and texts such as `text:` and `european:`,
+   and a claim.
+7. fact_lines.etale: where facts stand: under a case, under `impossible:`, after `given`,
+   `where` and `until`, in a claim, with or without steps, and in a step.
+8. settings.etale: `places`, `wrap_at`, `unique`, `ordered by`, and the loop's `1.` and
+   `2...` lines.
+9. positions.etale: a text's numbered positions, with `digits` or without, and a step that is
+   a call.
+10. uses.etale: which names a term uses (the name, a path's first name, a list's inside), and
+    a refusal for a path with two dots.
+11. name_search.etale and name_steps.etale: a name is defined above where it is used. The
+    search walks up the items of the name's own type, then the type's line, then the lines
+    at the top of the file, and refuses the name if it reaches the first line without
+    meeting it. True, False, Letter, Digit, Newline, Alphabetical and `previous` are not
+    searched. The search starts at the item the name is in, so a field that names itself
+    inside its own cases is not refused yet. Field_Use, Type_Use and Constant_Use link a name
+    to the field, type or constant it means.
+
+What they give now: every line of the eight examples is read as exactly one form (checked by
+listing which form claims each line), and every definition and fact is read. On the corpus,
+the eight examples are accepted and three mistakes added for the names rules are refused at
+the right lines: a name not defined (names_undefined), a constant used one line above its
+definition (names_used_above), and a path with two dots (names_two_dots). 11 tests pass and
+29 wait. The corpus takes about 156 seconds; the largest example, timetable.etale, about 10.
+
+Still to come, in this order:
+
+- Forms: refusing a line that is no form, the paragraph order, and the checks on how code is
+  written (3.9). A rule cannot see that a line read no way, since nothing is absent in a
+  match, so each line's start will be classified by facts with known opposites (its depth,
+  its holder's kind, its first word's kind and text), and a refusal written for each start
+  that is no form, and for each form whose words stop before the line does.
+- Names: a path's second name is a field of the first one's type, `unique` and `ordered by`
+  name fields of the list's item, and a call gives every starred field of the type it
+  calls, by name, and nothing else.
+- Case tables (3 of the corpus's mistakes). Claude's outline: each field read in a case is an
+  input; each input gets representative values (the members of a choice; for a range, its
+  low end and each place the cases split it, and with `divisible_by` every remainder of a
+  common multiple of the divisors, which gives is_leap its 400); a walk over the type's
+  fields builds every assignment of representatives, with one more value for "not an input"
+  so that a field the case table does not read passes through; each fact then holds or fails
+  on a representative, both found as facts, since a fact on a known number has a known
+  opposite; two cases holding on one assignment refuse the field's line, and so does every
+  case failing on one.
+- Claims (4), texts (21), and values.
+- Speed: every pass matches every value again, so a walk of 15 steps costs 15 full passes.
+  Matching only what is new since a rule last ran (semi-naive matching) is the fix to try
+  next in the engine; it changes how the engine runs rules, not what they mean.
 
 ## 6. The corpus: what each example must do
 
@@ -837,7 +936,9 @@ Each was a place where two decided things disagree, or a form was missing. All a
   the file then read (commit 535871c, 18 November). Whether the new engine gives such a hint
   is not decided.
 - How the command line names the type a text is read as, and a second text such as
-  `european` to print with. The test list names both; 3.10 does not say.
+  `european` to print with. The test list names both; 3.10 does not say. The test engine
+  takes them as `check FILE TYPE TEXT print NAME` (26 November, 5.6), so the test list's
+  printed line runs; what the engine in assembly takes is still open.
 - How a call is given from outside, so that binary_conversion's 6 can be a test: it has only
   a starred part and no text.
 - The test list's shape is written in plain words in section 6. Claude's suggestion, not
@@ -846,20 +947,22 @@ Each was a place where two decided things disagree, or a form was missing. All a
 
 ### 7.4 Found in phase 1 (26 November)
 
-Each needs an answer by phase 2, when the rule files meet it.
+Each needed an answer by phase 2. Three were answered on 26 November with Claude's defaults
+(5.3), to change at review; one is open.
 
-- Skipping a type that uses a refused type (3.9) is not done: the engine reports every
+- Open: skipping a type that uses a refused type (3.9) is not done: the engine reports every
   refusal its rules find. Nothing may depend on whether a refusal happened (3.7), so the skip
   cannot be a rule; it would be part of how the engine reports. How the engine would know
-  that one type uses another is open.
-- A walk's end has to be a fact that holds there. A rule cannot match a field that is absent,
-  so it cannot find the first line as "the line with no line above". `line.number is 1`
-  works only while a file never starts with a blank line, which nothing refuses yet. Either
-  the reader refuses a blank first line, or the first line gets a field of its own.
-- In the same way, a rule cannot see where a text ends: the last Input_Character only lacks
-  `next`. The reading rules will need the text's length, or a field on its last character.
-- The type a text is read as (7.3): the command line and the test list name it, and the
-  engine does not pass it on yet. The rules need it to know where reading starts.
+  that one type uses another is open. None of the corpus's mistakes seems to need it, since
+  in each the types that use the refused one still hold; this is to be checked when the case
+  tables and claims are written.
+- Answered: a walk's end. The first line of a file is the line at depth 0 whose place is 1,
+  since a file's first line that is not blank is never indented, so no new field or refusal
+  was needed. The last line under a line is the one whose place is its holder's under_count.
+- Answered: where a text ends. Input_Text gives its length, so the last character is the one
+  whose place is the length.
+- Answered: the type a text is read as. Input_Text gives its type, and the text it is
+  printed with.
 
 ## 8. Later
 
@@ -993,10 +1096,12 @@ The repo holds:
 
 - README.md: what is here.
 - PLAN.md: this plan.
-- examples/: the eight example files, version 1's definition. The test engine reads them; no
-  rule file checks their forms yet.
+- examples/: the eight example files, version 1's definition. The rule files read every line
+  of them as its form and check their names (5.7).
 - tests/: section 6's texts, a file for each of its mistakes, and test_list.txt with every
-  verdict (phase 0). The test engine runs the list; most of it waits for phase 2.
+  verdict (phase 0), and below them the mistakes written for the rule files' own checks
+  (phase 2). The test engine runs the list; most of section 6 waits for the rest of phase 2.
+- rules/: Etale's rule files (phase 2, 5.7), limits.etale among them.
 - test_engine/: the test engine (phase 1, 5.6), small_scheme.sld, and in tests/ its own
   tests and test list. It is deleted after phase 5.
 - LICENSE.

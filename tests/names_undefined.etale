@@ -1,0 +1,53 @@
+Date:
+  year: 0..9999
+  month: 1..12
+  day: 1..31
+
+  is_leap: True | False
+    True:
+      year divisible_by 4
+      year not_divisible_by 100
+    False:
+      year divisible_by 100
+      year not_divisible_by 400
+    True:
+      year divisible_by 400
+    False:
+      year not_divisible_by 4
+
+  days_in_month: 28..31
+    30:
+      month in 4 | 6 | 9 | 11
+    28:
+      month is 2
+      is_leap is False
+    29:
+      month is 2
+      is_leap is True
+    31:
+      month in 1 | 3 | 5 | 7 | 8 | 10 | 12
+
+  impossible:
+    day > days_in_months
+
+  text:
+    1. year digits 4
+    2. "-"
+    3. month digits 2
+    4. "-"
+    5. day digits 2
+
+  european:
+    1. day digits 2
+    2. "."
+    3. month digits 2
+    4. "."
+    5. year digits 4
+
+February_2023:
+  date: Date
+    given date.year is 2023
+    given date.month is 2
+
+  claim date.days_in_month is 28:
+    1. date.is_leap is False

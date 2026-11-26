@@ -1,0 +1,72 @@
+Places_Line:
+  keyword: Word
+    given keyword.text is "places"
+    given keyword.place is First_Place
+  line: Line
+    given line is keyword.line
+    given line.word_count is Two_Words
+  field: Field
+    given field.line is line.holder
+  places: Word
+    given places is keyword.next
+    given places.kind is "number"
+
+Wrap_Line:
+  keyword: Word
+    given keyword.text is "wrap_at"
+    given keyword.place is First_Place
+  line: Line
+    given line is keyword.line
+  field: Field
+    given field.line is line.holder
+  last: Word
+    given last.line is line
+    given last.place is line.word_count
+
+  divisor: Definition(start: keyword.next, last: last)
+
+Unique_Line:
+  keyword: Word
+    given keyword.text is "unique"
+    given keyword.place is First_Place
+  line: Line
+    given line is keyword.line
+    given line.word_count is Two_Words
+  field: Field
+    given field.line is line.holder
+  name: Word
+    given name is keyword.next
+    given name.kind is "name"
+
+Order_Line:
+  keyword: Word
+    given keyword.text is "ordered"
+    given keyword.place is First_Place
+  by: Word
+    given by is keyword.next
+    given by.text is "by"
+  line: Line
+    given line is keyword.line
+  last: Word
+    given last.line is line
+    given last.place is line.word_count
+  order: Term
+    given order.first is by.next
+    given order.last is last
+
+Loop_Line:
+  number: Word
+    given number.place is First_Place
+    given number.kind is "number"
+  mark: Word
+    given mark is number.next
+    given mark.text in "." | "..."
+  line: Line
+    given line is number.line
+  field: Field
+    given field.line is line.holder
+  last: Word
+    given last.line is line
+    given last.place is line.word_count
+
+  call: Definition(start: mark.next, last: last)

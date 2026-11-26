@@ -42,3 +42,7 @@ examples/decimals.etale accepted
 
 examples/xor.etale accepted
 tests/xor_wrong_case.etale refused at 31
+
+tests/names_undefined.etale refused at 31
+tests/names_used_above.etale refused at 4
+tests/names_two_dots.etale refused at 82

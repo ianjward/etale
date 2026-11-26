@@ -1,0 +1,58 @@
+Name_Term_Use:
+  use: Term_Use
+  term: Term
+    given term is use.term
+    given term.kind is "name"
+
+  name: Name_Use(word: term.first)
+
+Path_Term_Use:
+  use: Term_Use
+  term: Term
+    given term is use.term
+    given term.kind is "path"
+
+  head: Name_Use(word: term.first)
+
+List_Term_Use:
+  use: Term_Use
+  list: List_Term
+    given list.term is use.term
+
+  inside: Term_Use(term: list.inside)
+
+List_Use_Term_Use:
+  use: Term_Use
+  list_use: List_Use_Term
+    given list_use.term is use.term
+
+  list: Term_Use(term: list_use.list)
+
+Choice_Member_Use:
+  choice: Choice_Definition
+  definition: Definition
+    given definition is choice.definition
+  member: Choice_Word
+    given member.start is definition.start
+  word: Word
+    given word is member.word
+    given word.kind is "name"
+
+  use: Name_Use(word: word)
+
+Long_Path:
+  line: Line
+  path: Term
+    given path.kind is "path"
+  last: Word
+    given last is path.last
+    given last.line is line
+  dot: Word
+    given dot is last.next
+    given dot.text is "."
+  after: Word
+    given after is dot.next
+    given after.kind is "name"
+
+  impossible:
+    dot.text is "."

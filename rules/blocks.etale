@@ -1,0 +1,112 @@
+Type_Depth: 0
+First_Place: 1
+Second_Place: 2
+Third_Place: 3
+Two_Words: 2
+
+Type_Line:
+  line: Line
+    given line.depth is Type_Depth
+    given line.under_count in 1..
+  name: Word
+    given name.line is line
+    given name.place is First_Place
+
+  text: name.text
+
+Definition_Line:
+  line: Line
+    given line.depth is Type_Depth
+    given line.under_count is 0
+  name: Word
+    given name.line is line
+    given name.place is First_Place
+  start: Word
+    given start.line is line
+    given start.place is Third_Place
+  last: Word
+    given last.line is line
+    given last.place is line.word_count
+
+  text: name.text
+  definition: Definition(start: start, last: last)
+
+Item:
+  line: Line
+    given line.depth is Item_Depth
+  type_line: Type_Line
+    given type_line.line is line.holder
+  first: Word
+    given first.line is line
+    given first.place is First_Place
+  second: Word
+    given second.line is line
+    given second.place is Second_Place
+
+Field:
+  item: Item
+  line: Line
+    given line is item.line
+  name: Word
+    given name is item.first
+    given name.kind is "name"
+  colon: Word
+    given colon.line is line
+    given colon.text is ":"
+    given colon.place in Second_Place..Third_Place
+  start: Word
+    given start is colon.next
+  second: Word
+    given second is item.second
+  last: Word
+    given last.line is line
+    given last.place is line.word_count
+
+  text: name.text
+  type_line: item.type_line
+  definition: Definition(start: start, last: last)
+
+  starred: True | False
+    True:
+      colon.place is Third_Place
+      second.text is "*"
+    False:
+      colon.place is Second_Place
+
+Block_Item:
+  item: Item
+  line: Line
+    given line is item.line
+    given line.word_count is Two_Words
+    given line.under_count in 1..
+  name: Word
+    given name is item.first
+    given name.kind is "name"
+  colon: Word
+    given colon is item.second
+    given colon.text is ":"
+
+  type_line: item.type_line
+
+  kind: "impossible" | "text"
+    "impossible":
+      name.text is "impossible"
+    "text":
+      name.text < "impossible"
+    "text":
+      name.text > "impossible"
+
+Claim_Item:
+  item: Item
+  keyword: Word
+    given keyword is item.first
+    given keyword.text is "claim"
+  start: Word
+    given start is item.second
+  line: Line
+    given line is item.line
+  final: Word
+    given final.line is line
+    given final.place is line.word_count
+
+  type_line: item.type_line

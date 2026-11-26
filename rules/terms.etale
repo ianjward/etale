@@ -1,0 +1,59 @@
+Term_Kind: "number" | "quoted" | "name" | "path" | "list" | "list use"
+List_Use: "count" | "sum" | "min" | "max" | "first" | "last"
+
+Term:
+  first*: Word
+  last*: Word
+  kind*: Term_Kind
+
+Term_Use:
+  term*: Term
+
+Name_Use:
+  word*: Word
+
+Word_Term:
+  word: Word
+    given word.kind in "number" | "quoted" | "name"
+
+  term: Term(first: word, last: word, kind: word.kind)
+
+Path_Term:
+  head: Word
+    given head.kind is "name"
+  dot: Word
+    given dot is head.next
+    given dot.text is "."
+  field: Word
+    given field is dot.next
+    given field.kind is "name"
+
+  term: Term(first: head, last: field, kind: "path")
+
+List_Term:
+  open: Word
+    given open.text is "("
+  inside: Term
+    given inside.first is open.next
+    given inside.kind in "name" | "path"
+  inside_last: Word
+    given inside_last is inside.last
+  close: Word
+    given close is inside_last.next
+    given close.text is ")"
+
+  term: Term(first: open, last: close, kind: "list")
+
+List_Use_Term:
+  list: Term
+    given list.kind is "list"
+  list_last: Word
+    given list_last is list.last
+  dot: Word
+    given dot is list_last.next
+    given dot.text is "."
+  use: Word
+    given use is dot.next
+    given use.text in List_Use
+
+  term: Term(first: list.first, last: use, kind: "list use")

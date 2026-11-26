@@ -701,7 +701,8 @@
 (define (store-changes store) (item-at store 9))
 
 (define (stamp-change store key)
-  ;; key is (element Type) or (field name)
+  ;; key is (element Type), (field name), or (field-of Type name) for a field
+  ;; of one type
   (replace-at store 9 (set-entry (store-changes store) key (store-added store))))
 
 (define (store-out-of-steps? store) (> (store-steps store) (store-budget store)))
@@ -843,12 +844,14 @@
                                                    (set-entry (second record) field
                                                               (append values (list value))))))))
           (stamp-change
-           (count-added
-            (if (null? (store-index store))
-                store
-                (replace-at store 8 (index-add (store-index store) (car record) field value
-                                               (element-id element)))))
-           (list 'field field))))))
+           (stamp-change
+            (count-added
+             (if (null? (store-index store))
+                 store
+                 (replace-at store 8 (index-add (store-index store) (car record) field value
+                                                (element-id element)))))
+            (list 'field field))
+           (list 'field-of (car record) field))))))
 
 (define (store-find-made store type values)
   ;; the value of type already made with these parts, or #f
@@ -861,8 +864,9 @@
 
 ;;; The built-in types the rule files see (PLAN.md 5.3), one element for
 ;;;   each line that is not blank (Line), each run of lines with no blank
-;;;   line in it (Paragraph), each word of a line (Word), and each character
-;;;   of a text being read (Input_Character).
+;;;   line in it (Paragraph), each word of a line (Word), each character of
+;;;   a quoted word (Quoted_Character), the text being read (Input_Text), and
+;;;   each character of it (Input_Character).
 ;;; A field that does not apply is absent. Lines, then paragraphs, then words
 ;;; are given ids one after another, so each can name the others.
 
@@ -947,6 +951,15 @@
           (inside (loop (cdr characters) #t count))
           (else (loop (cdr characters) #t (+ count 1))))))
 
+(define (under-counts placed)
+  ;; for each written line, how many lines sit directly under it
+  (let loop ((position 0) (left placed) (counts '()))
+    (if (null? left)
+        (reverse counts)
+        (loop (+ position 1) (cdr left)
+              (cons (count-of (lambda (place) (equal? (first-of place) position)) placed)
+                    counts)))))
+
 (define (store-with-file store all-lines)
   (let* ((lines (written-lines all-lines))
          (placed (place-lines lines))
@@ -956,14 +969,15 @@
          (first-word-id (+ first-paragraph-id (length (cdr grouped))))
          (line-element (lambda (position) (make-element (+ first-line-id position))))
          (paragraph-element (lambda (number) (make-element (+ first-paragraph-id number))))
-         (store (add-lines store lines placed (car grouped) (type-places lines)
-                           line-element paragraph-element))
-         (store (add-paragraphs store (cdr grouped) line-element paragraph-element)))
-    (add-words store lines line-element first-word-id)))
+         (store (add-lines store lines placed (under-counts placed) (car grouped)
+                           (type-places lines) line-element paragraph-element))
+         (store (add-paragraphs store (cdr grouped) line-element paragraph-element))
+         (store (add-words store lines line-element first-word-id)))
+    (add-quoted-characters store lines first-word-id)))
 
-(define (add-lines store lines placed paragraphs types line-element paragraph-element)
-  (let loop ((lines lines) (placed placed) (paragraphs paragraphs) (types types)
-             (position 0) (store store))
+(define (add-lines store lines placed unders paragraphs types line-element paragraph-element)
+  (let loop ((lines lines) (placed placed) (unders unders) (paragraphs paragraphs)
+             (types types) (position 0) (store store))
     (if (null? lines)
         store
         (let* ((line (car lines))
@@ -976,10 +990,13 @@
                  (if (> position 0) (list (list 'above (line-element (- position 1)))) '())
                  (list (list 'length (small-number (line-length line)))
                        (list 'place (small-number (second (car placed))))
+                       (list 'word_count (small-number (length (line-words line))))
+                       (list 'under_count (small-number (car unders)))
                        (list 'choice_count (small-number (choice-count line))))
                  (if (car types) (list (list 'type_place (small-number (car types)))) '())
                  (list (list 'paragraph (paragraph-element (car paragraphs)))))))
-          (loop (cdr lines) (cdr placed) (cdr paragraphs) (cdr types) (+ position 1)
+          (loop (cdr lines) (cdr placed) (cdr unders) (cdr paragraphs) (cdr types)
+                (+ position 1)
                 (car (store-new-element store 'Line fields)))))))
 
 (define (add-paragraphs store paragraphs line-element paragraph-element)
@@ -1019,7 +1036,8 @@
                (list (list 'line line) (list 'place (small-number place)))
                (if (null? (cdr words)) '() (list (list 'next (make-element (+ id 1)))))
                (list (list 'kind (text-from-string (symbol->string kind)))
-                     (list 'text (make-text (word-characters word))))
+                     (list 'text (make-text (word-characters word)))
+                     (list 'length (small-number (length (word-characters word)))))
                (if (equal? kind 'name)
                    (list (list 'name_word_count
                                (small-number (name-word-count (word-characters word)))))
@@ -1049,7 +1067,10 @@
           (loop (cdr characters) (+ place 1)
                 (if reason (cons (reading-refusal reason #f place) refusals) refusals))))))
 
-(define (store-with-text store characters)
+(define (add-text-characters store type characters owner)
+  ;; an element of type for each character, with owner's fields first:
+  ;; its place, its value (a one-character text, or Newline), its code
+  ;; number, and the next character, absent for the last
   (let ((first-id (store-next-id store)))
     (let loop ((characters characters) (place 1) (store store))
       (if (null? characters)
@@ -1057,6 +1078,7 @@
           (let* ((character (car characters))
                  (fields
                   (append
+                   owner
                    (list (list 'place (small-number place))
                          (list 'value (if (char=? character #\newline)
                                           (make-name 'Newline)
@@ -1066,7 +1088,28 @@
                        '()
                        (list (list 'next (make-element (+ first-id place))))))))
             (loop (cdr characters) (+ place 1)
-                  (car (store-new-element store 'Input_Character fields))))))))
+                  (car (store-new-element store type fields))))))))
+
+(define (add-quoted-characters store lines first-word-id)
+  ;; a Quoted_Character for each character of each quoted word, between
+  ;; its quotes; words have their ids in order from first-word-id
+  (let loop ((words (join-lists (map line-words lines))) (id first-word-id) (store store))
+    (cond ((null? words) store)
+          ((equal? (word-kind (car words)) 'quoted)
+           (loop (cdr words) (+ id 1)
+                 (add-text-characters store 'Quoted_Character (word-characters (car words))
+                                      (list (list 'word (make-element id))))))
+          (else (loop (cdr words) (+ id 1) store)))))
+
+(define (store-with-text store characters type-name printed-as)
+  ;; the text being read: one Input_Text, naming the type it is read as and
+  ;; the text it is printed with, then each of its characters
+  (let ((store (car (store-new-element
+                     store 'Input_Text
+                     (list (list 'type (text-from-string type-name))
+                           (list 'printed_as (text-from-string printed-as))
+                           (list 'length (small-number (length characters))))))))
+    (add-text-characters store 'Input_Character characters '())))
 
 (define (text-line-of characters place)
   ;; the line of a text that its character at place is on
@@ -1405,11 +1448,14 @@
 
 (define built-in-fields
   '((Line (number #f) (depth #f) (holder Line) (above Line) (length #f) (place #f)
-          (choice_count #f) (type_place #f) (paragraph Paragraph))
-    (Word (line Line) (place #f) (next Word) (kind #f) (text #f) (name_word_count #f)
-          (number #f) (places #f))
+          (word_count #f) (under_count #f) (choice_count #f) (type_place #f)
+          (paragraph Paragraph))
+    (Word (line Line) (place #f) (next Word) (kind #f) (text #f) (length #f)
+          (name_word_count #f) (number #f) (places #f))
     (Paragraph (holder Line) (place #f) (before Paragraph) (first_line Line)
                (last_line Line) (item_count #f))
+    (Quoted_Character (word Word) (place #f) (value #f) (code #f) (next Quoted_Character))
+    (Input_Text (type #f) (printed_as #f) (length #f))
     (Input_Character (place #f) (value #f) (code #f) (next Input_Character))))
 
 (define (starting-definitions)
@@ -1418,7 +1464,13 @@
                 (list 'False 'constant (make-name 'False))
                 (list 'Newline 'constant (make-name 'Newline))
                 (list 'Letter 'choice (list (list 'class 'Letter)))
-                (list 'Digit 'choice (list (list 'class 'Digit))))))
+                (list 'Digit 'choice (list (list 'class 'Digit)))
+                (list 'Number 'choice (list (list 'class 'Number)))
+                (list 'Text 'choice (list (list 'class 'Text))))))
+
+(define (open-class? choice)
+  ;; Number and Text: classes with no end, so only a starred part has them
+  (and (equal? (car choice) 'class) (member (second choice) '(Number Text))))
 
 (define (type-info-name info) (first-of info))
 (define (type-info-parts info) (third info))
@@ -1513,7 +1565,8 @@
 (define (members-allowed members)
   (cond ((all (lambda (choice) (equal? (car choice) 'type)) members)
          (list 'elements (map second members)))
-        ((all (lambda (choice) (member (car choice) '(value class))) members)
+        ((and (all (lambda (choice) (member (car choice) '(value class))) members)
+              (not (any open-class? members)))
          (list 'values (join-lists (map (lambda (choice)
                                           (if (equal? (car choice) 'value)
                                               (list (second choice))
@@ -1633,7 +1686,8 @@
     (cond ((and found (equal? (car found) 'variable)) (cons state (second found)))
           (found
            (let ((added (add-variable-step state (lambda (variable)
-                                                   (list 'each-field variable (second found) name)))))
+                                                   (list 'each-field variable (second found) name
+                                                         (fourth found))))))
              (cons (with-scope-entry (car added) tag name (list 'variable (cdr added) (third found)))
                    (cdr added))))
           (else
@@ -1660,7 +1714,8 @@
                                             (symbol->string field)))
                     (let ((added (add-variable-step (car found)
                                                     (lambda (variable)
-                                                      (list 'each-field variable (cdr found) field)))))
+                                                      (list 'each-field variable (cdr found) field
+                                                            owner-type)))))
                       (cons (with-scope-entry (car added) tag (list 'path owner field)
                                               (list 'variable (cdr added)
                                                     (if fields (field-type fields field) #f)))
@@ -1880,7 +1935,8 @@
         state
         (loop (cdr names)
               (with-scope-entry state 'self (car names)
-                                (list 'field 1 (field-type (type-info-fields info) (car names))))))))
+                                (list 'field 1 (field-type (type-info-fields info) (car names))
+                                      (type-info-name info)))))))
 
 (define (sequent source state conclusion)
   ;; (sequent source steps conclusion reads): reads are the types whose new
@@ -1898,8 +1954,12 @@
                    ((equal? kind 'each-of-types)
                     (map (lambda (type) (list 'element type)) (third step)))
                    ((equal? kind 'each-indexed)
-                    (list (list 'element (third step)) (list 'field (fourth step))))
-                   ((equal? kind 'each-field) (list (list 'field (fourth step))))
+                    (list (list 'element (third step)) (list 'field-of (third step) (fourth step))))
+                   ((equal? kind 'each-field)
+                    ;; a field of a known type, or of any type
+                    (list (if (fifth step)
+                              (list 'field-of (fifth step) (fourth step))
+                              (list 'field (fourth step)))))
                    (else '()))))
          steps))))
 
@@ -2245,6 +2305,8 @@
     (cond ((equal? kind 'value) (equal? value (second choice)))
           ((equal? kind 'variable) (equal? value (lookup environment (second choice))))
           ((equal? kind 'type) (element-of-type? store value (second choice)))
+          ((equal? (second choice) 'Number) (number-value? value))
+          ((equal? (second choice) 'Text) (text-value? value))
           (else
            (and (text-value? value)
                 (not (null? (text-characters value)))
@@ -2300,6 +2362,8 @@
                (locate (car (store-field-values store value 'line)) store definitions))
               ((equal? type 'Paragraph)
                (locate (car (store-field-values store value 'first_line)) store definitions))
+              ((equal? type 'Quoted_Character)
+               (locate (car (store-field-values store value 'word)) store definitions))
               ((equal? type 'Input_Character)
                (cons #f (number-to-small (car (store-field-values store value 'place)))))
               (else
@@ -2363,12 +2427,21 @@
 ;;;   (ran-out steps)                    exit value 3
 ;;;   (rule-file-refused path line reason)
 
-(define whole-rule-set '())   ; phase 2 names the rule files here, in order
+(define whole-rule-set
+  ;; the rule files every file is checked by, in order (PLAN.md 5.3); the
+  ;; paths are from the top of the repo
+  '("rules/limits.etale" "rules/terms.etale" "rules/definitions.etale"
+    "rules/compounds.etale" "rules/facts.etale" "rules/blocks.etale"
+    "rules/fact_lines.etale" "rules/settings.etale" "rules/positions.etale"
+    "rules/uses.etale" "rules/name_search.etale" "rules/name_steps.etale"))
 
 (define default-budget 10000000)
 
-(define (check-file file-path text-path rule-paths budget)
-  ;; text-path: #f for no text, "-" for standard input
+(define default-printed-as "text")
+
+(define (check-file file-path type-name text-path printed-as rule-paths budget)
+  ;; text-path: #f for no text, "-" for standard input; type-name: the type
+  ;; the text is read as; printed-as: the name of the text it is printed with
   (let ((program (compile-rule-files rule-paths)))
     (if (problem? program)
         (list 'rule-file-refused (fourth program) (second program) (third program))
@@ -2382,7 +2455,9 @@
                 (if (not (null? refused-characters))
                     (list 'refused refused-characters 1 text)
                     (let* ((store (store-with-file (empty-store budget (program-indexed program)) (car read)))
-                           (store (if text-path (store-with-text store text) store))
+                           (store (if text-path
+                                      (store-with-text store text type-name printed-as)
+                                      store))
                            (store (run-rules program store))
                            (refusals (sort-refusals (reverse (store-refusals store)))))
                       (cond ((store-out-of-steps? store) (list 'ran-out (store-steps store)))
@@ -2481,7 +2556,7 @@
   (for-each (lambda (type)
               (for-each (lambda (id) (display-element (make-element id) store))
                         (reverse (store-elements-of store type))))
-            '(Line Paragraph Word Input_Character)))
+            '(Line Paragraph Word Quoted_Character Input_Text Input_Character)))
 
 (define (display-element element store)
   (display (element-name element store))
@@ -2510,6 +2585,10 @@
                           (element-name (car (store-field-values store element 'line)) store)))
           ((equal? type 'Input_Character)
            (string-append "character " (number-field element 'place store)))
+          ((equal? type 'Quoted_Character)
+           (string-append "quoted character " (number-field element 'place store) " of "
+                          (element-name (car (store-field-values store element 'word)) store)))
+          ((equal? type 'Input_Text) "the text")
           (else (string-append (symbol->string type) " "
                                (list->string (small-characters (ordinal-of element store))))))))
 
@@ -2570,19 +2649,26 @@
               ((not indented)
                (run-test-lines (cdr lines) rules budget (car words)
                                (report line
-                                       (verdict-test (check-file (car words) #f rules budget)
+                                       (verdict-test (check-file (car words) #f #f
+                                                                 default-printed-as rules budget)
                                                      (cdr words) #f)
                                        counts)))
               ((and file (>= (length words) 3))
                (run-test-lines (cdr lines) rules budget file
-                               (report line
-                                       (if (equal? (third words) "printed")
-                                           (list 'not-run "how a second text is asked for is open (PLAN.md 7.3)")
-                                           (verdict-test (check-file file (second words) rules budget)
-                                                         (cdr (cdr words)) (second words)))
-                                       counts)))
+                               (report line (text-test file words rules budget) counts)))
               (else (run-test-lines (cdr lines) rules budget file
                                     (report line (list 'failed "a test line this runner cannot read") counts)))))))
+
+(define (text-test file words rules budget)
+  ;; words: TYPE TEXT, then the verdict; "printed as NAME FILE" asks for the
+  ;; text to be accepted and printed, with its text named NAME, as FILE holds
+  (let ((type-name (first-of words)) (text-path (second words)) (expected (cdr (cdr words))))
+    (if (and (= (length expected) 4) (equal? (first-of expected) "printed")
+             (equal? (second expected) "as"))
+        (verdict-test (check-file file type-name text-path (third expected) rules budget)
+                      (list "accepted") (fourth expected))
+        (verdict-test (check-file file type-name text-path default-printed-as rules budget)
+                      expected text-path))))
 
 (define (report line outcome counts)
   ;; outcome: (passed), (failed what-happened) or (not-run why)
@@ -2683,8 +2769,11 @@
               '("usage: chibi-scheme -I test_engine -x small_scheme test_engine/engine.scm COMMAND"
                 "  tree FILE                    print the reader's tree of an Etale file"
                 "  facts FILE [TYPE [TEXT]]     print the built-in facts the rules see"
-                "  check FILE [TYPE [TEXT]] [steps N] [rules RULE_FILE ...]"
-                "                               check a file, and a text read as TYPE"
+                "  check FILE [TYPE [TEXT]] [print NAME] [steps N] [rules RULE_FILE ...]"
+                "                               check a file, and a text read as TYPE,"
+                "                               printed with its text named NAME"
+                "  made FILE [TYPE [TEXT]] [print NAME] [steps N] [rules RULE_FILE ...]"
+                "                               print every value the rules made"
                 "  test TEST_LIST               run a list of tests"
                 "A TYPE with no TEXT reads the text from standard input."))
     (exit 2)))
@@ -2716,29 +2805,74 @@
                                ((equal? text-path "-") (read-characters #f))
                                (else (read-characters text-path))))
                    (store (store-with-file (empty-store default-budget (quote ())) (car read)))
-                   (store (if text-path (store-with-text store text) store)))
+                   (store (if text-path
+                              (store-with-text store text (second arguments) default-printed-as)
+                              store)))
               (display-facts store)
               (exit 0))))))
 
-(define (check-options arguments positions budget rules)
-  ;; returns (positions budget rules); rules is #f for the whole set
-  (cond ((null? arguments) (list (reverse positions) budget rules))
+(define (check-options arguments positions budget printed-as)
+  ;; returns (positions budget rules printed-as); rules is #f for the whole set
+  (cond ((null? arguments) (list (reverse positions) budget #f printed-as))
         ((and (equal? (car arguments) "steps") (not (null? (cdr arguments)))
               (small-number-from-string (second arguments)))
          (check-options (cdr (cdr arguments)) positions
-                        (small-number-from-string (second arguments)) rules))
-        ((equal? (car arguments) "rules") (list (reverse positions) budget (cdr arguments)))
-        (else (check-options (cdr arguments) (cons (car arguments) positions) budget rules))))
+                        (small-number-from-string (second arguments)) printed-as))
+        ((and (equal? (car arguments) "print") (not (null? (cdr arguments))))
+         (check-options (cdr (cdr arguments)) positions budget (second arguments)))
+        ((equal? (car arguments) "rules")
+         (list (reverse positions) budget (cdr arguments) printed-as))
+        (else (check-options (cdr arguments) (cons (car arguments) positions) budget
+                             printed-as))))
+
+(define (command-made arguments)
+  ;; every value the rules made, type by type in the order of the rule files
+  (if (null? arguments)
+      (usage)
+      (let* ((options (check-options (cdr arguments) '() default-budget default-printed-as))
+             (positions (first-of options))
+             (type-name (if (null? positions) #f (first-of positions)))
+             (text-path (cond ((null? positions) #f)
+                              ((null? (cdr positions)) "-")
+                              (else (second positions))))
+             (program (compile-rule-files (if (third options) (third options) whole-rule-set)))
+             (read (read-etale-file (car arguments))))
+        (cond ((problem? program)
+               (display-rule-file-problem (list 'rule-file-refused (fourth program) (second program)
+                                                (third program))
+                                          (current-error-port))
+               (exit 2))
+              ((not (null? (cdr read))) (refused-reading (cdr read)))
+              (else
+               (let* ((text (cond ((not text-path) '())
+                                  ((equal? text-path "-") (read-characters #f))
+                                  (else (read-characters text-path))))
+                      (store (store-with-file (empty-store (second options) (program-indexed program))
+                                              (car read)))
+                      (store (if text-path
+                                 (store-with-text store text type-name (fourth options))
+                                 store))
+                      (store (run-rules program store)))
+                 (for-each (lambda (definition)
+                             (if (equal? (second definition) 'rule-type)
+                                 (for-each (lambda (id) (display-element (make-element id) store))
+                                           (reverse (store-elements-of store (first-of definition))))
+                                 #f))
+                           (program-definitions program))
+                 (for-each (lambda (refusal) (display-refusal refusal text (current-error-port)))
+                           (sort-refusals (reverse (store-refusals store))))
+                 (exit 0)))))))
 
 (define (command-check arguments)
   (if (null? arguments)
       (usage)
-      (let* ((options (check-options (cdr arguments) '() default-budget #f))
+      (let* ((options (check-options (cdr arguments) '() default-budget default-printed-as))
              (positions (first-of options))
+             (type-name (if (null? positions) #f (first-of positions)))
              (text-path (cond ((null? positions) #f)
                               ((null? (cdr positions)) "-")
                               (else (second positions)))))
-        (show-verdict (check-file (car arguments) text-path
+        (show-verdict (check-file (car arguments) type-name text-path (fourth options)
                                   (if (third options) (third options) whole-rule-set)
                                   (second options))))))
 
@@ -2747,6 +2881,7 @@
         ((equal? (car arguments) "tree") (command-tree (cdr arguments)))
         ((equal? (car arguments) "facts") (command-facts (cdr arguments)))
         ((equal? (car arguments) "check") (command-check (cdr arguments)))
+        ((equal? (car arguments) "made") (command-made (cdr arguments)))
         ((equal? (car arguments) "test") (command-test (cdr arguments)))
         (else (usage))))
 

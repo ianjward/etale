@@ -1,0 +1,82 @@
+Item_Step:
+  search: Name_Search
+    given search.differs is True
+  line: Line
+    given line is search.line
+    given line.depth is Item_Depth
+  above: Line
+    given above.holder is line.holder
+    given above.place is search.place_above
+
+  next: Name_Search(name: search.name, line: above)
+
+Type_Step:
+  search: Name_Search
+    given search.differs is True
+  line: Line
+    given line is search.line
+    given line.depth is Item_Depth
+    given line.place is First_Place
+
+  next: Name_Search(name: search.name, line: line.holder)
+
+Top_Step:
+  search: Name_Search
+    given search.differs is True
+  line: Line
+    given line is search.line
+    given line.depth is Type_Depth
+  above: Line
+    given above.depth is Type_Depth
+    given above.place is search.place_above
+
+  next: Name_Search(name: search.name, line: above)
+
+Not_Defined:
+  search: Name_Search
+    given search.differs is True
+  line: Line
+    given line is search.line
+    given line.depth is Type_Depth
+    given line.place is First_Place
+
+  impossible:
+    search.differs is True
+
+Field_Use:
+  word: Word
+    given word.kind is "name"
+  field: Field
+    given field.text is word.text
+  line: Line
+    given line is word.line
+  paragraph: Paragraph
+    given paragraph is line.paragraph
+  type_line: Type_Line
+    given type_line is field.type_line
+    given type_line.line is paragraph.holder
+  field_line: Line
+    given field_line is field.line
+    given field_line.number < line.number
+
+Type_Use:
+  word: Word
+    given word.kind is "name"
+  type_line: Type_Line
+    given type_line.text is word.text
+  line: Line
+    given line is word.line
+  defined: Line
+    given defined is type_line.line
+    given defined.number < line.number
+
+Constant_Use:
+  word: Word
+    given word.kind is "name"
+  definition_line: Definition_Line
+    given definition_line.text is word.text
+  line: Line
+    given line is word.line
+  defined: Line
+    given defined is definition_line.line
+    given defined.number < line.number

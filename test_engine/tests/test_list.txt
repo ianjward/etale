@@ -13,7 +13,7 @@ test_engine/tests/reader_odd_indent.etale refused at 2
 test_engine/tests/reader_unclosed_quote.etale refused at 1
 test_engine/tests/reader_outside_ascii.etale refused at 1
 
-rules test_engine/tests/limits.etale
+rules rules/limits.etale
 examples/bank_account.etale accepted
 examples/binary_conversion.etale accepted
 examples/dates.etale accepted
@@ -31,7 +31,18 @@ test_engine/tests/too_many_lines_under.etale refused at 19
 test_engine/tests/too_many_items.etale refused at 2
 test_engine/tests/too_many_paragraphs.etale refused at 16
 test_engine/tests/too_many_definitions.etale refused at 1
-test_engine/tests/limits.etale accepted
+rules/limits.etale accepted
+rules/terms.etale accepted
+rules/definitions.etale accepted
+rules/compounds.etale accepted
+rules/facts.etale accepted
+rules/blocks.etale accepted
+rules/fact_lines.etale accepted
+rules/settings.etale accepted
+rules/positions.etale accepted
+rules/uses.etale accepted
+rules/name_search.etale accepted
+rules/name_steps.etale accepted
 test_engine/tests/names.etale accepted
 test_engine/tests/numbers_constant.etale accepted
 test_engine/tests/numbers_small.etale accepted

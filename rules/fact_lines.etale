@@ -1,0 +1,94 @@
+Under_Item_Depth: 2
+Under_Case_Depth: 3
+
+Case:
+  line: Line
+    given line.depth is Under_Item_Depth
+  field: Field
+    given field.line is line.holder
+  value: Word
+    given value.line is line
+    given value.place is First_Place
+  colon: Word
+    given colon is value.next
+    given colon.text is ":"
+
+Case_Fact_Line:
+  line: Line
+    given line.depth is Under_Case_Depth
+  case: Case
+    given case.line is line.holder
+  start: Word
+    given start.line is line
+    given start.place is First_Place
+  last: Word
+    given last.line is line
+    given last.place is line.word_count
+
+  fact: Fact_Start(line: line, start: start, last: last)
+
+Impossible_Fact_Line:
+  line: Line
+    given line.depth is Under_Item_Depth
+  block: Block_Item
+    given block.line is line.holder
+    given block.kind is "impossible"
+  start: Word
+    given start.line is line
+    given start.place is First_Place
+  last: Word
+    given last.line is line
+    given last.place is line.word_count
+
+  fact: Fact_Start(line: line, start: start, last: last)
+
+Keyword_Fact_Line:
+  keyword: Word
+    given keyword.place is First_Place
+    given keyword.text in "given" | "where" | "until"
+  line: Line
+    given line is keyword.line
+  start: Word
+    given start is keyword.next
+  last: Word
+    given last.line is line
+    given last.place is line.word_count
+
+  fact: Fact_Start(line: line, start: start, last: last)
+
+Claim_With_Steps:
+  claim: Claim_Item
+  final: Word
+    given final is claim.final
+    given final.text is ":"
+  last: Word
+    given last.next is final
+
+  fact: Fact_Start(line: claim.line, start: claim.start, last: last)
+
+Claim_Alone:
+  claim: Claim_Item
+  line: Line
+    given line is claim.line
+    given line.under_count is 0
+
+  fact: Fact_Start(line: line, start: claim.start, last: claim.final)
+
+Step_Fact_Line:
+  line: Line
+    given line.depth is Under_Item_Depth
+  claim: Claim_Item
+    given claim.line is line.holder
+  number: Word
+    given number.line is line
+    given number.place is First_Place
+  dot: Word
+    given dot is number.next
+    given dot.text is "."
+  start: Word
+    given start is dot.next
+  last: Word
+    given last.line is line
+    given last.place is line.word_count
+
+  fact: Fact_Start(line: line, start: start, last: last)

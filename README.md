@@ -4,14 +4,16 @@ Etale is an experimental typed language for geometric logic, written to be read 
 who reads English but does not program. It is to be checked by a small engine written by hand
 in assembly, built from a seed small enough to check by hand.
 
-The test engine runs (phase 1), but Etale's own rule files are phase 2, so nothing checks the
-examples' forms yet. Start with PLAN.md: what Etale is for, the forms of version 1, how Etale
-is checked, the build in phases, and what is still open.
+The test engine runs (phase 1), and Etale's own rule files are under way (phase 2): they read
+every line of the examples as its form and check their names, while case tables, claims,
+texts and values are still to come. Start with PLAN.md: what Etale is for, the forms of
+version 1, how Etale is checked, the build in phases, and what is still open.
 
 - PLAN.md: the one plan.
 - examples/: the eight example files that define version 1.
 - tests/: the texts each example must accept or refuse, a copy of an example for each mistake
   it must refuse, and test_list.txt with every verdict.
+- rules/: Etale's rule files, its definition of itself in Etale, run by the engine.
 - test_engine/: the test engine, in a small part of Scheme, and its own tests. It is a test
   bench, deleted once the engine in assembly agrees with it on every example.
 - LICENSE
@@ -23,7 +25,8 @@ from the top of this repo:
 ```
 chibi-scheme -h 1G -I test_engine -x small_scheme test_engine/engine.scm test test_engine/tests/test_list.txt
 chibi-scheme -h 1G -I test_engine -x small_scheme test_engine/engine.scm tree examples/dates.etale
-chibi-scheme -h 1G -I test_engine -x small_scheme test_engine/engine.scm check examples/dates.etale rules test_engine/tests/limits.etale
+chibi-scheme -h 1G -I test_engine -x small_scheme test_engine/engine.scm check examples/dates.etale
+chibi-scheme -h 1G -I test_engine -x small_scheme test_engine/engine.scm test tests/test_list.txt
 ```
 
 PLAN.md 5.6 lists the commands and what the engine does.

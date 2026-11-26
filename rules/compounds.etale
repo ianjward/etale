@@ -1,0 +1,79 @@
+Operator_Word: "+" | "-" | "*" | "/"
+Value_Kind: "number" | "name" | "path"
+
+Calculation_Definition:
+  definition: Definition
+  left: Term
+    given left.first is definition.start
+    given left.kind in Value_Kind
+  left_last: Word
+    given left_last is left.last
+  operator: Word
+    given operator is left_last.next
+    given operator.text in Operator_Word
+  right: Term
+    given right.first is operator.next
+    given right.last is definition.last
+    given right.kind in Value_Kind
+
+  left_use: Term_Use(term: left)
+  right_use: Term_Use(term: right)
+
+List_Definition:
+  definition: Definition
+  open: Word
+    given open is definition.start
+    given open.text is "("
+  item: Word
+    given item is open.next
+    given item.kind is "name"
+  dots: Word
+    given dots is item.next
+    given dots.text is "..."
+  close: Word
+    given close is definition.last
+    given close.text is ")"
+  count_last: Word
+    given count_last.next is close
+
+  count: Definition(start: dots.next, last: count_last)
+  item_use: Name_Use(word: item)
+
+Call_Argument:
+  open*: Word
+  name*: Word
+  colon: Word
+    given colon is name.next
+    given colon.text is ":"
+  value: Term
+    given value.first is colon.next
+    given value.kind in Value_Kind
+  value_last: Word
+    given value_last is value.last
+  after: Word
+    given after is value_last.next
+
+  use: Term_Use(term: value)
+
+Call_Definition:
+  definition: Definition
+  callee: Word
+    given callee is definition.start
+    given callee.kind is "name"
+  open: Word
+    given open is callee.next
+    given open.text is "("
+  close: Word
+    given close is definition.last
+    given close.text is ")"
+
+  first: Call_Argument(open: open, name: open.next)
+  callee_use: Name_Use(word: callee)
+
+Next_Argument:
+  argument: Call_Argument
+  comma: Word
+    given comma is argument.after
+    given comma.text is ","
+
+  next: Call_Argument(open: argument.open, name: comma.next)

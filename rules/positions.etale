@@ -1,0 +1,48 @@
+Position:
+  number: Word
+    given number.place is First_Place
+    given number.kind is "number"
+  dot: Word
+    given dot is number.next
+    given dot.text is "."
+  line: Line
+    given line is number.line
+  holder: Block_Item | Type_Line
+    given holder.line is line.holder
+  start: Word
+    given start is dot.next
+  last: Word
+    given last.line is line
+    given last.place is line.word_count
+
+Plain_Position:
+  position: Position
+  last: Word
+    given last is position.last
+    given last.kind in "name" | "quoted" | "mark"
+
+  content: Definition(start: position.start, last: last)
+
+Digits_Position:
+  position: Position
+  digits: Word
+    given digits is position.last
+    given digits.kind is "number"
+  keyword: Word
+    given keyword.next is digits
+    given keyword.text is "digits"
+  content_last: Word
+    given content_last.next is keyword
+
+  content: Definition(start: position.start, last: content_last)
+
+Step_Call:
+  step: Step_Fact_Line
+  callee: Word
+    given callee is step.start
+    given callee.kind is "name"
+  open: Word
+    given open is callee.next
+    given open.text is "("
+
+  call: Definition(start: callee, last: step.last)

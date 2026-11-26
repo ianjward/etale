@@ -1,0 +1,63 @@
+One: 1
+
+Choice_Word:
+  start*: Word
+  word*: Word
+  place*: 1..
+
+Choice_Next:
+  current: Choice_Word
+  word: Word
+    given word is current.word
+  bar: Word
+    given bar is word.next
+    given bar.text is "|"
+  after: Word
+    given after is bar.next
+
+  place: current.place + One
+  next: Choice_Word(start: current.start, word: after, place: place)
+
+Definition:
+  start*: Word
+  last*: Word
+
+  choice: Choice_Word(start: start, word: start, place: One)
+
+Term_Definition:
+  definition: Definition
+  term: Term
+    given term.first is definition.start
+    given term.last is definition.last
+
+  use: Term_Use(term: term)
+
+Range_Definition:
+  definition: Definition
+  low: Word
+    given low is definition.start
+    given low.kind is "number"
+  dots: Word
+    given dots is low.next
+    given dots.text is ".."
+  high: Word
+    given high is dots.next
+    given high is definition.last
+    given high.kind is "number"
+
+Open_Range_Definition:
+  definition: Definition
+  low: Word
+    given low is definition.start
+    given low.kind is "number"
+  dots: Word
+    given dots is low.next
+    given dots.text is ".."
+    given dots is definition.last
+
+Choice_Definition:
+  definition: Definition
+  end: Choice_Word
+    given end.start is definition.start
+    given end.word is definition.last
+    given end.place > One
