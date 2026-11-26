@@ -1,0 +1,23 @@
+First_Line: 1
+Seven: 7
+Large_Left: 12345678
+Large_Right: 87654321
+Wrong_Product: 1082152022374639
+Expected_Difference: -75308643
+Expected_Wrapped: 3
+
+Small_Numbers:
+  line: Line
+    given line.number is First_Line
+  left: Large_Left
+  right: Large_Right
+
+  product: left * right
+  difference: left - right
+  wrapped: difference
+    wrap_at Seven
+
+  impossible:
+    product is Wrong_Product
+    difference is Expected_Difference
+    wrapped is Expected_Wrapped

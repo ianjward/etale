@@ -1,0 +1,10 @@
+First_Line: 1
+
+Digit_In_Text:
+  line: Line
+    given line.number is First_Line
+  character: Input_Character
+    given character.value in "_" | Digit
+
+  impossible:
+    character.value in "_" | Digit

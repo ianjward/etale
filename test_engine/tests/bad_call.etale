@@ -1,0 +1,5 @@
+Walk:
+  line*: Line
+  name*: Word
+
+  back: Walk(line: line.above)

@@ -1,0 +1,7 @@
+Limit: 70
+
+Uses_Missing_Field:
+  line: Line
+
+  impossible:
+    line.size > Limit

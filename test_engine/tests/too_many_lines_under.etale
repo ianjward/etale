@@ -1,0 +1,20 @@
+Count:
+  number: 1..8
+
+  size: 1..8
+    1:
+      number is 1
+    2:
+      number is 2
+    3:
+      number is 3
+    4:
+      number is 4
+    5:
+      number is 5
+    6:
+      number is 6
+    7:
+      number is 7
+    8:
+      number is 8

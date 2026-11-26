@@ -1,0 +1,88 @@
+tree examples/dates.etale test_engine/tests/dates_tree.txt
+
+rules
+test_engine/tests/reader_tab.etale refused at 2
+test_engine/tests/reader_hash.etale refused at 1
+test_engine/tests/reader_carriage_return.etale refused at 1
+test_engine/tests/reader_unused_character.etale refused at 1
+test_engine/tests/reader_two_blank_lines.etale refused at 3
+test_engine/tests/reader_blank_inside_item.etale refused at 4
+test_engine/tests/reader_two_steps_deeper.etale refused at 2
+test_engine/tests/reader_first_line_deeper.etale refused at 1
+test_engine/tests/reader_odd_indent.etale refused at 2
+test_engine/tests/reader_unclosed_quote.etale refused at 1
+test_engine/tests/reader_outside_ascii.etale refused at 1
+
+rules test_engine/tests/limits.etale
+examples/bank_account.etale accepted
+examples/binary_conversion.etale accepted
+examples/dates.etale accepted
+examples/decimals.etale accepted
+examples/timetable.etale accepted
+examples/train.etale accepted
+examples/trip.etale accepted
+examples/xor.etale accepted
+test_engine/tests/line_too_long.etale refused at 2
+test_engine/tests/too_deep.etale refused at 5
+test_engine/tests/long_name.etale refused at 1
+test_engine/tests/too_many_choices.etale refused at 1
+test_engine/tests/too_many_types.etale refused at 22
+test_engine/tests/too_many_lines_under.etale refused at 19
+test_engine/tests/too_many_items.etale refused at 2
+test_engine/tests/too_many_paragraphs.etale refused at 16
+test_engine/tests/too_many_definitions.etale refused at 1
+test_engine/tests/limits.etale accepted
+test_engine/tests/names.etale accepted
+test_engine/tests/numbers_constant.etale accepted
+test_engine/tests/numbers_small.etale accepted
+test_engine/tests/numbers_huge.etale accepted
+test_engine/tests/numbers_wrong.etale accepted
+test_engine/tests/choices.etale accepted
+test_engine/tests/choices_never.etale accepted
+test_engine/tests/echo.etale accepted
+test_engine/tests/characters.etale accepted
+test_engine/tests/forms.etale accepted
+test_engine/tests/bad_undefined_name.etale accepted
+test_engine/tests/bad_missing_field.etale accepted
+test_engine/tests/bad_call.etale accepted
+
+rules test_engine/tests/names.etale
+test_engine/tests/names_defined.etale accepted
+test_engine/tests/names_undefined.etale refused at 3
+
+rules test_engine/tests/numbers_constant.etale
+test_engine/tests/one_line.etale refused at 1
+rules test_engine/tests/numbers_small.etale
+test_engine/tests/one_line.etale refused at 1
+rules test_engine/tests/numbers_huge.etale
+test_engine/tests/one_line.etale refused at 1
+rules test_engine/tests/numbers_wrong.etale
+test_engine/tests/one_line.etale accepted
+
+rules test_engine/tests/choices.etale
+test_engine/tests/one_line.etale refused at 1
+rules test_engine/tests/choices_never.etale
+test_engine/tests/one_line.etale accepted
+
+rules test_engine/tests/echo.etale
+test_engine/tests/one_line.etale accepted
+  Text test_engine/tests/echo.txt accepted
+  Text test_engine/tests/carriage_return.txt refused at 1
+
+rules test_engine/tests/characters.etale
+test_engine/tests/one_line.etale accepted
+  Text test_engine/tests/digits.txt refused by 1 at 2
+
+rules test_engine/tests/forms.etale
+test_engine/tests/forms_checked.etale refused at 2
+
+rules test_engine/tests/bad_undefined_name.etale
+test_engine/tests/one_line.etale rule file refused at 5
+rules test_engine/tests/bad_missing_field.etale
+test_engine/tests/one_line.etale rule file refused at 7
+rules test_engine/tests/bad_call.etale
+test_engine/tests/one_line.etale rule file refused at 5
+
+rules test_engine/tests/names.etale
+steps 20
+test_engine/tests/names_defined.etale ran out of steps

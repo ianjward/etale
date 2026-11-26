@@ -1,0 +1,45 @@
+Second_Line: 2
+Third_Line: 3
+Two: 2
+Three: 3
+
+Range_Fact:
+  line: Line
+    given line.number in 1..3
+    given line.number is Second_Line
+
+  impossible:
+    line.number in 1..3
+
+Counted:
+  count*: 1..2
+  line*: Line
+
+  impossible:
+    count in 1..3
+
+Counting:
+  line: Line
+    given line.number is Second_Line
+  later: Line
+    given later.number is Third_Line
+
+  allowed: Counted(count: Two, line: line)
+  too_many: Counted(count: Three, line: later)
+
+Text_Order:
+  word: Word
+    given word.kind is "name"
+    given word.text > "Apple"
+
+  impossible:
+    word.text < "Cherry"
+
+Not_Exact:
+  line: Line
+    given line.number is Third_Line
+
+  half: Three / Two
+
+  impossible:
+    half in 1..3

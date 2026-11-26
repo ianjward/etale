@@ -1,0 +1,50 @@
+Most_Line_Characters: 70
+Deepest_Indentation: 3
+Most_Name_Words: 4
+Most_Union_Choices: 7
+Most_Paragraph_Items: 7
+Most_Type_Paragraphs: 7
+Most_File_Types: 7
+
+Most_Lines_Under: 7
+Item_Depth: 1
+
+Line_Limits:
+  line: Line
+
+  impossible:
+    line.length > Most_Line_Characters
+  impossible:
+    line.depth > Deepest_Indentation
+  impossible:
+    line.choice_count > Most_Union_Choices
+  impossible:
+    line.type_place > Most_File_Types
+
+Under_A_Line_Limit:
+  line: Line
+    given line.depth > Item_Depth
+
+  impossible:
+    line.place > Most_Lines_Under
+
+Name_Limit:
+  word: Word
+    given word.kind is "name"
+
+  impossible:
+    word.name_word_count > Most_Name_Words
+
+Paragraph_Limit:
+  paragraph: Paragraph
+
+  impossible:
+    paragraph.item_count > Most_Paragraph_Items
+
+Type_Paragraph_Limit:
+  paragraph: Paragraph
+  type_line: Line
+    given type_line is paragraph.holder
+
+  impossible:
+    paragraph.place > Most_Type_Paragraphs

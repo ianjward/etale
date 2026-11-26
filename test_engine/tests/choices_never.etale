@@ -1,0 +1,14 @@
+First_Line: 1
+Three: 3
+Bit: 0 | 1
+
+Pair:
+  line: Line
+    given line.number is First_Line
+  left: Bit
+  right: Bit
+
+  sum: left + right
+
+  impossible:
+    sum is Three

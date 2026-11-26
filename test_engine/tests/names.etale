@@ -1,0 +1,39 @@
+First_Line: 1
+First_Place: 1
+
+Name_Above:
+  name*: Word
+  line*: Line
+  start: Word
+    given start.line is line
+    given start.place is First_Place
+
+  earlier: Name_Above(name: name, line: line.above)
+
+  found: True | False
+    True:
+      start.text is name.text
+    True:
+      earlier.found is True
+    False:
+      start.text < name.text
+      line.number is First_Line
+    False:
+      start.text > name.text
+      line.number is First_Line
+    False:
+      start.text < name.text
+      earlier.found is False
+    False:
+      start.text > name.text
+      earlier.found is False
+
+Name_Use:
+  name: Word
+    given name.kind is "name"
+    given name.place > First_Place
+
+  search: Name_Above(name: name, line: name.line)
+
+  impossible:
+    search.found is False

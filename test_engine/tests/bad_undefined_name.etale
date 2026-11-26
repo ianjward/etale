@@ -1,0 +1,5 @@
+Uses_Unknown:
+  line: Line
+
+  impossible:
+    line.length > Unknown_Limit

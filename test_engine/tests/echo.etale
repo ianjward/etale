@@ -1,0 +1,5 @@
+Printed_Character:
+  character: Input_Character
+
+  place: character.place
+  value: character.value

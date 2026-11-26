@@ -1,0 +1,21 @@
+First_Line: 1
+Huge_Left: 123456789012345678
+Huge_Right: 987654321098765432
+Divisor: 1000003
+Expected_Left_Over: 372952
+
+Huge_Numbers:
+  line: Line
+    given line.number is First_Line
+  left: Huge_Left
+  right: Huge_Right
+
+  product: left * right
+  back: product / right
+  left_over: product
+    wrap_at Divisor
+
+  impossible:
+    back is left
+    left_over is Expected_Left_Over
+    product > right

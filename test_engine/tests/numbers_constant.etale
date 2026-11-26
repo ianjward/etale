@@ -1,0 +1,24 @@
+First_Line: 1
+Large_Left: 12345678
+Large_Right: 87654321
+Product: Large_Left * Large_Right
+Expected_Product: 1082152022374638
+Quotient: Product / Large_Right
+
+Huge_Factor: 99999999
+Huge: Huge_Factor * Huge_Factor
+Expected_Huge: 9999999800000001
+Huge_Left: 123456789012345678
+Huge_Right: 987654321098765432
+Huge_Product: Huge_Left * Huge_Right
+Expected_Huge_Product: 121932631137021794322511812221002896
+
+Constant_Arithmetic:
+  line: Line
+    given line.number is First_Line
+
+  impossible:
+    Product is Expected_Product
+    Quotient is Large_Left
+    Huge is Expected_Huge
+    Huge_Product is Expected_Huge_Product

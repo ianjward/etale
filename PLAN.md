@@ -5,7 +5,7 @@ This is the one plan for Etale. It replaces every earlier plan, decisions doc an
 Decisions go into this file in the same commit as the work they belong to, not into a new
 dated doc.
 
-Last changed: 25 November 2026.
+Last changed: 26 November 2026.
 
 ## 1. What Etale is for
 
@@ -34,8 +34,9 @@ The project's aims, and where each one stands:
   25 November (characters, input and output, checks, self-reference, induction), the frozen
   core, and the route: a small engine written by hand in assembly on the stage0-posix seed.
 - Built: the corpus (phase 0, done 25 November): the examples, and in tests/ every text and
-  mistake of section 6 with the test list. There is no engine and no rule file yet, so
-  nothing has checked any of them.
+  mistake of section 6 with the test list. The test engine (phase 1, done 26 November, 5.6):
+  it reads every example and runs rule files written in the core's part of Etale. Etale's
+  own rule files are phase 2, so nothing checks the examples' forms yet.
 - Retired: the Gleam host (to 16 November), and the JavaScript engine with every file in the
   old forms, route B, kernel.etale and wasm.etale (to 19 November). Both are in the history
   (section 10).
@@ -497,7 +498,7 @@ before a digit belongs to the number. So `(Stop... 1..)` is the words `(`, `Stop
 | Phase | What | Done when |
 |---|---|---|
 | 0 | Corpus | the examples are in files, with a test list of section 6's texts and verdicts, and one file for each mistake listed there. Done 25 November: examples/ and tests/ |
-| 1 | Test engine | a short engine in the small Scheme below, on Chibi-Scheme, runs the frozen core (engine parts 3 to 8). It is a test bench, not part of the chain, and is deleted after phase 5 |
+| 1 | Test engine | a short engine in the small Scheme below, on Chibi-Scheme, runs the frozen core (engine parts 3 to 8). It is a test bench, not part of the chain, and is deleted after phase 5. Done 26 November: test_engine/ (5.6) |
 | 2 | Etale as rules | the rule files rewrite every example into the core and give section 6's verdicts on the test engine. This is the milestone: Etale defined in Etale |
 | 3 | Seed tools | in an empty system holding only the seed and the four tools' pinned sources, the seed builds the four tools, and a test program in assembly copies a file to its output and exits with a value |
 | 4 | The engine in assembly | built part by part, translated by hand from the test engine; each part gives the test engine's output on its tests |
@@ -514,7 +515,8 @@ so that it reads as plain code and translates to assembly part by part: `define`
 `string->symbol`, `symbol->string`; whole numbers below 100,000,000, so every step fits in
 the 32 bits the assembly engine holds (`+`, `-`, `*`,
 `quotient`, `remainder`, `=`, `<`, `<=`, `>`, `>=`); `read-char`, `peek-char`, `eof-object?`,
-`open-input-file`, `display`, `newline`, `exit`, `command-line`. Not `set!`, macros,
+`open-input-file`, `display`, `newline`, `exit`, `command-line`, and `current-error-port`
+(added 26 November, so refusals go to the error output as 3.10 says). Not `set!`, macros,
 `call/cc`, exceptions, records, hash tables, vectors, floating point or modules. Its names are
 whole words.
 
@@ -529,7 +531,9 @@ Claude's suggestions, not chosen:
 
 - 32-bit x86 programs run here: one built with nasm and ld wrote its text and exited with 42.
 - Installed: gcc, GNU as and ld, nasm, gdb, objdump, make and git. Not installed: any Scheme,
-  and QEMU.
+  and QEMU. Chibi-Scheme builds from its source in a few minutes (make, then make install
+  into a folder of the workspace). A new session does not keep the build, so each builds it
+  again. Phase 1 used Chibi-Scheme at commit bf73c0c (24 November 2026).
 - Package installs and downloads from the shell are refused, but git clones public GitHub
   repositories through the session's proxy: stage0-posix and Chibi-Scheme both answered. So
   phase 3's sources can come by git, and Chibi-Scheme can be built with the C compiler here.
@@ -537,6 +541,96 @@ Claude's suggestions, not chosen:
 - The engine in the chain is built only by stage0-posix's own tools. nasm and gdb are for
   trying things out and finding bugs, never for the engine that is trusted.
 - Phase 6 needs QEMU, which is not here.
+
+### 5.6 The test engine (phase 1, built 26 November)
+
+test_engine/engine.scm is the test engine, and test_engine/tests/ holds its own tests. From
+the top of the repo, with Chibi-Scheme built (5.5):
+
+```
+chibi-scheme -h 1G -I test_engine -x small_scheme test_engine/engine.scm COMMAND
+```
+
+- `tree FILE` prints the reader's tree as bracketed lists, a line of the file to a line
+  (engine part 3).
+- `facts FILE [TYPE [TEXT]]` prints every built-in fact the rules see (part 4).
+- `check FILE [TYPE [TEXT]] [steps N] [rules RULE_FILE ...]` checks a file, and a text, with
+  the whole set of rule files or the ones named last. A TYPE with no TEXT reads standard
+  input. Verdicts and exit values are those of 3.10.
+- `test TEST_LIST` runs a test list and says which tests pass.
+
+small_scheme.sld names the part of Scheme in 5.4. The engine runs with only those names, so
+a name outside them stops it before anything runs. `-h 1G` gives Chibi-Scheme a large heap
+from the start; without it the engine runs about half as fast.
+
+The engine's tests (test_engine/tests/test_list.txt, 61 tests, all passing) cover each part:
+the reader's refusals, and its tree of dates.etale; the limits of 3.4 as a rule file
+(limits.etale), which accepts the eight examples and every rule file there, and refuses a
+file that breaks each limit at the right line; a walk up the lines through a type that calls
+itself one step on; numbers of up to 36 digits; a union tried member by member; a text
+printed back exactly; a refusal naming a line of the file and a line of the text; the step
+budget running out; and rule files the engine refuses. On the corpus (tests/test_list.txt) it
+gives 8 passed (the eight examples accepted), 28 failed and 1 not run: every text and mistake
+waits for phase 2's rule files, and printing as european waits for 7.3. The whole set of rule
+files is empty until phase 2 names its files in engine.scm (`whole-rule-set`).
+
+What the engine does, and Claude's choices in it, to change at review:
+
+- The reader: a step of indentation is two spaces, and a line indented by an odd number of
+  spaces is refused. A line of only spaces is blank. A quoted text with no closing quote is
+  refused. A `#` is refused outside a quoted text; inside one it is part of the text. A first
+  line that is indented is refused as two steps deeper than the one above.
+- The facts are those of 5.3, with these choices. A Word that is a number also has `number`,
+  its digits as a whole number without the point, and `places`, the digits after the point:
+  19.99 has number 1999 and places 2. A word's `text` is the word itself, or for a quoted
+  text what is between the quotes. A line with no `|` has a choice_count of 1. A line starts
+  a type when it is at depth 0 and has lines under it. A paragraph is a run of lines with no
+  blank line in it that are under the same type, so a type's name line is in a paragraph of
+  the top of the file, and the lines under it are in the type's paragraphs.
+- Rule files: besides the four forms of section 4, the engine reads one-line definitions (a
+  value, a choice, a range, or a calculation of constants), a worked-out field that is a
+  calculation or a copy of a name or path (with `wrap_at` under it if any), and a call. A
+  part is matched among the facts when its type is a built-in or rule type, a choice of
+  them, or a choice of values such as `Bit: 0 | 1`; only a starred part may have a range. A
+  rule file uses whole numbers only, and the engine refuses a rule file that uses a name
+  above its definition, a field its type does not have, or a call that does not give every
+  starred part by name.
+- How the forms become the core: each match of a type's parts is a value of the type, made
+  once (there exists); each case of a field is a rule of its own, giving the field its value
+  where the case's facts hold (the union of the cases is on the side of what is given);
+  `impossible:` is a rule contained in nothing. A case's facts are matched, never assumed,
+  so a case naming an absent field matches nothing there (section 4).
+- Found while building: with these forms no rule has a union on the side of what follows,
+  so the engine never splits its facts into separate branches as 5.2's part 6 expected. A
+  union is tried one member at a time instead (a part over `0 | 1` gives a value for each),
+  and each member tried is a branch, counted as a step. If a later form puts a union on that
+  side, part 6 grows to split.
+- Atoms (section 4): `<` and the other comparisons also compare two texts, by their
+  characters' code numbers (3.5). A rule needs this to say that two names differ, since no
+  fact word says "is not": two texts differ when one comes before the other. Division gives
+  a value only when it is exact, and `wrap_at` gives the remainder.
+- What a refusal names: the first of the refused value's parts, in order, that is or holds a
+  Line (its number), a Word (its line), a Paragraph (its first line) or an Input_Character
+  (its place, and so its line of the text). A refusal that names a character refuses the
+  input (exit value 1); any other refuses the Etale file (exit value 2). One rule naming the
+  same lines twice is reported once.
+- Printing: when a text is accepted, the engine prints the `value` of every value of the rule
+  type named Printed_Character, in the order of their `place`.
+- Steps: each full match of a rule, each new element (the built-in facts too) and each member
+  of a union tried counts one. The default budget is 10,000,000 until phase 2 sets it.
+- Speed, on this workspace's two cores: limits.etale checks the largest example in about a
+  second, and the walk over every name used in train.etale (about 10,000 values) takes about
+  46 seconds. Two things keep it there: an index on the field named by a part's first
+  `given` (as in `given start.line is line`), and a rule runs again in a pass only when a type
+  or field it reads has changed since it last started. Phase 2 measures the real rule files.
+- Size: engine.scm is about 2,200 lines of Scheme without comments and blank lines: the reader
+  230, the facts 310, numbers 145, reading rule files and running them 1,050, verdicts 100,
+  and the commands and test runner 230. Reading rule files is the largest part, so 5.2's
+  guess for the engine in assembly may be low.
+- The test list gains three kinds of line: `rules FILE ...` (the rule files for the tests
+  below it, none if no file follows), `steps N`, and `tree FILE TREE`; and three verdicts:
+  `ran out of steps`, `rule file refused at N`, and, for a text refused before any rule runs,
+  `refused at N`, naming a line of the text.
 
 ## 6. The corpus: what each example must do
 
@@ -693,7 +787,7 @@ with, is open (7.3).
 
 ### 7.1 Before phase 1
 
-All settled on 25 November: the test engine (5.4); how the core is written, and how a rule
+Phase 1 is done (5.6). All settled on 25 November: the test engine (5.4); how the core is written, and how a rule
 refers to itself (section 4); what the rule files see, and which rule files check a file
 (5.3); one step budget (3.10); and rules before atoms (5.3).
 
@@ -749,6 +843,23 @@ Each was a place where two decided things disagree, or a form was missing. All a
 - The test list's shape is written in plain words in section 6. Claude's suggestion, not
   chosen: write it as an Etale type, so the engine checks the list as well. Its lines have
   three shapes, so it needs a choice of record types read from a text, which no example uses.
+
+### 7.4 Found in phase 1 (26 November)
+
+Each needs an answer by phase 2, when the rule files meet it.
+
+- Skipping a type that uses a refused type (3.9) is not done: the engine reports every
+  refusal its rules find. Nothing may depend on whether a refusal happened (3.7), so the skip
+  cannot be a rule; it would be part of how the engine reports. How the engine would know
+  that one type uses another is open.
+- A walk's end has to be a fact that holds there. A rule cannot match a field that is absent,
+  so it cannot find the first line as "the line with no line above". `line.number is 1`
+  works only while a file never starts with a blank line, which nothing refuses yet. Either
+  the reader refuses a blank first line, or the first line gets a field of its own.
+- In the same way, a rule cannot see where a text ends: the last Input_Character only lacks
+  `next`. The reading rules will need the text's length, or a field on its last character.
+- The type a text is read as (7.3): the command line and the test list name it, and the
+  engine does not pass it on yet. The rules need it to know where reading starts.
 
 ## 8. Later
 
@@ -882,9 +993,12 @@ The repo holds:
 
 - README.md: what is here.
 - PLAN.md: this plan.
-- examples/: the eight example files, version 1's definition. Nothing has checked them yet.
+- examples/: the eight example files, version 1's definition. The test engine reads them; no
+  rule file checks their forms yet.
 - tests/: section 6's texts, a file for each of its mistakes, and test_list.txt with every
-  verdict (phase 0). Nothing has run them yet.
+  verdict (phase 0). The test engine runs the list; most of it waits for phase 2.
+- test_engine/: the test engine (phase 1, 5.6), small_scheme.sld, and in tests/ its own
+  tests and test list. It is deleted after phase 5.
 - LICENSE.
 
 All work is on main, from 25 November; the old branches kernel and minimal are fully inside
