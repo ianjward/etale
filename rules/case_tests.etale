@@ -1,0 +1,132 @@
+Fact_Result:
+  fact*: Case_Fact
+  rep*: Representative
+  holds*: True | False
+
+Other_Below:
+  link: Fact_Input
+  rep: Representative
+    given rep.field is link.field
+    given rep.key < link.key
+
+  result: Fact_Result(fact: link.fact, rep: rep, holds: True)
+
+Other_Above:
+  link: Fact_Input
+  rep: Representative
+    given rep.field is link.field
+    given rep.key > link.key
+
+  result: Fact_Result(fact: link.fact, rep: rep, holds: True)
+
+Is_Test:
+  link: Fact_Input
+  fact: Case_Fact
+    given fact is link.fact
+  relation: Word
+    given relation is fact.relation
+    given relation.text is "is"
+  right: Right_Value
+    given right.fact is fact
+  rep: Representative
+    given rep.input is link.input
+
+  holds: True | False
+    True:
+      rep.value is right.value
+    False:
+      rep.value < right.value
+    False:
+      rep.value > right.value
+    False:
+      rep.value is True
+      right.value is False
+    False:
+      rep.value is False
+      right.value is True
+
+  result: Fact_Result(fact: fact, rep: rep, holds: holds)
+
+Below_Test:
+  link: Fact_Input
+  fact: Case_Fact
+    given fact is link.fact
+  relation: Word
+    given relation is fact.relation
+    given relation.text in "<" | "<="
+  right: Right_Value
+    given right.fact is fact
+  rep: Representative
+    given rep.input is link.input
+
+  holds: True | False
+    True:
+      relation.text is "<"
+      rep.value < right.value
+    True:
+      relation.text is "<="
+      rep.value <= right.value
+    False:
+      relation.text is "<"
+      rep.value >= right.value
+    False:
+      relation.text is "<="
+      rep.value > right.value
+
+  result: Fact_Result(fact: fact, rep: rep, holds: holds)
+
+Above_Test:
+  link: Fact_Input
+  fact: Case_Fact
+    given fact is link.fact
+  relation: Word
+    given relation is fact.relation
+    given relation.text in ">" | ">="
+  right: Right_Value
+    given right.fact is fact
+  rep: Representative
+    given rep.input is link.input
+
+  holds: True | False
+    True:
+      relation.text is ">"
+      rep.value > right.value
+    True:
+      relation.text is ">="
+      rep.value >= right.value
+    False:
+      relation.text is ">"
+      rep.value <= right.value
+    False:
+      relation.text is ">="
+      rep.value < right.value
+
+  result: Fact_Result(fact: fact, rep: rep, holds: holds)
+
+Division_Test:
+  link: Fact_Input
+  fact: Case_Fact
+    given fact is link.fact
+  relation: Word
+    given relation is fact.relation
+    given relation.text in Division_Word
+  right: Right_Value
+    given right.fact is fact
+  rep: Representative
+    given rep.input is link.input
+
+  holds: True | False
+    True:
+      relation.text is "divisible_by"
+      rep.value divisible_by right.value
+    True:
+      relation.text is "not_divisible_by"
+      rep.value not_divisible_by right.value
+    False:
+      relation.text is "divisible_by"
+      rep.value not_divisible_by right.value
+    False:
+      relation.text is "not_divisible_by"
+      rep.value divisible_by right.value
+
+  result: Fact_Result(fact: fact, rep: rep, holds: holds)

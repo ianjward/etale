@@ -13,6 +13,8 @@ Case:
     given colon is value.next
     given colon.text is ":"
 
+  place: line.place
+
 Case_Fact_Line:
   line: Line
     given line.depth is Under_Case_Depth

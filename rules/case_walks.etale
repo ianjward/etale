@@ -1,0 +1,60 @@
+Miss_End:
+  through: Miss_Through
+  fact: Case_Fact
+    given fact is through.fact
+  choice: Choice_Definition
+    given choice.definition is fact.right
+  end: Choice_Word
+    given end is choice.end
+    given end.place is through.place
+
+  result: Fact_Result(fact: fact, rep: through.rep, holds: False)
+
+Case_Failure:
+  case*: Case
+  rep*: Representative
+
+Case_Fails:
+  result: Fact_Result
+    given result.holds is False
+  fact: Case_Fact
+    given fact is result.fact
+
+  failure: Case_Failure(case: fact.case, rep: result.rep)
+
+Hold_Through:
+  case*: Case
+  rep*: Representative
+  place*: 1..
+
+  next_place: place + One
+
+Hold_First:
+  result: Fact_Result
+    given result.holds is True
+  fact: Case_Fact
+    given fact is result.fact
+    given fact.place is One
+
+  through: Hold_Through(case: fact.case, rep: result.rep, place: One)
+
+Hold_Next:
+  through: Hold_Through
+  result: Fact_Result
+    given result.rep is through.rep
+    given result.holds is True
+  fact: Case_Fact
+    given fact is result.fact
+    given fact.case is through.case
+    given fact.place is through.next_place
+
+  case: through.case
+  rep: through.rep
+  next: Hold_Through(case: case, rep: rep, place: fact.place)
+
+Fail_Through:
+  field*: Field
+  rep*: Representative
+  place*: 1..
+
+  next_place: place + One

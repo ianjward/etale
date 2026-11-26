@@ -37,9 +37,9 @@ The project's aims, and where each one stands:
   mistake of section 6 with the test list. The test engine (phase 1, done 26 November, 5.6):
   it reads every example and runs rule files written in the core's part of Etale.
 - Started: Etale's own rule files (phase 2, from 26 November, 5.7). They read every line of
-  the eight examples as its form and check that names are defined above where they are
-  used. Case tables, claims, texts and values are still to come, so 29 of the corpus's
-  verdicts wait.
+  the eight examples as its form, check that names are defined above where they are used,
+  and check that a field worked out by cases gives one answer. Claims, texts and values
+  are still to come, so 26 of the corpus's verdicts wait.
 - Retired: the Gleam host (to 16 November), and the JavaScript engine with every file in the
   old forms, route B, kernel.etale and wasm.etale (to 19 November). Both are in the history
   (section 10).
@@ -447,7 +447,8 @@ into the core and checks them. Each form's rewrite should be short enough to che
    starred field, by name.
 3. Case tables: every field worked out by cases gets exactly one value, tried by parts of each
    input's range, not every value: each input is split at the numbers the cases name and by
-   the divisors they test, so is_leap needs 400 parts, not 10,000 years. A refusal names a
+   the divisors they test, so is_leap needs 400 parts, not 10,000 years (built on
+   26 November with fewer: five values for year, 5.7). A refusal names a
    value with no answer or two ("month 4 in a leap year gets both 30 and 29"). Then the case
    checks of 3.9.
 4. Claims: each numbered step follows (3.8), with induction and citations.
@@ -587,7 +588,7 @@ small_scheme.sld names the part of Scheme in 5.4. The engine runs with only thos
 a name outside them stops it before anything runs. `-h 1G` gives Chibi-Scheme a large heap
 from the start; without it the engine runs about half as fast.
 
-The engine's tests (test_engine/tests/test_list.txt, 72 tests, all passing) cover each part:
+The engine's tests (test_engine/tests/test_list.txt, 85 tests, all passing) cover each part:
 the reader's refusals, and its tree of dates.etale; the limits of 3.4 as a rule file
 (rules/limits.etale, moved there on 26 November), which accepts the eight examples and every
 rule file, and refuses a file that breaks each limit at the right line; a walk up the lines
@@ -699,13 +700,39 @@ The files so far:
     searched. The search starts at the item the name is in, so a field that names itself
     inside its own cases is not refused yet. Field_Use, Type_Use and Constant_Use link a name
     to the field, type or constant it means.
+12. values.etale and operands.etale: the value of a number, a quoted text, True or False,
+    and of each one-line constant, worked out from numbers and constants above it
+    (Day_Starts is 360).
+13. The case tables, in case_facts, case_ranges, boundaries, starts, multiples,
+    representatives, case_tests, choice_tests, case_walks, case_answers and case_overlaps
+    (all .etale). Each field a case reads is an input of the field worked out by cases: a
+    field of the same type, or a list's count. Each input gets representative values: the
+    members of its choice (or of a one-line choice it names, as Bit); for a range, its low
+    end and each place inside it where a case's fact begins or ends, and from each of these
+    the next multiple of every least common multiple of the divisors its facts name. So
+    is_leap's year gets 0, 1, 4, 100 and 400, one value for each set of divisors a year can
+    be divisible by, in place of the 400 parts 5.3 expected (Claude's choice, 26 November).
+    The common multiples come from a walk of Euclid's algorithm. Each fact then holds or
+    fails on each representative of its input, both as facts, since a fact about a known
+    number has a known opposite; a fact about another input holds there. A case holds on a
+    value when all its facts do, and two cases above and below each other overlap when, for
+    every input either reads, some value lets both hold: the field's line is refused, with
+    two answers. If on some value of one input every case has a fact that fails, the field's
+    line is refused, with no answer. This is exact for a field whose cases read one input;
+    with two or more it finds only the gaps one input shows on its own, and checking every
+    combination of inputs is still to come.
 
 What they give now: every line of the eight examples is read as exactly one form (checked by
 listing which form claims each line), and every definition and fact is read. On the corpus,
-the eight examples are accepted and three mistakes added for the names rules are refused at
-the right lines: a name not defined (names_undefined), a constant used one line above its
-definition (names_used_above), and a path with two dots (names_two_dots). 11 tests pass and
-29 wait. The corpus takes about 156 seconds; the largest example, timetable.etale, about 10.
+the eight examples are accepted, and section 6's three case-table mistakes are refused at
+their lines: dates_two_answers at 18, dates_no_answer at 6, train_refund_cases_overlap at
+55. Six mistakes were added for the rule files' own checks and are refused at the right
+lines: a name not defined (names_undefined), a constant used one line above its definition
+(names_used_above), a path with two dots (names_two_dots), a gap in a range of cases
+(cases_gap), an overlap (cases_overlap), and a comparison that leaves one value out
+(cases_boundary, `arrives > Day_Starts`). The corpus gives 17 passed and 26 waiting (the four
+claim mistakes, and every text). It takes about 296 seconds; dates.etale and timetable.etale
+take about 10 seconds each, most of it the case tables and the name search.
 
 Still to come, in this order:
 
@@ -717,16 +744,13 @@ Still to come, in this order:
 - Names: a path's second name is a field of the first one's type, `unique` and `ordered by`
   name fields of the list's item, and a call gives every starred field of the type it
   calls, by name, and nothing else.
-- Case tables (3 of the corpus's mistakes). Claude's outline: each field read in a case is an
-  input; each input gets representative values (the members of a choice; for a range, its
-  low end and each place the cases split it, and with `divisible_by` every remainder of a
-  common multiple of the divisors, which gives is_leap its 400); a walk over the type's
-  fields builds every assignment of representatives, with one more value for "not an input"
-  so that a field the case table does not read passes through; each fact then holds or fails
-  on a representative, both found as facts, since a fact on a known number has a known
-  opposite; two cases holding on one assignment refuse the field's line, and so does every
-  case failing on one.
-- Claims (4), texts (21), and values.
+- Case tables: no answer over every combination of two or more inputs (a walk over the
+  type's fields building each combination, with one more value for a field the table does
+  not read), and the other case checks of 3.9: a case's value outside its field's range, an
+  output no input produces, and a case that can never be reached. A refusal names the
+  field's line, but not yet the value with no answer or two, as 5.3 asks: the engine
+  reports only a rule and its lines.
+- Claims (4 of the corpus), texts (21), and values.
 - Speed: every pass matches every value again, so a walk of 15 steps costs 15 full passes.
   Matching only what is new since a rule last ran (semi-naive matching) is the fix to try
   next in the engine; it changes how the engine runs rules, not what they mean.

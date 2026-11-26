@@ -1,0 +1,67 @@
+Constant_Right:
+  fact: Case_Fact
+  term_definition: Term_Definition
+    given term_definition.definition is fact.right
+  term: Term
+    given term is term_definition.term
+    given term.kind is "name"
+  operand: Operand
+    given operand.term is term
+
+  right: Right_Value(fact: fact, value: operand.value)
+
+Input_Range:
+  input*: Case_Input
+  low*: Number
+  high*: Number
+  open*: True | False
+
+Range_Input:
+  input: Case_Input
+    given input.use is "value"
+  field: Field
+    given field is input.input
+  range: Range_Definition
+    given range.definition is field.definition
+  low_word: Word
+    given low_word is range.low
+  high_word: Word
+    given high_word is range.high
+
+  low: low_word.number
+  high: high_word.number
+  ends: Input_Range(input: input, low: low, high: high, open: False)
+
+Open_Input:
+  input: Case_Input
+    given input.use is "value"
+  field: Field
+    given field is input.input
+  range: Open_Range_Definition
+    given range.definition is field.definition
+  low_word: Word
+    given low_word is range.low
+
+  low: low_word.number
+  ends: Input_Range(input: input, low: low, high: low, open: True)
+
+Count_Range:
+  input: Case_Input
+    given input.use is "count"
+
+  ends: Input_Range(input: input, low: Zero, high: Zero, open: True)
+
+Wrap_Range:
+  input: Case_Input
+    given input.use is "value"
+  field: Field
+    given field is input.input
+  wrap: Wrap_Line
+    given wrap.field is field
+  term_definition: Term_Definition
+    given term_definition.definition is wrap.divisor
+  divisor: Operand
+    given divisor.term is term_definition.term
+
+  top: divisor.value - One
+  ends: Input_Range(input: input, low: Zero, high: top, open: False)

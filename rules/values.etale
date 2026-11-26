@@ -1,0 +1,47 @@
+Rep_Value: Number | Text | True | False
+Zero: 0
+
+Word_Value:
+  word*: Word
+  value*: Rep_Value
+
+Number_Word:
+  word: Word
+    given word.kind is "number"
+
+  value: Word_Value(word: word, value: word.number)
+
+Quoted_Word:
+  word: Word
+    given word.kind is "quoted"
+
+  value: Word_Value(word: word, value: word.text)
+
+Truth_Word:
+  word: Word
+    given word.kind is "name"
+    given word.text in "True" | "False"
+
+  truth: True | False
+    True:
+      word.text is "True"
+    False:
+      word.text is "False"
+
+  value: Word_Value(word: word, value: truth)
+
+Constant_Value:
+  line*: Line
+  value*: Number
+
+Number_Constant:
+  constant: Definition_Line
+  term_definition: Term_Definition
+    given term_definition.definition is constant.definition
+  term: Term
+    given term is term_definition.term
+    given term.kind is "number"
+  number: Word
+    given number is term.first
+
+  value: Constant_Value(line: constant.line, value: number.number)

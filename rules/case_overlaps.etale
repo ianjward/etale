@@ -1,0 +1,72 @@
+Upper_Next:
+  through: Upper_Through
+  fact: Case_Fact
+    given fact.case is through.upper
+    given fact.place is through.next_place
+  link: Fact_Input
+    given link.fact is fact
+  joint: Joint
+    given joint.upper is through.upper
+    given joint.lower is through.lower
+    given joint.input is link.input
+
+  upper: through.upper
+  lower: through.lower
+  next: Upper_Through(upper: upper, lower: lower, place: fact.place)
+
+Lower_Through:
+  upper*: Case
+  lower*: Case
+  place*: 1..
+
+  field: upper.field
+  next_place: place + One
+
+Lower_Start:
+  through: Upper_Through
+  upper: Case
+    given upper is through.upper
+  upper_line: Line
+    given upper_line is upper.line
+    given upper_line.under_count is through.place
+  fact: Case_Fact
+    given fact.case is through.lower
+    given fact.place is One
+  link: Fact_Input
+    given link.fact is fact
+  joint: Joint
+    given joint.upper is through.upper
+    given joint.lower is through.lower
+    given joint.input is link.input
+
+  lower: through.lower
+  next: Lower_Through(upper: upper, lower: lower, place: One)
+
+Lower_Next:
+  through: Lower_Through
+  fact: Case_Fact
+    given fact.case is through.lower
+    given fact.place is through.next_place
+  link: Fact_Input
+    given link.fact is fact
+  joint: Joint
+    given joint.upper is through.upper
+    given joint.lower is through.lower
+    given joint.input is link.input
+
+  upper: through.upper
+  lower: through.lower
+  next: Lower_Through(upper: upper, lower: lower, place: fact.place)
+
+Two_Answers:
+  field: Field
+  through: Lower_Through
+    given through.field is field
+  lower: Case
+    given lower is through.lower
+  lower_line: Line
+    given lower_line is lower.line
+    given lower_line.under_count is through.place
+
+  impossible:
+    lower_line.under_count is through.place

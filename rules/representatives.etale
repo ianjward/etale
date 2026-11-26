@@ -1,0 +1,72 @@
+Multiple_Step:
+  start: Start
+  multiple: Multiple
+    given multiple.input is start.input
+
+  input: start.input
+  remainder: start.value
+    wrap_at multiple.value
+  gap: multiple.value - remainder
+  value: start.value + gap
+
+Closed_Step_Representative:
+  step: Multiple_Step
+  range: Input_Range
+    given range.input is step.input
+    given range.open is False
+    given range.high >= step.value
+
+  rep: Representative(input: step.input, value: step.value)
+
+Open_Step_Representative:
+  step: Multiple_Step
+  range: Input_Range
+    given range.input is step.input
+    given range.open is True
+
+  rep: Representative(input: step.input, value: step.value)
+
+Choice_Representative:
+  input: Case_Input
+    given input.use is "value"
+  field: Field
+    given field is input.input
+  choice: Choice_Definition
+    given choice.definition is field.definition
+  definition: Definition
+    given definition is choice.definition
+  member: Choice_Word
+    given member.start is definition.start
+  word_value: Word_Value
+    given word_value.word is member.word
+
+  rep: Representative(input: input, value: word_value.value)
+
+Named_Choice:
+  input*: Case_Input
+  choice*: Definition_Line
+  members: Choice_Definition
+    given members.definition is choice.definition
+  definition: Definition
+    given definition is members.definition
+  member: Choice_Word
+    given member.start is definition.start
+  word_value: Word_Value
+    given word_value.word is member.word
+
+  rep: Representative(input: input, value: word_value.value)
+
+Named_Choice_Input:
+  input: Case_Input
+    given input.use is "value"
+  field: Field
+    given field is input.input
+  term_definition: Term_Definition
+    given term_definition.definition is field.definition
+  term: Term
+    given term is term_definition.term
+    given term.kind is "name"
+  use: Constant_Use
+    given use.word is term.first
+
+  named: Named_Choice(input: input, choice: use.definition_line)

@@ -1,0 +1,56 @@
+Multiple:
+  input*: Case_Input
+  value*: Number
+
+One_Multiple:
+  range: Input_Range
+
+  multiple: Multiple(input: range.input, value: One)
+
+Lcm_Question:
+  input*: Case_Input
+  multiple*: Number
+  divisor*: Number
+
+Lcm_Ask:
+  multiple: Multiple
+  link: Fact_Input
+    given link.input is multiple.input
+  fact: Case_Fact
+    given fact is link.fact
+  relation: Word
+    given relation is fact.relation
+    given relation.text in Division_Word
+  right: Right_Value
+    given right.fact is fact
+
+  input: multiple.input
+  low: multiple.value
+  divisor: right.value
+  ask: Lcm_Question(input: input, multiple: low, divisor: divisor)
+
+Gcd:
+  question*: Lcm_Question
+  dividend*: Number
+  divisor*: Number
+
+  rest: dividend
+    wrap_at divisor
+  next: Gcd(question: question, dividend: divisor, divisor: rest)
+
+Gcd_Start:
+  question: Lcm_Question
+
+  dividend: question.multiple
+  divisor: question.divisor
+  first: Gcd(question: question, dividend: dividend, divisor: divisor)
+
+Gcd_End:
+  gcd: Gcd
+    given gcd.divisor is 0
+  question: Lcm_Question
+    given question is gcd.question
+
+  product: question.multiple * question.divisor
+  lcm: product / gcd.dividend
+  multiple: Multiple(input: question.input, value: lcm)

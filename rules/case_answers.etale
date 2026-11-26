@@ -1,0 +1,81 @@
+Fail_First:
+  failure: Case_Failure
+  case: Case
+    given case is failure.case
+    given case.place is One
+
+  field: case.field
+  rep: failure.rep
+  through: Fail_Through(field: field, rep: rep, place: One)
+
+Fail_Next:
+  through: Fail_Through
+  failure: Case_Failure
+    given failure.rep is through.rep
+  case: Case
+    given case is failure.case
+    given case.field is through.field
+    given case.place is through.next_place
+
+  field: through.field
+  rep: through.rep
+  next: Fail_Through(field: field, rep: rep, place: case.place)
+
+No_Answer:
+  through: Fail_Through
+  field: Field
+    given field is through.field
+  line: Line
+    given line is field.line
+    given line.under_count is through.place
+
+  impossible:
+    line.under_count is through.place
+
+Joint:
+  upper*: Case
+  lower*: Case
+  input*: Case_Input
+
+  field: upper.field
+
+Joint_Maker:
+  upper: Case
+  upper_line: Line
+    given upper_line is upper.line
+  upper_hold: Hold_Through
+    given upper_hold.case is upper
+    given upper_hold.place is upper_line.under_count
+  lower_hold: Hold_Through
+    given lower_hold.rep is upper_hold.rep
+  lower: Case
+    given lower is lower_hold.case
+    given lower.field is upper.field
+  lower_line: Line
+    given lower_line is lower.line
+    given lower_line.number > upper_line.number
+    given lower_line.under_count is lower_hold.place
+  rep: Representative
+    given rep is upper_hold.rep
+
+  joint: Joint(upper: upper, lower: lower, input: rep.input)
+
+Upper_Through:
+  upper*: Case
+  lower*: Case
+  place*: 1..
+
+  next_place: place + One
+
+Upper_Start:
+  joint: Joint
+  fact: Case_Fact
+    given fact.case is joint.upper
+    given fact.place is One
+  link: Fact_Input
+    given link.fact is fact
+    given link.input is joint.input
+
+  upper: joint.upper
+  lower: joint.lower
+  through: Upper_Through(upper: upper, lower: lower, place: One)

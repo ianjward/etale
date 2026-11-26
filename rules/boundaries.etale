@@ -1,0 +1,85 @@
+Boundary:
+  input*: Case_Input
+  value*: Number
+
+Equal_Boundary:
+  link: Fact_Input
+  fact: Case_Fact
+    given fact is link.fact
+  relation: Word
+    given relation is fact.relation
+    given relation.text is "is"
+  right: Right_Value
+    given right.fact is fact
+
+  after: right.value + One
+  at: Boundary(input: link.input, value: right.value)
+  past: Boundary(input: link.input, value: after)
+
+Below_Boundary:
+  link: Fact_Input
+  fact: Case_Fact
+    given fact is link.fact
+  relation: Word
+    given relation is fact.relation
+    given relation.text in "<" | ">="
+  right: Right_Value
+    given right.fact is fact
+
+  at: Boundary(input: link.input, value: right.value)
+
+Above_Boundary:
+  link: Fact_Input
+  fact: Case_Fact
+    given fact is link.fact
+  relation: Word
+    given relation is fact.relation
+    given relation.text in "<=" | ">"
+  right: Right_Value
+    given right.fact is fact
+
+  after: right.value + One
+  past: Boundary(input: link.input, value: after)
+
+Range_Boundary:
+  link: Fact_Input
+  fact: Case_Fact
+    given fact is link.fact
+  range: Range_Definition
+    given range.definition is fact.right
+  low: Word
+    given low is range.low
+  high: Word
+    given high is range.high
+
+  after: high.number + One
+  at: Boundary(input: link.input, value: low.number)
+  past: Boundary(input: link.input, value: after)
+
+Open_Range_Boundary:
+  link: Fact_Input
+  fact: Case_Fact
+    given fact is link.fact
+  range: Open_Range_Definition
+    given range.definition is fact.right
+  low: Word
+    given low is range.low
+
+  at: Boundary(input: link.input, value: low.number)
+
+Choice_Boundary:
+  link: Fact_Input
+  fact: Case_Fact
+    given fact is link.fact
+  choice: Choice_Definition
+    given choice.definition is fact.right
+  definition: Definition
+    given definition is choice.definition
+  member: Choice_Word
+    given member.start is definition.start
+  word_value: Word_Value
+    given word_value.word is member.word
+
+  after: word_value.value + One
+  at: Boundary(input: link.input, value: word_value.value)
+  past: Boundary(input: link.input, value: after)

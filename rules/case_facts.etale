@@ -1,0 +1,87 @@
+Use_Code: "value" | "count"
+Two: 2
+
+Case_Input:
+  field*: Field
+  input*: Field
+  use*: Use_Code
+  input_line: Line
+    given input_line is input.line
+
+  doubled: input_line.number * Two
+
+  use_number: 0 | 1
+    0:
+      use is "value"
+    1:
+      use is "count"
+
+  key: doubled + use_number
+
+Case_Fact:
+  fact_line: Case_Fact_Line
+  case: Case
+    given case is fact_line.case
+  shape: Fact_Shape
+    given shape.fact is fact_line.fact
+  left: Term
+    given left is shape.left
+  relation: Word
+    given relation is shape.relation
+  right: Definition
+    given right is shape.right_side
+
+  field: case.field
+  line: fact_line.line
+  place: line.place
+
+Fact_Input:
+  fact*: Case_Fact
+  input*: Case_Input
+
+  key: input.key
+  field: input.field
+
+Name_Input:
+  fact: Case_Fact
+  left: Term
+    given left is fact.left
+    given left.kind is "name"
+  use: Field_Use
+    given use.word is left.first
+
+  input: Case_Input(field: fact.field, input: use.field, use: "value")
+  link: Fact_Input(fact: fact, input: input)
+
+Count_Input:
+  fact: Case_Fact
+  list_use: List_Use_Term
+    given list_use.term is fact.left
+  use_word: Word
+    given use_word is list_use.use
+    given use_word.text is "count"
+  list: List_Term
+    given list.term is list_use.list
+  inside: Term
+    given inside is list.inside
+    given inside.kind is "name"
+  use: Field_Use
+    given use.word is inside.first
+
+  input: Case_Input(field: fact.field, input: use.field, use: "count")
+  link: Fact_Input(fact: fact, input: input)
+
+Right_Value:
+  fact*: Case_Fact
+  value*: Rep_Value
+
+Word_Right:
+  fact: Case_Fact
+  term_definition: Term_Definition
+    given term_definition.definition is fact.right
+  term: Term
+    given term is term_definition.term
+  word_value: Word_Value
+    given word_value.word is term.first
+
+  right: Right_Value(fact: fact, value: word_value.value)

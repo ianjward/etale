@@ -1,0 +1,101 @@
+Range_Test:
+  link: Fact_Input
+  fact: Case_Fact
+    given fact is link.fact
+  range: Range_Definition
+    given range.definition is fact.right
+  low: Word
+    given low is range.low
+  high: Word
+    given high is range.high
+  rep: Representative
+    given rep.input is link.input
+
+  holds: True | False
+    True:
+      rep.value >= low.number
+      rep.value <= high.number
+    False:
+      rep.value < low.number
+    False:
+      rep.value > high.number
+
+  result: Fact_Result(fact: fact, rep: rep, holds: holds)
+
+Open_Range_Test:
+  link: Fact_Input
+  fact: Case_Fact
+    given fact is link.fact
+  range: Open_Range_Definition
+    given range.definition is fact.right
+  low: Word
+    given low is range.low
+  rep: Representative
+    given rep.input is link.input
+
+  holds: True | False
+    True:
+      rep.value >= low.number
+    False:
+      rep.value < low.number
+
+  result: Fact_Result(fact: fact, rep: rep, holds: holds)
+
+Member_Check:
+  link: Fact_Input
+  fact: Case_Fact
+    given fact is link.fact
+  choice: Choice_Definition
+    given choice.definition is fact.right
+  definition: Definition
+    given definition is choice.definition
+  member: Choice_Word
+    given member.start is definition.start
+  word_value: Word_Value
+    given word_value.word is member.word
+  rep: Representative
+    given rep.input is link.input
+
+  differs: True | False
+    True:
+      rep.value < word_value.value
+    True:
+      rep.value > word_value.value
+    False:
+      rep.value is word_value.value
+
+Choice_Hit:
+  check: Member_Check
+    given check.differs is False
+
+  result: Fact_Result(fact: check.fact, rep: check.rep, holds: True)
+
+Miss_Through:
+  fact*: Case_Fact
+  rep*: Representative
+  place*: 1..
+
+  next_place: place + One
+
+Miss_First:
+  check: Member_Check
+    given check.differs is True
+  member: Choice_Word
+    given member is check.member
+    given member.place is One
+
+  through: Miss_Through(fact: check.fact, rep: check.rep, place: One)
+
+Miss_Next:
+  through: Miss_Through
+  check: Member_Check
+    given check.fact is through.fact
+    given check.rep is through.rep
+    given check.differs is True
+  member: Choice_Word
+    given member is check.member
+    given member.place is through.next_place
+
+  fact: through.fact
+  rep: through.rep
+  next: Miss_Through(fact: fact, rep: rep, place: member.place)

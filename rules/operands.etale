@@ -1,0 +1,83 @@
+Operand:
+  term*: Term
+  value*: Number
+
+Number_Operand:
+  term: Term
+    given term.kind is "number"
+  word: Word
+    given word is term.first
+
+  operand: Operand(term: term, value: word.number)
+
+Constant_Operand:
+  term: Term
+    given term.kind is "name"
+  use: Constant_Use
+    given use.word is term.first
+  definition_line: Definition_Line
+    given definition_line is use.definition_line
+  constant: Constant_Value
+    given constant.line is definition_line.line
+
+  operand: Operand(term: term, value: constant.value)
+
+Constant_Sum:
+  definition_line: Definition_Line
+  calculation: Calculation_Definition
+    given calculation.definition is definition_line.definition
+  operator: Word
+    given operator is calculation.operator
+    given operator.text is "+"
+  left: Operand
+    given left.term is calculation.left
+  right: Operand
+    given right.term is calculation.right
+
+  sum: left.value + right.value
+  value: Constant_Value(line: definition_line.line, value: sum)
+
+Constant_Difference:
+  definition_line: Definition_Line
+  calculation: Calculation_Definition
+    given calculation.definition is definition_line.definition
+  operator: Word
+    given operator is calculation.operator
+    given operator.text is "-"
+  left: Operand
+    given left.term is calculation.left
+  right: Operand
+    given right.term is calculation.right
+
+  difference: left.value - right.value
+  value: Constant_Value(line: definition_line.line, value: difference)
+
+Constant_Product:
+  definition_line: Definition_Line
+  calculation: Calculation_Definition
+    given calculation.definition is definition_line.definition
+  operator: Word
+    given operator is calculation.operator
+    given operator.text is "*"
+  left: Operand
+    given left.term is calculation.left
+  right: Operand
+    given right.term is calculation.right
+
+  product: left.value * right.value
+  value: Constant_Value(line: definition_line.line, value: product)
+
+Constant_Quotient:
+  definition_line: Definition_Line
+  calculation: Calculation_Definition
+    given calculation.definition is definition_line.definition
+  operator: Word
+    given operator is calculation.operator
+    given operator.text is "/"
+  left: Operand
+    given left.term is calculation.left
+  right: Operand
+    given right.term is calculation.right
+
+  quotient: left.value / right.value
+  value: Constant_Value(line: definition_line.line, value: quotient)

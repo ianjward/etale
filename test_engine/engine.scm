@@ -2433,7 +2433,12 @@
   '("rules/limits.etale" "rules/terms.etale" "rules/definitions.etale"
     "rules/compounds.etale" "rules/facts.etale" "rules/blocks.etale"
     "rules/fact_lines.etale" "rules/settings.etale" "rules/positions.etale"
-    "rules/uses.etale" "rules/name_search.etale" "rules/name_steps.etale"))
+    "rules/uses.etale" "rules/name_search.etale" "rules/name_steps.etale"
+    "rules/values.etale" "rules/operands.etale" "rules/case_facts.etale"
+    "rules/case_ranges.etale" "rules/boundaries.etale" "rules/starts.etale"
+    "rules/multiples.etale" "rules/representatives.etale" "rules/case_tests.etale"
+    "rules/choice_tests.etale" "rules/case_walks.etale" "rules/case_answers.etale"
+    "rules/case_overlaps.etale"))
 
 (define default-budget 10000000)
 

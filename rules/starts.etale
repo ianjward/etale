@@ -1,0 +1,39 @@
+Start:
+  input*: Case_Input
+  value*: Number
+
+Low_Start:
+  range: Input_Range
+
+  start: Start(input: range.input, value: range.low)
+
+Closed_Start:
+  boundary: Boundary
+  range: Input_Range
+    given range.input is boundary.input
+    given range.open is False
+    given range.low < boundary.value
+    given range.high >= boundary.value
+
+  start: Start(input: boundary.input, value: boundary.value)
+
+Open_Start:
+  boundary: Boundary
+  range: Input_Range
+    given range.input is boundary.input
+    given range.open is True
+    given range.low < boundary.value
+
+  start: Start(input: boundary.input, value: boundary.value)
+
+Representative:
+  input*: Case_Input
+  value*: Rep_Value
+
+  field: input.field
+  key: input.key
+
+Start_Representative:
+  start: Start
+
+  rep: Representative(input: start.input, value: start.value)
